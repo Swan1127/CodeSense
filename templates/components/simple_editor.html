@@ -1,0 +1,359 @@
+<!-- 简易代码编辑器组件 -->
+{% macro simple_editor(name, value='', language='python', height=400) %}
+<div class="simple-code-editor" id="editor-container-{{ name }}" data-height="{{ height }}">
+    <div class="editor-header">
+        <div class="editor-title">
+            <i class="bi bi-code-square"></i>
+            <span>{{ language | capitalize }} 代码编辑器</span>
+        </div>
+        <div class="editor-actions">
+            <button type="button" class="editor-btn format-btn" title="格式化代码">
+                <i class="bi bi-text-indent-left"></i>
+            </button>
+            <button type="button" class="editor-btn copy-btn" title="复制代码">
+                <i class="bi bi-clipboard"></i>
+            </button>
+            <button type="button" class="editor-btn clear-btn" title="清空编辑器">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    </div>
+    <textarea id="{{ name }}" name="{{ name }}" class="editor-textarea" data-language="{{ language }}">{{ value }}</textarea>
+</div>
+{% endmacro %}
+
+<!-- 编辑器样式 -->
+<style>
+/* 编辑器基本样式 */
+.simple-code-editor {
+    margin-bottom: 1.5rem;
+    border-radius: 0.375rem;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    background-color: #ffffff;
+}
+
+.editor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.editor-title {
+    display: flex;
+    align-items: center;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #4b5563;
+}
+
+.editor-title i {
+    margin-right: 0.5rem;
+    color: #6366f1;
+}
+
+.editor-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.editor-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    background-color: transparent;
+    border-radius: 0.25rem;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.editor-btn:hover {
+    background-color: rgba(99, 102, 241, 0.1);
+    color: #6366f1;
+}
+
+.editor-textarea {
+    width: 100%;
+    min-height: 20rem;
+    padding: 1rem;
+    border: none;
+    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #1f2937;
+    resize: vertical;
+    tab-size: 4;
+    -moz-tab-size: 4;
+    background-color: #ffffff;
+    outline: none;
+}
+
+/* 针对不同语言的语法高亮 */
+.editor-textarea[data-language="python"] {
+    background-color: #ffffff;
+}
+
+.editor-textarea[data-language="cpp"],
+.editor-textarea[data-language="c"] {
+    background-color: #ffffff;
+}
+
+.editor-textarea[data-language="java"] {
+    background-color: #ffffff;
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+    .editor-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .editor-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+</style>
+
+<!-- 编辑器脚本 -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 获取所有编辑器实例
+    var editors = document.querySelectorAll('.simple-code-editor');
+    
+    editors.forEach(function(editorContainer) {
+        // 获取当前编辑器的元素
+        var textarea = editorContainer.querySelector('.editor-textarea');
+        var formatBtn = editorContainer.querySelector('.format-btn');
+        var copyBtn = editorContainer.querySelector('.copy-btn');
+        var clearBtn = editorContainer.querySelector('.clear-btn');
+        
+        if (!textarea) return;
+        
+        // 设置编辑器高度
+        var heightValue = editorContainer.getAttribute('data-height');
+        if (heightValue) {
+            textarea.style.height = heightValue + 'px';
+        }
+        
+        // 初始化Tab键支持
+        initTabSupport(textarea);
+        
+        // 格式化按钮点击事件
+        if (formatBtn) {
+            formatBtn.addEventListener('click', function() {
+                formatCode(textarea);
+            });
+        }
+        
+        // 复制按钮点击事件
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function() {
+                copyCode(textarea);
+            });
+        }
+        
+        // 清空按钮点击事件
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function() {
+                clearCode(textarea);
+            });
+        }
+    });
+    
+    // 支持Tab键缩进
+    function initTabSupport(textarea) {
+        textarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                
+                var start = this.selectionStart;
+                var end = this.selectionEnd;
+                
+                // 获取选定的文本
+                var selectedText = this.value.substring(start, end);
+                var beforeText = this.value.substring(0, start);
+                var afterText = this.value.substring(end);
+                
+                // 检查是否有选择多行
+                if (selectedText.indexOf('\n') !== -1) {
+                    // 缩进多行
+                    var lines = selectedText.split('\n');
+                    var indentedText = lines.map(function(line) {
+                        return '    ' + line;
+                    }).join('\n');
+                    
+                    // 更新文本域
+                    this.value = beforeText + indentedText + afterText;
+                    
+                    // 更新选择范围
+                    this.selectionStart = start;
+                    this.selectionEnd = start + indentedText.length;
+                } else {
+                    // 缩进单行或插入空格
+                    this.value = beforeText + '    ' + afterText;
+                    this.selectionStart = this.selectionEnd = start + 4;
+                }
+            } else if (e.key === 'Enter') {
+                // 智能缩进 - 回车时保持当前缩进级别
+                var start = this.selectionStart;
+                var currentLine = this.value.substring(0, start).split('\n').pop();
+                var indentMatch = currentLine.match(/^(\s+)/);
+                
+                if (indentMatch) {
+                    e.preventDefault();
+                    var indent = indentMatch[1];
+                    
+                    // 如果当前行以特定字符结尾（如冒号），则增加缩进
+                    if (currentLine.trim().endsWith(':')) {
+                        indent += '    ';
+                    }
+                    
+                    this.value = this.value.substring(0, start) + '\n' + indent + this.value.substring(this.selectionEnd);
+                    this.selectionStart = this.selectionEnd = start + indent.length + 1;
+                }
+            }
+        });
+    }
+    
+    // 格式化代码
+    function formatCode(textarea) {
+        try {
+            var value = textarea.value;
+            if (!value.trim()) return;
+            
+            var language = textarea.getAttribute('data-language') || 'python';
+            var formattedCode = value;
+            
+            // 简单的格式化逻辑
+            if (language === 'python') {
+                // 处理Python代码格式
+                formattedCode = formatPythonCode(value);
+            } else if (language === 'cpp' || language === 'c') {
+                // 处理C/C++代码格式
+                formattedCode = formatCCode(value);
+            } else if (language === 'java') {
+                // 处理Java代码格式
+                formattedCode = formatCCode(value); // 使用与C类似的格式
+            }
+            
+            textarea.value = formattedCode;
+            showToast('代码格式化完成');
+        } catch (e) {
+            console.error('格式化代码时出错:', e);
+            showToast('格式化代码时出错', 'error');
+        }
+    }
+    
+    // 复制代码
+    function copyCode(textarea) {
+        try {
+            textarea.select();
+            document.execCommand('copy');
+            
+            // 如果浏览器支持新API也尝试使用
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(textarea.value);
+            }
+            
+            showToast('代码已复制到剪贴板');
+        } catch (e) {
+            console.error('复制代码时出错:', e);
+            showToast('复制失败，请手动复制', 'error');
+        }
+    }
+    
+    // 清空代码
+    function clearCode(textarea) {
+        if (confirm('确定要清空编辑器中的代码吗？此操作无法撤销。')) {
+            textarea.value = '';
+            textarea.focus();
+        }
+    }
+    
+    // 格式化Python代码的简单实现
+    function formatPythonCode(code) {
+        // 移除多余空行，最多保留两个连续空行
+        code = code.replace(/\n{3,}/g, '\n\n');
+        
+        // 处理每一行
+        var lines = code.split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            // 移除行尾空格
+            lines[i] = lines[i].trimRight();
+        }
+        
+        return lines.join('\n');
+    }
+    
+    // 格式化C/C++代码的简单实现
+    function formatCCode(code) {
+        // 移除多余空行，最多保留两个连续空行
+        code = code.replace(/\n{3,}/g, '\n\n');
+        
+        // 处理每一行
+        var lines = code.split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            // 移除行尾空格
+            lines[i] = lines[i].trimRight();
+        }
+        
+        return lines.join('\n');
+    }
+    
+    // 显示提示消息
+    function showToast(message, type = 'success') {
+        // 创建Toast元素
+        var toast = document.createElement('div');
+        toast.className = 'editor-toast ' + (type === 'error' ? 'editor-toast-error' : 'editor-toast-success');
+        toast.innerHTML = '<div class="editor-toast-message">' + message + '</div>';
+        
+        // 添加到文档
+        document.body.appendChild(toast);
+        
+        // 添加基本样式
+        Object.assign(toast.style, {
+            position: 'fixed',
+            bottom: '1rem',
+            right: '1rem',
+            backgroundColor: type === 'error' ? '#fee2e2' : '#d1fae5',
+            color: type === 'error' ? '#b91c1c' : '#047857',
+            padding: '0.75rem 1rem',
+            borderRadius: '0.375rem',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            zIndex: '9999',
+            opacity: '0',
+            transform: 'translateY(1rem)',
+            transition: 'opacity 0.3s ease, transform 0.3s ease'
+        });
+        
+        // 显示Toast
+        setTimeout(function() {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+        }, 10);
+        
+        // 3秒后自动消失
+        setTimeout(function() {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(1rem)';
+            
+            // 动画结束后移除元素
+            setTimeout(function() {
+                if (document.body.contains(toast)) {
+                    document.body.removeChild(toast);
+                }
+            }, 300);
+        }, 3000);
+    }
+});
+</script> 

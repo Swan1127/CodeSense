@@ -1,0 +1,156 @@
+{% extends "layout.html" %}
+
+{% block title %}系统设置 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .settings-card {
+        margin-bottom: 2rem;
+    }
+    
+    .settings-section {
+        margin-bottom: 2rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .settings-section:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+    
+    .settings-section h3 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-check-input:checked {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+    
+    .form-text {
+        margin-top: 0.25rem;
+        font-size: 0.875rem;
+        color: #6b7280;
+    }
+    
+    .version-label {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        background-color: #f3f4f6;
+        border-radius: 0.25rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #6b7280;
+        font-family: monospace;
+    }
+    
+    .footer-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 2rem;
+    }
+    
+    .footer-actions .btn {
+        margin-left: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">系统设置</h1>
+    <p class="page-subtitle">配置系统基本参数</p>
+</div>
+
+<form method="post" action="{{ url_for('main.system_settings') }}">
+    <div class="card settings-card">
+        <div class="card-header">
+            <div class="card-title"><i class="bi bi-gear"></i> 基本设置</div>
+        </div>
+        <div class="card-body">
+            <div class="settings-section">
+                <h3>站点信息</h3>
+                
+                <div class="mb-3">
+                    <label for="site_name" class="form-label">站点名称</label>
+                    <input type="text" class="form-control" id="site_name" name="site_name" value="{{ settings.site_name }}" required>
+                    <div class="form-text">显示在浏览器标题和站点标题处的名称</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="site_description" class="form-label">站点描述</label>
+                    <textarea class="form-control" id="site_description" name="site_description" rows="2">{{ settings.site_description }}</textarea>
+                    <div class="form-text">简短地描述站点的用途和功能</div>
+                </div>
+            </div>
+            
+            <div class="settings-section">
+                <h3>用户设置</h3>
+                
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="enable_registration" name="enable_registration" {% if settings.enable_registration %}checked{% endif %}>
+                    <label class="form-check-label" for="enable_registration">允许用户注册</label>
+                    <div class="form-text">如果禁用，只有管理员可以创建新用户账号</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="login_message" class="form-label">登录页面消息</label>
+                    <textarea class="form-control" id="login_message" name="login_message" rows="2">{{ settings.login_message }}</textarea>
+                    <div class="form-text">显示在登录页面的欢迎信息或公告</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="default_user_score" class="form-label">默认用户能力评分</label>
+                    <input type="number" class="form-control" id="default_user_score" name="default_user_score" min="0" max="100" value="{{ settings.default_user_score }}" required>
+                    <div class="form-text">新用户注册时的默认初始能力评分（0-100）</div>
+                </div>
+            </div>
+            
+            <div class="settings-section">
+                <h3>系统限制</h3>
+                
+                <div class="mb-3">
+                    <label for="submissions_per_day" class="form-label">每日提交次数限制</label>
+                    <input type="number" class="form-control" id="submissions_per_day" name="submissions_per_day" min="1" value="{{ settings.submissions_per_day }}" required>
+                    <div class="form-text">限制每个用户每天可以提交代码的最大次数</div>
+                </div>
+            </div>
+            
+            <div class="settings-section">
+                <h3>联系信息</h3>
+                
+                <div class="mb-3">
+                    <label for="admin_email" class="form-label">管理员邮箱</label>
+                    <input type="email" class="form-control" id="admin_email" name="admin_email" value="{{ settings.admin_email }}" required>
+                    <div class="form-text">用于接收系统通知和用户反馈的邮箱地址</div>
+                </div>
+            </div>
+            
+            <div class="settings-section">
+                <h3>系统信息</h3>
+                
+                <div class="mb-3">
+                    <label class="form-label">系统版本</label>
+                    <div>
+                        <span class="version-label">v{{ settings.system_version }}</span>
+                    </div>
+                    <div class="form-text">当前系统的版本号</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer-actions">
+        <a href="{{ url_for('main.admin_dashboard') }}" class="btn btn-secondary">
+            <i class="bi bi-x-circle"></i> 取消
+        </a>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> 保存设置
+        </button>
+    </div>
+</form>
+{% endblock %} 

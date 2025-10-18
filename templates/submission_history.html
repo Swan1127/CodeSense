@@ -1,0 +1,309 @@
+{% extends "layout.html" %}
+{% from "components/code_formatter.html" import format_code_block %}
+
+{% block title %}提交历史 - {{ assignment.title }} - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .history-header {
+        background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
+        color: white;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .stats-card {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .stats-card .stat-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+    }
+    
+    .timeline {
+        position: relative;
+        padding: 1rem 0;
+    }
+    
+    .timeline::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 4rem;
+        width: 4px;
+        background-color: #e9ecef;
+        border-radius: 2px;
+    }
+    
+    .timeline-date {
+        position: sticky;
+        top: 5rem;
+        z-index: 10;
+        background-color: #f8f9fa;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .timeline-item {
+        position: relative;
+        padding-left: 6rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .timeline-dot {
+        position: absolute;
+        left: 3.75rem;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 50%;
+        background-color: #4b6cb7;
+        transform: translateX(-50%);
+        z-index: 1;
+    }
+    
+    .timeline-dot.score-1 { background-color: #dc3545; }
+    .timeline-dot.score-2 { background-color: #fd7e14; }
+    .timeline-dot.score-3 { background-color: #ffc107; }
+    .timeline-dot.score-4 { background-color: #20c997; }
+    .timeline-dot.score-5 { background-color: #198754; }
+    
+    .timeline-time {
+        position: absolute;
+        left: 0.5rem;
+        font-size: 0.875rem;
+        color: #6c757d;
+        padding-top: 0.25rem;
+    }
+    
+    .timeline-card {
+        border-radius: 0.5rem;
+        border: 1px solid #e9ecef;
+        padding: 1rem;
+        background-color: #fff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .timeline-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    .submission-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 1rem;
+    }
+    
+    .score-badge {
+        font-size: 1.5rem;
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        margin-right: 1rem;
+    }
+    
+    .score-1 { background-color: #dc3545; color: white; }
+    .score-2 { background-color: #fd7e14; color: white; }
+    .score-3 { background-color: #ffc107; color: #212529; }
+    .score-4 { background-color: #20c997; color: white; }
+    .score-5 { background-color: #198754; color: white; }
+    
+    .progress-title {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.25rem;
+    }
+    
+    .progress {
+        height: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .overview-card {
+        border-radius: 0.75rem;
+        background-color: #fff;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+    
+    .trend-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .trend-up { color: #198754; }
+    .trend-down { color: #dc3545; }
+    .trend-neutral { color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- 提交历史头部 -->
+    <div class="history-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="mb-0">{{ assignment.title }}</h2>
+                <p class="text-white-50 mb-0">提交历史记录</p>
+            </div>
+            <a href="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}" class="btn btn-light">
+                <i class="bi bi-arrow-left"></i> 返回提交页面
+            </a>
+        </div>
+        
+        <div class="row mt-3">
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="text-white-50 mb-1">总提交次数</div>
+                    <div class="stat-value">{{ stats.total }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="text-white-50 mb-1">平均分数</div>
+                    <div class="stat-value">{{ "%.1f"|format(stats.average_score) }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="text-white-50 mb-1">最高分数</div>
+                    <div class="stat-value">{{ stats.best_score }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 提交趋势分析 -->
+    {% if submissions|length >= 3 %}
+    <div class="overview-card">
+        <h3 class="mb-3">学习趋势分析</h3>
+        
+        <div class="row">
+            <div class="col-md-4 text-center">
+                {% if submissions[0].score > submissions[-1].score %}
+                <div class="trend-icon trend-up"><i class="bi bi-graph-up-arrow"></i></div>
+                <h4>上升趋势</h4>
+                <p class="text-muted">您的编程能力在不断提升</p>
+                {% elif submissions[0].score < submissions[-1].score %}
+                <div class="trend-icon trend-down"><i class="bi bi-graph-down-arrow"></i></div>
+                <h4>下降趋势</h4>
+                <p class="text-muted">最近的提交分数有所下降</p>
+                {% else %}
+                <div class="trend-icon trend-neutral"><i class="bi bi-dash-lg"></i></div>
+                <h4>稳定趋势</h4>
+                <p class="text-muted">您的编程能力保持稳定</p>
+                {% endif %}
+            </div>
+            <div class="col-md-8">
+                <div class="progress-title">
+                    <span>编程基础</span>
+                    <span>80%</span>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: 80%"></div>
+                </div>
+                
+                <div class="progress-title">
+                    <span>算法能力</span>
+                    <span>65%</span>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar bg-primary" role="progressbar" style="width: 65%"></div>
+                </div>
+                
+                <div class="progress-title">
+                    <span>代码质量</span>
+                    <span>75%</span>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar bg-info" role="progressbar" style="width: 75%"></div>
+                </div>
+                
+                <div class="progress-title">
+                    <span>代码效率</span>
+                    <span>70%</span>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar bg-warning" role="progressbar" style="width: 70%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- 提交记录时间线 -->
+    <div class="timeline">
+        {% for date, date_submissions in submissions_by_date.items() %}
+        <div class="timeline-date">
+            <h4 class="mb-0">{{ date }}</h4>
+        </div>
+        
+        {% for submission in date_submissions %}
+        <div class="timeline-item">
+            <div class="timeline-time">{{ submission.submitted_at.strftime('%H:%M') }}</div>
+            <div class="timeline-dot score-{{ submission.score if submission.score else 0 }}"></div>
+            <div class="timeline-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-1">提交 #{{ loop.index }}</h5>
+                        <div class="text-muted">{{ submission.submitted_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        {% if submission.status == 'evaluated' %}
+                        <div class="score-badge score-{{ submission.score }}">
+                            {{ submission.score }}<small>/5</small>
+                        </div>
+                        {% else %}
+                        <span class="badge bg-secondary p-2">未评分</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                {% if submission.status == 'evaluated' %}
+                <div class="mt-3">
+                    <h6>评估反馈：</h6>
+                    <p class="mb-0">
+                        {% if submission.feedback and submission.feedback|length > 50 %}
+                        {{ submission.feedback[:50] }}...
+                        {% elif submission.feedback %}
+                        {{ submission.feedback }}
+                        {% else %}
+                        无评估反馈
+                        {% endif %}
+                    </p>
+                </div>
+                {% endif %}
+                
+                <div class="submission-actions">
+                    <a href="{{ url_for('assignments.view_submission', submission_id=submission.id) }}" class="btn btn-outline-primary">
+                        查看详情
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% endfor %}
+    </div>
+    
+    <!-- 无提交记录提示 -->
+    {% if not submissions %}
+    <div class="text-center py-5">
+        <img src="{{ url_for('static', filename='img/empty-state.svg') }}" alt="无记录" style="max-width: 200px; opacity: 0.6;">
+        <h4 class="mt-4">暂无提交记录</h4>
+        <p class="text-muted">还没有提交过该作业的代码</p>
+        <a href="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}" class="btn btn-primary mt-3">
+            <i class="bi bi-code-slash"></i> 去提交代码
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %} 

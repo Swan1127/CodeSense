@@ -1,0 +1,141 @@
+{% extends "layout.html" %}
+
+{% block title %}导出数据 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .export-card {
+        margin-bottom: 2rem;
+    }
+    
+    .export-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    
+    .export-option {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        background-color: #fff;
+        transition: all 0.3s;
+    }
+    
+    .export-option:hover {
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+    
+    .export-icon {
+        font-size: 2rem;
+        color: var(--primary-color);
+        margin-bottom: 1rem;
+    }
+    
+    .export-title {
+        font-weight: 600;
+        font-size: 1.25rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .export-description {
+        color: #6b7280;
+        margin-bottom: 1.5rem;
+    }
+    
+    .export-option .btn {
+        width: 100%;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">导出数据</h1>
+    <p class="page-subtitle">导出系统数据用于备份或分析</p>
+</div>
+
+<div class="card export-card">
+    <div class="card-header">
+        <div class="card-title"><i class="bi bi-file-earmark-text"></i> 导出选项</div>
+    </div>
+    <div class="card-body">
+        <p>请选择要导出的数据类型。导出的数据将以CSV格式下载，可用于数据分析或备份。</p>
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> 导出大量数据可能需要一些时间，请耐心等待下载开始。
+        </div>
+        
+        <div class="export-options">
+            <div class="export-option">
+                <div class="export-icon">
+                    <i class="bi bi-people"></i>
+                </div>
+                <div class="export-title">用户数据</div>
+                <div class="export-description">
+                    导出所有用户的信息，包括学号、用户名、姓名、班级、用户类型等。
+                </div>
+                <a href="{{ url_for('main.download_data', export_type='users') }}" class="btn btn-primary">
+                    <i class="bi bi-download"></i> 导出用户数据
+                </a>
+            </div>
+            
+            <div class="export-option">
+                <div class="export-icon">
+                    <i class="bi bi-list-check"></i>
+                </div>
+                <div class="export-title">作业数据</div>
+                <div class="export-description">
+                    导出所有作业的信息，包括作业ID、标题、描述、创建时间、截止时间等。
+                </div>
+                <a href="{{ url_for('main.download_data', export_type='assignments') }}" class="btn btn-primary">
+                    <i class="bi bi-download"></i> 导出作业数据
+                </a>
+            </div>
+            
+            <div class="export-option">
+                <div class="export-icon">
+                    <i class="bi bi-journal-code"></i>
+                </div>
+                <div class="export-title">提交记录</div>
+                <div class="export-description">
+                    导出所有代码提交记录，包括提交ID、作业ID、学号、提交时间、代码、评分等。
+                </div>
+                <a href="{{ url_for('main.download_data', export_type='submissions') }}" class="btn btn-primary">
+                    <i class="bi bi-download"></i> 导出提交记录
+                </a>
+            </div>
+            
+            <div class="export-option">
+                <div class="export-icon">
+                    <i class="bi bi-file-earmark-zip"></i>
+                </div>
+                <div class="export-title">全部数据</div>
+                <div class="export-description">
+                    一次性导出所有数据，包括用户、作业、提交记录和系统日志，以ZIP压缩包形式下载。
+                </div>
+                <a href="{{ url_for('main.download_data', export_type='all') }}" class="btn btn-success">
+                    <i class="bi bi-download"></i> 导出全部数据
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title"><i class="bi bi-question-circle"></i> 数据导出说明</div>
+    </div>
+    <div class="card-body">
+        <h4>CSV文件格式</h4>
+        <p>导出的数据为CSV（逗号分隔值）文件格式，可以使用Excel、Google表格或其他电子表格软件打开。</p>
+        
+        <h4>数据安全</h4>
+        <p>导出的数据可能包含敏感信息，请妥善保管，避免泄露。</p>
+        
+        <h4>使用建议</h4>
+        <p>建议定期导出数据作为备份，以防系统出现问题或数据丢失。</p>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,567 @@
+{% extends "layout.html" %}
+
+{% block title %}管理员仪表盘 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .overview-card {
+        margin-bottom: 2rem;
+    }
+    
+    .overview-card h2 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--primary-color);
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+    }
+    
+    .overview-card h2 i {
+        margin-right: 0.75rem;
+    }
+    
+    .stats-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background-color: #fff;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e5e7eb;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .stat-card .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--primary-color);
+        margin-bottom: 0.5rem;
+    }
+    
+    .stat-card .stat-label {
+        color: #4b5563;
+        font-size: 0.875rem;
+    }
+    
+    .admin-actions {
+        margin-bottom: 2rem;
+    }
+    
+    .admin-actions .btn {
+        margin-right: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    .btn-icon {
+        display: inline-flex;
+        align-items: center;
+    }
+    
+    .btn-icon i {
+        margin-right: 0.5rem;
+    }
+    
+    .recent-activity {
+        margin-bottom: 2rem;
+    }
+    
+    .activity-list {
+        list-style: none;
+        padding: 0;
+    }
+    
+    .activity-item {
+        padding: 1rem;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+    }
+    
+    .activity-item:last-child {
+        border-bottom: none;
+    }
+    
+    .activity-icon {
+        width: 2.5rem;
+        height: 2.5rem;
+        background-color: #f3f4f6;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 1rem;
+        color: var(--primary-color);
+    }
+    
+    .activity-details {
+        flex: 1;
+    }
+    
+    .activity-message {
+        margin-bottom: 0.25rem;
+        color: #111827;
+        font-weight: 500;
+    }
+    
+    .activity-time {
+        color: #6b7280;
+        font-size: 0.875rem;
+    }
+    
+    .chart-container {
+        height: 300px;
+        position: relative;
+        margin-bottom: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block extra_head %}
+<!-- Chart.js库引入 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<!-- 备用CDN链接 -->
+<script>
+    // 检查Chart是否已经加载
+    if (typeof Chart === 'undefined') {
+        console.log("主要CDN加载失败，尝试备用CDN...");
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"><\/script>');
+        
+        // 如果备用CDN也失败，尝试第三个源
+        setTimeout(function() {
+            if (typeof Chart === 'undefined') {
+                console.log("备用CDN也加载失败，尝试第三个源...");
+                document.write('<script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/3.9.1/chart.min.js"><\/script>');
+            }
+        }, 1000);
+    } else {
+        console.log("Chart.js已成功从主要CDN加载");
+    }
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">管理员仪表盘</h1>
+    <p class="page-subtitle">系统概览和管理功能</p>
+</div>
+
+<div class="overview-card">
+    <h2><i class="bi bi-speedometer2"></i>系统概览</h2>
+    
+    <div class="stats-container">
+        <div class="stat-card">
+            <div class="stat-value">{{ total_users }}</div>
+            <div class="stat-label">注册用户数</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-value">{{ total_assignments }}</div>
+            <div class="stat-label">总作业数</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-value">{{ total_submissions }}</div>
+            <div class="stat-label">总提交数</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-value">{{ average_score | round(2) }}</div>
+            <div class="stat-label">平均得分</div>
+        </div>
+    </div>
+</div>
+
+<div class="admin-actions card">
+    <div class="card-header">
+        <div class="card-title"><i class="bi bi-tools"></i> 管理操作</div>
+    </div>
+    <div class="card-body">
+        <a href="{{ url_for('assignments.add_assignment') }}" class="btn btn-primary btn-icon">
+            <i class="bi bi-plus-circle"></i> 添加作业
+        </a>
+        <a href="{{ url_for('users.manage_users') }}" class="btn btn-secondary btn-icon">
+            <i class="bi bi-people"></i> 用户管理
+        </a>
+        <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-info btn-icon">
+            <i class="bi bi-list-check"></i> 作业管理
+        </a>
+        <a href="{{ url_for('assignments.all_submissions') }}" class="btn btn-warning btn-icon">
+            <i class="bi bi-journal-code"></i> 提交记录
+        </a>
+        <a href="{{ url_for('main.export_data') }}" class="btn btn-success btn-icon">
+            <i class="bi bi-file-earmark-text"></i> 导出数据
+        </a>
+        <a href="{{ url_for('main.trend_monitor') }}" class="btn btn-danger btn-icon">
+            <i class="bi bi-cpu"></i> 能力趋势监控
+        </a>
+        <!-- 临时移除系统设置功能
+        <a href="{{ url_for('main.system_settings') }}" class="btn btn-secondary btn-icon">
+            <i class="bi bi-gear"></i> 系统设置
+        </a>
+        -->
+    </div>
+</div>
+
+<div class="recent-activity card">
+    <div class="card-header">
+        <div class="card-title"><i class="bi bi-activity"></i> 最近活动</div>
+    </div>
+    <div class="card-body">
+        <ul class="activity-list">
+            {% for activity in recent_activities %}
+            <li class="activity-item">
+                <div class="activity-icon">
+                    <i class="{{ activity.icon }}"></i>
+                </div>
+                <div class="activity-details">
+                    <div class="activity-message">{{ activity.message }}</div>
+                    <div class="activity-time">{{ activity.time }}</div>
+                </div>
+            </li>
+            {% else %}
+            <li class="activity-item">
+                <div class="activity-icon">
+                    <i class="bi bi-info-circle"></i>
+                </div>
+                <div class="activity-details">
+                    <div class="activity-message">暂无活动记录</div>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title"><i class="bi bi-bar-chart"></i> 系统统计</div>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <h5 class="mb-3">作业提交统计</h5>
+                <div class="chart-container">
+                    <canvas id="assignmentsChart"></canvas>
+                </div>
+            </div>
+            <div class="col-md-6 mb-4">
+                <h5 class="mb-3">得分分布</h5>
+                <div class="chart-container">
+                    <canvas id="scoresChart"></canvas>
+                </div>
+            </div>
+            <div class="col-md-12">
+                <h5 class="mb-3">过去30天活跃度</h5>
+                <div class="chart-container">
+                    <canvas id="activityChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 图表初始化脚本 -->
+<script>
+    // 调试信息输出函数（仅控制台显示，不影响页面）
+    function log(message, type = 'info') {
+        const styles = {
+            info: 'color: #0066cc; background: #f0f8ff;',
+            error: 'color: #cc0000; background: #fff0f0;',
+            warning: 'color: #cc6600; background: #fff8f0;',
+            success: 'color: #006600; background: #f0fff0;'
+        };
+        console.log(`%c[图表] ${message}`, styles[type]);
+    }
+
+    // 图表初始化入口函数
+    document.addEventListener('DOMContentLoaded', function() {
+        log("页面加载完成，开始初始化图表...");
+        
+        try {
+            // 检查Chart.js是否成功加载
+            if (typeof Chart === 'undefined') {
+                log("错误: Chart.js库未加载！图表将无法渲染", 'error');
+                return;
+            }
+            
+            log("Chart.js库已加载，版本: " + (Chart.version || "未知"));
+            
+            // 从后端获取图表数据
+            let chartData;
+            try {
+                log("尝试解析后端传递的图表数据...");
+                const rawData = '{{ chart_data|safe }}';
+                log("原始数据长度: " + rawData.length + "字符");
+                
+                // 添加一个简单的验证，确保数据不为空
+                if (!rawData || rawData === '""' || rawData === '{}' || rawData.length < 10) {
+                    throw new Error("后端传递的图表数据为空或格式不正确");
+                }
+                
+                chartData = JSON.parse(rawData);
+                log("图表数据解析成功，包含 " + Object.keys(chartData).length + " 个图表配置");
+                
+                // 显示调试信息
+                log("作业数据: " + (chartData.assignments?.labels?.length || 0) + " 个标签");
+                log("分数数据: " + (chartData.scores?.labels?.length || 0) + " 个标签");
+                log("活动数据: " + (chartData.activity?.labels?.length || 0) + " 个标签");
+            } catch (e) {
+                log("解析图表数据时出错: " + e.message, 'error');
+                
+                // 使用最简单的默认数据，确保至少能看到一些东西
+                log("使用默认数据...", 'warning');
+                chartData = {
+                    assignments: {
+                        labels: ['默认示例1', '默认示例2', '默认示例3'],
+                        counts: [5, 3, 2]
+                    },
+                    scores: {
+                        labels: ['5分', '4分', '3分'],
+                        counts: [5, 3, 2],
+                        colors: ['#36a2eb', '#4bc0c0', '#ffcd56']
+                    },
+                    activity: {
+                        labels: Array.from({length: 30}, (_, i) => `第${i+1}天`),
+                        counts: Array.from({length: 30}, () => Math.floor(Math.random() * 5))
+                    }
+                };
+            }
+            
+            // 初始化各个图表
+            log("开始渲染图表...");
+            try {
+                if (chartData.assignments && chartData.assignments.labels.length > 0) {
+                    renderAssignmentsChart(chartData.assignments);
+                } else {
+                    log("作业图表数据为空，无法渲染", 'warning');
+                    document.getElementById('assignmentsChart').parentNode.innerHTML = 
+                        '<div class="text-center p-3">暂无作业提交数据</div>';
+                }
+            } catch (e) {
+                log("渲染作业图表失败: " + e.message, 'error');
+            }
+            
+            try {
+                if (chartData.scores && chartData.scores.labels.length > 0) {
+                    renderScoresChart(chartData.scores);
+                } else {
+                    log("分数图表数据为空，无法渲染", 'warning');
+                    document.getElementById('scoresChart').parentNode.innerHTML = 
+                        '<div class="text-center p-3">暂无分数分布数据</div>';
+                }
+            } catch (e) {
+                log("渲染分数图表失败: " + e.message, 'error');
+            }
+            
+            try {
+                if (chartData.activity && chartData.activity.labels.length > 0) {
+                    renderActivityChart(chartData.activity);
+                } else {
+                    log("活动图表数据为空，无法渲染", 'warning');
+                    document.getElementById('activityChart').parentNode.innerHTML = 
+                        '<div class="text-center p-3">暂无活动数据</div>';
+                }
+            } catch (e) {
+                log("渲染活动图表失败: " + e.message, 'error');
+            }
+            
+            log("图表初始化完成", 'success');
+            
+        } catch (e) {
+            log("图表总体初始化失败: " + e.message, 'error');
+        }
+    });
+
+    // 作业提交数量图表
+    function renderAssignmentsChart(data) {
+        log("初始化作业提交图表...");
+        
+        // 获取canvas元素
+        const ctx = document.getElementById('assignmentsChart');
+        if (!ctx) {
+            log("找不到作业图表的canvas元素", 'error');
+            return;
+        }
+        
+        // 创建图表
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: '提交次数',
+                    data: data.counts,
+                    backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: '提交次数'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: '作业'
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: '作业提交数量统计'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `提交次数: ${context.raw}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        log("作业提交图表创建成功", 'success');
+    }
+
+    // 得分分布图表
+    function renderScoresChart(data) {
+        log("初始化得分分布图表...");
+        
+        // 获取canvas元素
+        const ctx = document.getElementById('scoresChart');
+        if (!ctx) {
+            log("找不到分数图表的canvas元素", 'error');
+            return;
+        }
+        
+        // 创建图表
+        const chart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: '人数',
+                    data: data.counts,
+                    backgroundColor: data.colors || [
+                        'rgba(54, 162, 235, 0.8)',
+                        'rgba(75, 192, 192, 0.8)',
+                        'rgba(255, 205, 86, 0.8)',
+                        'rgba(255, 159, 64, 0.8)',
+                        'rgba(255, 99, 132, 0.8)'
+                    ],
+                    borderColor: 'white',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: '得分分布统计'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${label}: ${value}人 (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        log("得分分布图表创建成功", 'success');
+    }
+
+    // 用户活跃度图表
+    function renderActivityChart(data) {
+        log("初始化用户活跃度图表...");
+        
+        // 获取canvas元素
+        const ctx = document.getElementById('activityChart');
+        if (!ctx) {
+            log("找不到活动图表的canvas元素", 'error');
+            return;
+        }
+        
+        // 创建图表
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: '提交数',
+                    data: data.counts,
+                    fill: true,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1,
+                    tension: 0.4,
+                    pointBackgroundColor: 'rgba(75, 192, 192, 1)',
+                    pointRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: '提交数量'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: '日期'
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: '用户活跃度统计 (30天)'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `提交数: ${context.raw}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        log("用户活跃度图表创建成功", 'success');
+    }
+</script>
+{% endblock %}
+
+{% block extra_js %}
+{% endblock %} 

@@ -1,0 +1,210 @@
+{% extends "layout.html" %}
+{% from "components/code_editor.html" import code_editor %}
+{% from "components/code_formatter.html" import format_code_block, format_markdown_content, format_ai_response %}
+
+{% block title %}代码提交 - {{ assignment.title }} - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<!-- Monaco编辑器CSS -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modern-editor.css') }}">
+<!-- 代码提交页面样式 -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/code_submit.css') }}">
+<!-- 使用国内CDN -->
+<link rel="stylesheet" href="https://lf26-cdn-tos.bytecdntp.com/cdn/expire-1-M/highlight.js/11.4.0/styles/atom-one-dark.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="assignment-info">
+        <h1>{{ assignment.title }}</h1>
+        <div class="assignment-meta">
+            <div class="assignment-meta-item">
+                <i class="bi bi-calendar-event"></i>
+                <span>截止日期: {{ assignment.due_date.strftime('%Y-%m-%d %H:%M') }}</span>
+            </div>
+            <div class="assignment-meta-item">
+                <i class="bi bi-person"></i>
+                <span>创建者: {{ assignment.created_by }}</span>
+            </div>
+            <div class="assignment-meta-item">
+                <i class="bi bi-speedometer"></i>
+                <span>难度: {{ assignment.difficulty }}</span>
+            </div>
+        </div>
+        {% if assignment.description %}
+            <div class="assignment-description">
+                {{ format_markdown_content(assignment.description) | safe }}
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="bi bi-code-square"></i> 提交代码
+            </div>
+        </div>
+        <div class="card-body">
+            <form method="post" action="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}" id="code-form">
+                {{ form.hidden_tag() }}
+                
+                <!-- 默认使用C++ -->
+                <input type="hidden" name="language" id="language" value="cpp">
+                
+                {% if form.code.errors %}
+                <div class="alert alert-danger mb-4">
+                    {% for error in form.code.errors %}
+                    <div><i class="bi bi-exclamation-triangle"></i> {{ error }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- 代码编辑器 -->
+                <div id="code-editor-container">
+                    {{ code_editor(name='code', value=form.code.data or '', language='cpp', height=500) }}
+                </div>
+                
+                <!-- AI评估反馈区域 -->
+                <div id="ai-feedback-container">
+                    <div class="feedback-header">
+                        <span>AI 评估反馈</span>
+                        <div class="loading-indicator" id="ai-feedback-loading">
+                            <div class="spinner"></div>
+                            <span>分析中...</span>
+                        </div>
+                    </div>
+                    <div class="feedback-content" id="ai-feedback-content">
+                        {{ format_ai_response("正在分析您的代码，请稍候...", "feedback") }}
+                    </div>
+                </div>
+                
+                <!-- 修改编程指导反馈区域 -->
+                <div id="guidance-feedback-container">
+                    <div class="feedback-header">
+                        <span>编程指导建议</span>
+                        <div class="loading-indicator" id="guidance-feedback-loading">
+                            <div class="spinner"></div>
+                            <span>生成中...</span>
+                        </div>
+                        <button id="manual-guidance-btn" onclick="updateGuidanceFeedback()" class="btn btn-sm btn-outline-primary" style="margin-left: auto;">
+                            <i class="bi bi-stars"></i> 获取指导
+                        </button>
+                    </div>
+                    <div class="feedback-content" id="guidance-feedback-content">
+                        {{ format_ai_response("正在生成编程指导建议，请稍候...", "guidance") }}
+                    </div>
+                </div>
+                
+                <!-- 添加学生提问区域 -->
+                <div id="question-container" class="mt-4">
+                    <h5>
+                        <i class="bi bi-question-circle"></i> 
+                        <span>有问题？向AI提问</span>
+                    </h5>
+                    <div class="mb-3">
+                        <textarea id="student-question" class="form-control" rows="2" placeholder="例如：我不知道如何实现某个功能、这段代码有什么问题、如何优化算法..."></textarea>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="button" id="ask-question-btn">
+                            <i class="bi bi-send"></i> 提问
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 显示AI回答区域 -->
+                <div id="ai-answer-container" class="mt-3"></div>
+                
+                <!-- 指导反馈容器 -->
+                <div id="guidanceContainer" class="mt-4"></div>
+                
+                <div class="form-actions mt-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('assignments.student_assignments') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> 返回作业列表
+                        </a>
+                        <div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-send"></i> 提交代码
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 提交历史 -->
+    {% if submissions %}
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="bi bi-clock-history"></i> 提交历史
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>提交时间</th>
+                            <th>评分</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for submission in submissions %}
+                        <tr>
+                            <td>{{ submission.submitted_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>
+                                <span class="badge {{ 'bg-success' if submission.score >= 4 else 'bg-warning text-dark' if submission.score >= 3 else 'bg-danger' }}">
+                                    {{ submission.score }}/5
+                                </span>
+                            </td>
+                            <td>
+                                {% if submission.status == 'pending' %}
+                                <span class="badge bg-warning text-dark">待评估</span>
+                                {% elif submission.status == 'evaluated' %}
+                                <span class="badge bg-success">已评估</span>
+                                {% elif submission.status == 'failed' %}
+                                <span class="badge bg-danger">评估失败</span>
+                                {% else %}
+                                <span class="badge bg-secondary">未知</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('assignments.view_submission', submission_id=submission.id) }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye"></i> 查看
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- 使用国内CDN加载依赖库 -->
+<script src="https://lf26-cdn-tos.bytecdntp.com/cdn/expire-1-M/highlight.js/11.4.0/highlight.min.js"></script>
+<script src="https://lf9-cdn-tos.bytecdntp.com/cdn/expire-1-M/highlight.js/11.4.0/languages/cpp.min.js"></script>
+<script src="https://lf3-cdn-tos.bytecdntp.com/cdn/expire-1-M/highlight.js/11.4.0/languages/python.min.js"></script>
+<script src="https://lf6-cdn-tos.bytecdntp.com/cdn/expire-1-M/highlight.js/11.4.0/languages/java.min.js"></script>
+<script src="https://lf26-cdn-tos.bytecdntp.com/cdn/expire-1-M/marked/4.0.2/marked.min.js"></script>
+
+<!-- 加载本地备用高亮库 -->
+<script src="{{ url_for('static', filename='js/simple-highlight.js') }}"></script>
+
+<!-- 加载安全代码处理函数 -->
+<script src="{{ url_for('static', filename='js/safe-code-processor.js') }}"></script>
+
+<!-- 加载拆分后的模块化JS文件 -->
+<script src="{{ url_for('static', filename='js/code_editor.js') }}"></script>
+<script src="{{ url_for('static', filename='js/code_guidance.js') }}"></script>
+<script src="{{ url_for('static', filename='js/code_submission.js') }}"></script>
+<script src="{{ url_for('static', filename='js/code_questions.js') }}"></script>
+{% endblock %} 

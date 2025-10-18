@@ -1,0 +1,495 @@
+{% extends "layout.html" %}
+
+{% block title %}使用指南 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .help-container {
+        max-width: 1200px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+    }
+    
+    .help-header {
+        background: linear-gradient(135deg, var(--primary-color) 0%, #0056b3 100%);
+        color: white;
+        padding: 3rem 2rem;
+        border-radius: 1rem;
+        margin-bottom: 3rem;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .help-header::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E");
+        opacity: 0.1;
+    }
+    
+    .help-content {
+        position: relative;
+        z-index: 1;
+    }
+    
+    .help-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    
+    .help-subtitle {
+        font-size: 1.25rem;
+        opacity: 0.9;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    
+    .badge-container {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        margin-top: 1.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .feature-badge {
+        display: inline-flex;
+        align-items: center;
+        background-color: rgba(255, 255, 255, 0.2);
+        border-radius: 2rem;
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        gap: 0.5rem;
+    }
+    
+    .guide-section {
+        background: white;
+        border-radius: 1rem;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .section-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--primary-color);
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+    }
+    
+    .section-title i {
+        margin-right: 0.75rem;
+    }
+    
+    .section-intro {
+        margin-bottom: 1.5rem;
+        color: #4b5563;
+        line-height: 1.6;
+    }
+    
+    .step-list {
+        display: grid;
+        gap: 1.5rem;
+    }
+    
+    .step-item {
+        display: flex;
+        gap: 1.5rem;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-radius: 0.5rem;
+        transition: transform 0.3s ease;
+    }
+    
+    .step-item:hover {
+        transform: translateX(5px);
+    }
+    
+    .step-number {
+        width: 40px;
+        height: 40px;
+        background: var(--primary-color);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+    
+    .step-content {
+        flex: 1;
+    }
+    
+    .step-title {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #1a1a1a;
+    }
+    
+    .step-description {
+        color: #4b5563;
+        line-height: 1.6;
+    }
+    
+    .highlight-box {
+        background: rgba(0, 123, 255, 0.1);
+        border-left: 4px solid var(--primary-color);
+        padding: 1.25rem;
+        margin: 1.5rem 0;
+        border-radius: 0.25rem;
+    }
+    
+    .highlight-title {
+        font-weight: 600;
+        color: var(--primary-color);
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+    }
+    
+    .highlight-title i {
+        margin-right: 0.5rem;
+    }
+    
+    .highlight-content {
+        color: #4b5563;
+        line-height: 1.6;
+    }
+    
+    .evaluation-chart {
+        background: white;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .chart-title {
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #1a1a1a;
+        text-align: center;
+    }
+    
+    .scoring-dimensions {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1rem;
+        margin: 1.5rem 0;
+    }
+    
+    .dimension-item {
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 0.5rem;
+        border-left: 3px solid var(--primary-color);
+    }
+    
+    .dimension-name {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #1a1a1a;
+    }
+    
+    .dimension-description {
+        font-size: 0.9rem;
+        color: #4b5563;
+    }
+    
+    .faq-section {
+        background: #f8f9fa;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-top: 3rem;
+    }
+    
+    .faq-title {
+        text-align: center;
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 2rem;
+        color: #1a1a1a;
+    }
+    
+    .faq-list {
+        display: grid;
+        gap: 1.5rem;
+    }
+    
+    .faq-item {
+        background: white;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .faq-question {
+        font-weight: 600;
+        color: var(--primary-color);
+        margin-bottom: 0.5rem;
+    }
+    
+    .faq-answer {
+        color: #4b5563;
+        line-height: 1.6;
+    }
+    
+    .support-section {
+        text-align: center;
+        margin-top: 3rem;
+        padding: 2rem;
+        background: white;
+        border-radius: 1rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .support-icon {
+        font-size: 3rem;
+        color: var(--primary-color);
+        margin-bottom: 1rem;
+    }
+    
+    .support-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #1a1a1a;
+    }
+    
+    .support-description {
+        color: #4b5563;
+        margin-bottom: 1.5rem;
+    }
+    
+    .support-contact {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+    }
+    
+    .contact-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #4b5563;
+    }
+    
+    .contact-icon {
+        color: var(--primary-color);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="help-container">
+    <div class="help-header">
+        <div class="help-content">
+            <h1 class="help-title">智能评估系统使用指南</h1>
+            <p class="help-subtitle">基于GLM-4-Flash大模型和混合式评分机制，助力您提升编程能力</p>
+            <div class="badge-container">
+                <div class="feature-badge"><i class="bi bi-robot"></i> 智谱GLM-4-Flash</div>
+                <div class="feature-badge"><i class="bi bi-stars"></i> 混合式评分</div>
+                <div class="feature-badge"><i class="bi bi-cpu"></i> CNN模型分析</div>
+                <div class="feature-badge"><i class="bi bi-clipboard-data"></i> 多维度评估</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="guide-section">
+        <h2 class="section-title">
+            <i class="bi bi-person-plus"></i>
+            注册与登录
+        </h2>
+        <p class="section-intro">
+            创建您的专属账号，开始使用强大的智能编程评估系统。我们将为您建立个性化的能力数据画像，追踪您的编程进步轨迹。
+        </p>
+        <div class="step-list">
+            <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3 class="step-title">注册账号</h3>
+                    <p class="step-description">点击右上角的"注册"按钮，填写必要信息（用户名、学号、密码等）完成注册。请确保填写真实信息，以便系统为您提供更准确的评估和个性化的学习建议。</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3 class="step-title">登录系统</h3>
+                    <p class="step-description">使用注册的用户名和密码登录系统。登录后，您将看到个人中心页面，可以开始使用系统的各项功能，包括代码提交、智能评估、学情分析等。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="guide-section">
+        <h2 class="section-title">
+            <i class="bi bi-code-square"></i>
+            代码提交与智能评估
+        </h2>
+        <p class="section-intro">
+            我们的系统采用了智谱GLM-4-Flash大模型和CNN深度学习技术进行代码智能评估，能够理解代码含义、识别算法模式、评估代码质量。
+        </p>
+        <div class="highlight-box">
+            <div class="highlight-title">
+                <i class="bi bi-stars"></i>混合式评分系统
+            </div>
+            <div class="highlight-content">
+                <p>我们的评分系统融合了三种先进技术：</p>
+                <ul>
+                    <li style="list-style-type: none;"><strong>CNN模型评分</strong>：分析代码结构和质量，识别代码复杂度与规范性</li>
+                    <li style="list-style-type: none;"><strong>启发式规则评分</strong>：基于编程最佳实践，评估算法效率和编码风格</li>
+                    <li style="list-style-type: none;"><strong>GLM-4-Flash大模型评分</strong>：利用1760亿参数的强大语言模型，对代码进行深度理解和专业评估</li>
+                </ul>
+            </div>
+        </div>
+        <div class="step-list">
+            <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3 class="step-title">选择作业</h3>
+                    <p class="step-description">在作业列表中选择要提交的作业，查看作业要求和评分标准。系统支持多种编程语言，包括C++、Python和Java，每种语言都有针对性的评估标准。</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3 class="step-title">编写代码</h3>
+                    <p class="step-description">使用系统提供的高级代码编辑器编写代码。编辑器支持语法高亮、自动补全、代码格式化等功能，并提供智能提示，帮助您更高效地编写高质量代码。</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3 class="step-title">提交评估</h3>
+                    <p class="step-description">点击"提交"按钮，系统将激活混合评分机制对您的代码进行全方位评估。评估过程包括功能测试、代码质量分析、算法效率评估、编程规范检查等多个维度。</p>
+                </div>
+            </div>
+        </div>
+        <div class="evaluation-chart">
+            <h3 class="chart-title">多维度评估指标</h3>
+            <div class="scoring-dimensions">
+                <div class="dimension-item">
+                    <div class="dimension-name">代码正确性 (20%)</div>
+                    <div class="dimension-description">评估代码是否正确实现了所需功能，能否通过所有测试用例。</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">算法效率 (20%)</div>
+                    <div class="dimension-description">评估算法的时间复杂度和空间复杂度，以及在大规模数据上的性能表现。</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">代码结构 (15%)</div>
+                    <div class="dimension-description">评估代码的组织结构、模块化程度和架构设计的合理性。</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">编程规范 (15%)</div>
+                    <div class="dimension-description">评估代码是否遵循良好的编程规范和最佳实践。</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">代码可读性 (15%)</div>
+                    <div class="dimension-description">评估代码的命名、注释、缩进等方面，判断代码的易读性。</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">错误处理 (15%)</div>
+                    <div class="dimension-description">评估代码是否有完善的错误处理机制，能否优雅地处理异常情况。</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="guide-section">
+        <h2 class="section-title">
+            <i class="bi bi-graph-up"></i>
+            查看评估结果与学习分析
+        </h2>
+        <p class="section-intro">
+            利用我们的多维度可视化分析工具，深入了解您的编程能力表现，发现优势和不足，有针对性地提升您的编程技能。
+        </p>
+        <div class="highlight-box">
+            <div class="highlight-title">
+                <i class="bi bi-lightbulb"></i>人工智能学习建议
+            </div>
+            <div class="highlight-content">
+                <p>智谱GLM-4-Flash大模型会根据您的评估结果和历史提交记录，生成个性化的学习建议和改进方案。这些建议不仅指出代码中的问题，还提供具体的改进方法和学习资源，帮助您快速提升编程能力。</p>
+            </div>
+        </div>
+        <div class="step-list">
+            <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3 class="step-title">查看详细评估</h3>
+                    <p class="step-description">在提交记录中查看每次提交的详细评估结果。系统会提供多维度分析报告，包括代码质量评分、算法效率分析、编程规范检查等，并用雷达图直观展示您的能力分布。</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3 class="step-title">查看智能建议</h3>
+                    <p class="step-description">系统会基于GLM-4-Flash大模型分析，生成针对性的代码改进建议和学习指导。这些建议包括代码重构方案、算法优化思路、学习资源推荐等，帮助您有的放矢地提升能力。</p>
+                </div>
+            </div>
+            <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3 class="step-title">能力发展追踪</h3>
+                    <p class="step-description">系统会记录您的历史提交数据，生成编程能力发展曲线，让您清晰地看到自己的进步轨迹。同时，系统还会定期生成学情分析报告，帮助您了解自己的学习情况和编程能力发展方向。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="faq-section">
+        <h2 class="faq-title">常见问题</h2>
+        <div class="faq-list">
+            <div class="faq-item">
+                <h3 class="faq-question">Q: 系统使用的是什么评估技术？</h3>
+                <p class="faq-answer">A: 我们的系统采用了先进的混合式评分技术，融合了CNN深度学习模型、启发式规则评分和智谱GLM-4-Flash大模型评估。这种多模型融合的评分方式能够更全面、更准确地评估代码质量和编程能力。</p>
+            </div>
+            <div class="faq-item">
+                <h3 class="faq-question">Q: 系统支持哪些编程语言？</h3>
+                <p class="faq-answer">A: 目前系统支持C++、Python和Java三种主流编程语言。每种语言都有专门的评估标准和优化建议，能够针对不同语言的特点进行精准评估。</p>
+            </div>
+            <div class="faq-item">
+                <h3 class="faq-question">Q: 系统如何保证评分的公正性？</h3>
+                <p class="faq-answer">A: 我们的混合式评分系统综合了多种评分方法，并经过大量真实代码样本的训练和校准，确保评分的客观性和公正性。此外，系统还会定期优化评估模型，保持评分的准确性和一致性。</p>
+            </div>
+            <div class="faq-item">
+                <h3 class="faq-question">Q: 如何获取更个性化的学习建议？</h3>
+                <p class="faq-answer">A: 系统会根据您的提交历史和能力数据画像，利用GLM-4-Flash大模型生成针对性的学习建议。建议您多提交代码，多查看评估结果和建议，系统能够从您的数据中学习，提供更精准的个性化指导。</p>
+            </div>
+            <div class="faq-item">
+                <h3 class="faq-question">Q: 系统能否帮助我准备面试或竞赛？</h3>
+                <p class="faq-answer">A: 能。我们的系统不仅评估基础编程能力，还会分析算法思维和代码质量，这些都是面试和竞赛的重要考察点。系统提供的能力分析和针对性建议能够帮助您有效提升竞争力，为面试和竞赛做好充分准备。</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="support-section">
+        <div class="support-icon">
+            <i class="bi bi-headset"></i>
+        </div>
+        <h2 class="support-title">需要更多帮助？</h2>
+        <p class="support-description">如果您在使用过程中遇到任何问题，或者对系统有任何建议，请随时联系我们的技术支持团队</p>
+        <div class="support-contact">
+            <div class="contact-item">
+                <i class="bi bi-envelope contact-icon"></i>
+                <span>daiyupeng5@gmail.com</span>
+            </div>
+            <div class="contact-item">
+                <i class="bi bi-telephone contact-icon"></i>
+                <span>15042774955</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

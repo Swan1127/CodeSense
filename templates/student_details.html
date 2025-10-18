@@ -1,0 +1,792 @@
+{% extends "layout.html" %}
+
+{% block title %}学生详情 - {{ user.full_name }} - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<!-- 引入Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- 引入Animate.css -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+
+<style>
+    :root {
+        --primary-color: #4361ee;
+        --primary-light: #4895ef;
+        --primary-dark: #3f37c9;
+        --secondary-color: #f72585;
+        --success-color: #4cc9f0;
+        --warning-color: #f8961e;
+        --danger-color: #f94144;
+        --light-color: #f8f9fa;
+        --dark-color: #212529;
+        --gray-100: #f8f9fa;
+        --gray-200: #e9ecef;
+        --gray-300: #dee2e6;
+        --gray-400: #ced4da;
+        --gray-500: #adb5bd;
+        --gray-600: #6c757d;
+        --gray-700: #495057;
+        --gray-800: #343a40;
+        --gray-900: #212529;
+        --border-radius: 0.5rem;
+        --box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        --transition: all 0.3s ease;
+    }
+    
+    /* 暗色模式变量 */
+    [data-theme="dark"] {
+        --primary-color: #4895ef;
+        --primary-light: #4cc9f0;
+        --primary-dark: #4361ee;
+        --secondary-color: #f72585;
+        --success-color: #4cc9f0;
+        --warning-color: #f8961e;
+        --danger-color: #f94144;
+        --light-color: #212529;
+        --dark-color: #f8f9fa;
+        --gray-100: #212529;
+        --gray-200: #343a40;
+        --gray-300: #495057;
+        --gray-400: #6c757d;
+        --gray-500: #adb5bd;
+        --gray-600: #ced4da;
+        --gray-700: #dee2e6;
+        --gray-800: #e9ecef;
+        --gray-900: #f8f9fa;
+        --box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+    }
+    
+    body {
+        background-color: var(--gray-100);
+        color: var(--gray-800);
+        transition: var(--transition);
+    }
+    
+    /* 主题切换按钮 */
+    .theme-toggle {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--primary-color);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: var(--box-shadow);
+        z-index: 1000;
+        transition: var(--transition);
+    }
+    
+    .theme-toggle:hover {
+        transform: scale(1.1);
+    }
+    
+    /* 页面标题 */
+    .page-header {
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+        color: white;
+        padding: 2rem;
+        border-radius: var(--border-radius);
+        margin-bottom: 2rem;
+        box-shadow: var(--box-shadow);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    .page-title {
+        font-size: 1.75rem;
+        font-weight: 600;
+        margin: 0;
+        display: flex;
+        align-items: center;
+    }
+    
+    .page-title i {
+        margin-right: 0.75rem;
+        font-size: 1.5rem;
+    }
+    
+    .back-btn {
+        background-color: rgba(255, 255, 255, 0.2);
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: var(--border-radius);
+        display: flex;
+        align-items: center;
+        transition: var(--transition);
+    }
+    
+    .back-btn:hover {
+        background-color: rgba(255, 255, 255, 0.3);
+        transform: translateY(-2px);
+    }
+    
+    .back-btn i {
+        margin-right: 0.5rem;
+    }
+    
+    /* 学生信息卡片 */
+    .info-card {
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+        box-shadow: var(--box-shadow);
+        margin-bottom: 2rem;
+        transition: var(--transition);
+    }
+    
+    [data-theme="dark"] .info-card {
+        background-color: var(--gray-200);
+    }
+    
+    .info-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .info-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--gray-300);
+    }
+    
+    .info-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--gray-800);
+        display: flex;
+        align-items: center;
+    }
+    
+    .info-title i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+    
+    .info-content {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1.5rem;
+    }
+    
+    .info-item {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .info-label {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+        margin-bottom: 0.5rem;
+    }
+    
+    .info-value {
+        font-size: 1.125rem;
+        font-weight: 500;
+        color: var(--gray-800);
+    }
+    
+    /* 统计卡片 */
+    .stats-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+        box-shadow: var(--box-shadow);
+        transition: var(--transition);
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    [data-theme="dark"] .stat-card {
+        background-color: var(--gray-200);
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+    }
+    
+    .stat-card.primary::before {
+        background-color: var(--primary-color);
+    }
+    
+    .stat-card.success::before {
+        background-color: var(--success-color);
+    }
+    
+    .stat-card.warning::before {
+        background-color: var(--warning-color);
+    }
+    
+    .stat-card.danger::before {
+        background-color: var(--danger-color);
+    }
+    
+    .stat-icon {
+        font-size: 2rem;
+        margin-bottom: 1rem;
+        color: var(--primary-color);
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    
+    .stat-label {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+    }
+    
+    /* 图表容器 */
+    .chart-container {
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+        box-shadow: var(--box-shadow);
+        margin-bottom: 2rem;
+        transition: var(--transition);
+    }
+    
+    [data-theme="dark"] .chart-container {
+        background-color: var(--gray-200);
+    }
+    
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+    
+    .chart-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--gray-800);
+        display: flex;
+        align-items: center;
+    }
+    
+    .chart-title i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+    
+    .chart-wrapper {
+        position: relative;
+        height: 300px;
+    }
+    
+    /* 提交记录表格 */
+    .submissions-container {
+        background-color: white;
+        border-radius: var(--border-radius);
+        box-shadow: var(--box-shadow);
+        overflow: hidden;
+        transition: var(--transition);
+    }
+    
+    [data-theme="dark"] .submissions-container {
+        background-color: var(--gray-200);
+    }
+    
+    .submissions-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--gray-300);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .submissions-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--gray-800);
+        display: flex;
+        align-items: center;
+    }
+    
+    .submissions-title i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+    
+    .submissions-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    
+    .submissions-table th {
+        background-color: var(--gray-100);
+        color: var(--gray-700);
+        font-weight: 600;
+        text-align: left;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--gray-300);
+    }
+    
+    [data-theme="dark"] .submissions-table th {
+        background-color: var(--gray-300);
+        color: var(--gray-900);
+    }
+    
+    .submissions-table td {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--gray-300);
+        color: var(--gray-800);
+    }
+    
+    [data-theme="dark"] .submissions-table td {
+        color: var(--gray-900);
+    }
+    
+    .submissions-table tr:hover {
+        background-color: var(--gray-100);
+    }
+    
+    [data-theme="dark"] .submissions-table tr:hover {
+        background-color: var(--gray-300);
+    }
+    
+    .score-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 50%;
+        font-weight: 600;
+        font-size: 0.875rem;
+    }
+    
+    .score-5 {
+        background-color: rgba(76, 201, 240, 0.2);
+        color: var(--success-color);
+    }
+    
+    .score-4 {
+        background-color: rgba(76, 201, 240, 0.2);
+        color: var(--success-color);
+    }
+    
+    .score-3 {
+        background-color: rgba(248, 150, 30, 0.2);
+        color: var(--warning-color);
+    }
+    
+    .score-2 {
+        background-color: rgba(249, 65, 68, 0.2);
+        color: var(--danger-color);
+    }
+    
+    .score-1 {
+        background-color: rgba(249, 65, 68, 0.2);
+        color: var(--danger-color);
+    }
+    
+    .action-btn {
+        padding: 0.35rem 0.75rem;
+        border-radius: var(--border-radius);
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .action-btn i {
+        margin-right: 0.25rem;
+    }
+    
+    .action-btn.download {
+        background-color: rgba(67, 97, 238, 0.1);
+        color: var(--primary-color);
+        border: none;
+    }
+    
+    .action-btn.download:hover {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    
+    /* 分页导航 */
+    .pagination-container {
+        display: flex;
+        justify-content: center;
+        margin-top: 2rem;
+    }
+    
+    .pagination {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .page-item .page-link {
+        border-radius: var(--border-radius);
+        color: var(--primary-color);
+        border: 1px solid var(--gray-300);
+        padding: 0.5rem 0.75rem;
+        transition: var(--transition);
+        background-color: white;
+    }
+    
+    [data-theme="dark"] .page-item .page-link {
+        background-color: var(--gray-200);
+        color: var(--primary-light);
+        border-color: var(--gray-400);
+    }
+    
+    .page-item .page-link:hover {
+        background-color: var(--gray-100);
+        border-color: var(--gray-400);
+        transform: translateY(-2px);
+    }
+    
+    [data-theme="dark"] .page-item .page-link:hover {
+        background-color: var(--gray-300);
+    }
+    
+    .page-item.active .page-link {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+        color: white;
+    }
+    
+    .page-item.disabled .page-link {
+        color: var(--gray-500);
+        pointer-events: none;
+        background-color: var(--gray-100);
+    }
+    
+    [data-theme="dark"] .page-item.disabled .page-link {
+        background-color: var(--gray-300);
+        color: var(--gray-500);
+    }
+    
+    /* 响应式调整 */
+    @media (max-width: 992px) {
+        .info-content {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .stats-container {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .info-content {
+            grid-template-columns: 1fr;
+        }
+        
+        .stats-container {
+            grid-template-columns: 1fr;
+        }
+        
+        .submissions-table {
+            display: block;
+            overflow-x: auto;
+        }
+        
+        .submissions-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+    }
+    
+    /* 动画效果 */
+    .animate__animated {
+        animation-duration: 0.5s;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- 页面标题 -->
+    <div class="page-header animate__animated animate__fadeIn">
+        <h1 class="page-title">
+            <i class="fas fa-user-graduate"></i> 学生详情
+        </h1>
+        <a href="{{ url_for('users.manage_users') }}" class="back-btn">
+            <i class="fas fa-arrow-left"></i> 返回用户管理
+        </a>
+    </div>
+    
+    <!-- 学生信息卡片 -->
+    <div class="info-card animate__animated animate__fadeIn">
+        <div class="info-header">
+            <h5 class="info-title">
+                <i class="fas fa-info-circle"></i> 基本信息
+            </h5>
+        </div>
+        <div class="info-content">
+            <div class="info-item">
+                <span class="info-label">姓名</span>
+                <span class="info-value">{{ user.full_name }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">学号</span>
+                <span class="info-value">{{ user.student_id }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">用户名</span>
+                <span class="info-value">{{ user.username }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">班级</span>
+                <span class="info-value">{{ user.class_name }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">用户类型</span>
+                <span class="info-value">{{ user.usertype }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">排名</span>
+                <span class="info-value">{{ student_rank }} / {{ total_students }}</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 统计卡片 -->
+    <div class="stats-container animate__animated animate__fadeIn">
+        <div class="stat-card primary">
+            <i class="fas fa-file-code stat-icon"></i>
+            <div class="stat-value">{{ submission_stats.total }}</div>
+            <div class="stat-label">提交总数</div>
+        </div>
+        <div class="stat-card success">
+            <i class="fas fa-star stat-icon"></i>
+            <div class="stat-value">{{ "%.2f"|format(submission_stats.average_score) }}</div>
+            <div class="stat-label">平均分数</div>
+        </div>
+        <div class="stat-card warning">
+            <i class="fas fa-trophy stat-icon"></i>
+            <div class="stat-value">{{ submission_stats.max_score }}</div>
+            <div class="stat-label">最高分数</div>
+        </div>
+        <div class="stat-card danger">
+            <i class="fas fa-chart-line stat-icon"></i>
+            <div class="stat-value">{{ submission_stats.min_score }}</div>
+            <div class="stat-label">最低分数</div>
+        </div>
+    </div>
+    
+    <!-- 图表区域 -->
+    <div class="row mb-4 animate__animated animate__fadeIn">
+        <div class="col-md-6">
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h5 class="chart-title">
+                        <i class="fas fa-chart-line"></i> 成绩变化趋势
+                    </h5>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="scoreChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h5 class="chart-title">
+                        <i class="fas fa-chart-pie"></i> 成绩分布
+                    </h5>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="scoreDistributionChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 提交记录 -->
+    <div class="submissions-container animate__animated animate__fadeIn">
+        <div class="submissions-header">
+            <h5 class="submissions-title">
+                <i class="fas fa-list"></i> 提交记录
+            </h5>
+        </div>
+        <div class="table-responsive">
+            <table class="submissions-table">
+                <thead>
+                    <tr>
+                        <th>题目ID</th>
+                        <th>提交时间</th>
+                        <th>得分</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for submission in submissions.items %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('assignments.submit_code', assignment_id=submission.assignment_id) }}">
+                                {{ submission.assignment_id }}
+                            </a>
+                        </td>
+                        <td>{{ submission.submitted_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>
+                            <span class="score-badge score-{{ submission.score }}">
+                                {{ submission.score }}
+                            </span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('assignments.download_code', submission_id=submission.id) }}" class="action-btn download">
+                                <i class="fas fa-download"></i> 下载代码
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- 分页 -->
+    <div class="pagination-container">
+        <nav aria-label="Page navigation">
+            <ul class="pagination">
+                {% if submissions.has_prev %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('users.view_student_details', student_id=user.student_id, page=submissions.prev_num) }}">上一页</a>
+                </li>
+                {% endif %}
+                
+                {% for page in submissions.iter_pages() %}
+                    {% if page %}
+                        <li class="page-item {% if page == submissions.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('users.view_student_details', student_id=user.student_id, page=page) }}">{{ page }}</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if submissions.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('users.view_student_details', student_id=user.student_id, page=submissions.next_num) }}">下一页</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+</div>
+
+<!-- 主题切换按钮 -->
+<button class="theme-toggle" id="themeToggle">
+    <i class="fas fa-moon"></i>
+</button>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 成绩变化趋势图
+    const scoreChartCtx = document.getElementById('scoreChart').getContext('2d');
+    const scoreChart = new Chart(scoreChartCtx, {
+        type: 'line',
+        data: {
+            labels: {{ chart_data.x | tojson | safe }},
+            datasets: [{
+                label: '提交成绩',
+                data: {{ chart_data.y | tojson | safe }},
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 5
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+
+    // 成绩分布图
+    const scoreDistributionCtx = document.getElementById('scoreDistributionChart').getContext('2d');
+    const scoreDistributionChart = new Chart(scoreDistributionCtx, {
+        type: 'pie',
+        data: {
+            labels: ['优秀 (5分)', '良好 (4分)', '中等 (3分)', '及格 (2分)', '不及格 (1分)'],
+            datasets: [{
+                data: {{ chart_data.pie_data | tojson | safe }},
+                backgroundColor: ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+
+    // 主题切换
+    const themeToggle = document.getElementById('themeToggle');
+    const icon = themeToggle.querySelector('i');
+    
+    themeToggle.addEventListener('click', function() {
+        const currentTheme = document.body.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.body.setAttribute('data-theme', newTheme);
+        icon.classList.toggle('fa-moon');
+        icon.classList.toggle('fa-sun');
+        localStorage.setItem('theme', newTheme);
+    });
+
+    // 初始化主题
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+        document.body.setAttribute('data-theme', savedTheme);
+        icon.classList.toggle('fa-moon', savedTheme === 'light');
+        icon.classList.toggle('fa-sun', savedTheme === 'dark');
+    }
+});
+</script>
+{% endblock %} 

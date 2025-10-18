@@ -1,0 +1,27 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 底部表面 -->
+  <ellipse cx="100" cy="160" rx="70" ry="15" fill="#E9ECEF" />
+  
+  <!-- 空文件夹 -->
+  <rect x="50" y="60" width="100" height="80" rx="10" fill="#4B6CB7" />
+  <path d="M50 80H150V130C150 135.523 145.523 140 140 140H60C54.4772 140 50 135.523 50 130V80Z" fill="#6A11CB" />
+  
+  <!-- 文件夹标签 -->
+  <path d="M50 70C50 64.4772 54.4772 60 60 60H80L90 70H50Z" fill="#2575FC" />
+  
+  <!-- 放大镜 -->
+  <circle cx="140" cy="60" r="25" fill="white" fill-opacity="0.9" />
+  <circle cx="140" cy="60" r="15" stroke="#4B6CB7" stroke-width="4" />
+  <line x1="152" y1="72" x2="165" y2="85" stroke="#4B6CB7" stroke-width="4" stroke-linecap="round" />
+  
+  <!-- 问号符号 -->
+  <circle cx="100" cy="100" r="20" fill="white" fill-opacity="0.9" />
+  <path d="M95 95C95 92.2386 97.2386 90 100 90C102.761 90 105 92.2386 105 95C105 97.7614 102.761 100 100 100V105" stroke="#4B6CB7" stroke-width="3" stroke-linecap="round" />
+  <circle cx="100" cy="110" r="2" fill="#4B6CB7" />
+  
+  <!-- 装饰线条 -->
+  <line x1="30" y1="110" x2="45" y2="110" stroke="#E9ECEF" stroke-width="2" stroke-linecap="round" />
+  <line x1="155" y1="110" x2="170" y2="110" stroke="#E9ECEF" stroke-width="2" stroke-linecap="round" />
+  <line x1="35" y1="120" x2="50" y2="120" stroke="#E9ECEF" stroke-width="2" stroke-linecap="round" />
+  <line x1="150" y1="120" x2="165" y2="120" stroke="#E9ECEF" stroke-width="2" stroke-linecap="round" />
+</svg> 

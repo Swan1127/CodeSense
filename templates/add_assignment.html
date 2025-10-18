@@ -1,0 +1,170 @@
+{% extends "layout.html" %}
+
+{% block title %}添加新作业 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card {
+        border: none;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-label {
+        font-weight: 500;
+        color: #374151;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+    
+    .form-control {
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        padding: 0.625rem 0.75rem;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        width: 100%;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    }
+    
+    .form-control:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+        outline: none;
+    }
+    
+    textarea.form-control {
+        min-height: 100px;
+        resize: vertical;
+    }
+    
+    .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+        color: #fff;
+        font-weight: 500;
+        padding: 0.625rem 1rem;
+        font-size: 0.875rem;
+        border-radius: 0.375rem;
+        transition: all 0.15s ease;
+    }
+    
+    .btn-primary:hover {
+        background-color: var(--primary-hover);
+        border-color: var(--primary-hover);
+    }
+    
+    .tips-card {
+        background-color: #f9fafb;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+    }
+    
+    .tips-card h5 {
+        color: #111827;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+    }
+    
+    .tips-card ul {
+        margin: 0;
+        padding-left: 1.5rem;
+    }
+    
+    .tips-card li {
+        color: #4b5563;
+        margin-bottom: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="page-title">添加新作业</h1>
+            <p class="page-subtitle">创建新的编程作业题目供学生完成</p>
+        </div>
+        <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-1"></i> 返回作业列表
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="bi bi-plus-circle"></i> 作业信息
+                </div>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('assignments.add_assignment') }}" method="post">
+                    {{ form.hidden_tag() }}
+                    <div class="form-group">
+                        <label for="assignment_id" class="form-label">作业ID</label>
+                        {{ form.assignment_id(class="form-control", id="assignment_id", placeholder="输入唯一的作业ID编号，必须为正整数", min="1") }}
+                        <small class="text-muted">请确保ID唯一且为正整数，用于系统内部识别</small>
+                        {% if form.assignment_id.errors %}
+                            <div class="text-danger">
+                                {% for error in form.assignment_id.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="title" class="form-label">作业标题</label>
+                        {{ form.title(class="form-control", id="title", placeholder="输入作业标题") }}
+                        {% if form.title.errors %}
+                            <div class="text-danger">
+                                {% for error in form.title.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="description" class="form-label">作业描述</label>
+                        {{ form.description(class="form-control", id="description", rows="6", placeholder="输入详细的作业描述和要求...") }}
+                        <small class="text-muted">支持Markdown格式，可以添加代码示例、图表等</small>
+                        {% if form.description.errors %}
+                            <div class="text-danger">
+                                {% for error in form.description.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="d-flex justify-content-end">
+                        {{ form.submit(class="btn btn-primary") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="tips-card">
+            <h5><i class="bi bi-lightbulb me-2"></i>创建优质作业的提示</h5>
+            <ul>
+                <li>作业标题应当简洁明了，能够清晰表达主题</li>
+                <li>在描述中详细说明需求、输入输出格式、示例等</li>
+                <li>对于复杂的问题，提供适当的提示或思路</li>
+                <li>设置合理的难度级别，帮助学生循序渐进</li>
+                <li>可以添加与实际应用相关的背景，增加学习兴趣</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

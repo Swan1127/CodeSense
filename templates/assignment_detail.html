@@ -1,0 +1,409 @@
+{% extends "layout.html" %}
+{% from "components/code_editor.html" import code_editor %}
+
+{% block title %}{{ assignment.title }} - 题目详情 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 题目卡片样式 */
+    .assignment-card {
+        background-color: #fff;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        margin-bottom: 2rem;
+        overflow: hidden;
+    }
+    
+    .assignment-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .assignment-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2rem;
+        margin-top: 1rem;
+    }
+    
+    .assignment-meta-item {
+        display: flex;
+        align-items: center;
+    }
+    
+    .assignment-meta-item i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+    
+    .assignment-meta-label {
+        font-weight: 500;
+        color: #6b7280;
+        margin-right: 0.5rem;
+    }
+    
+    .assignment-description {
+        padding: 1.5rem;
+        background-color: #f9fafb;
+    }
+    
+    /* 提交历史卡片 */
+    .submission-card {
+        background-color: #fff;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        margin-bottom: 2rem;
+    }
+    
+    .submission-header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+        background-color: #f3f4f6;
+    }
+    
+    .submission-title {
+        display: flex;
+        align-items: center;
+        font-weight: 600;
+        color: #111827;
+        margin: 0;
+    }
+    
+    .submission-title i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+    
+    .submission-body {
+        padding: 1.5rem;
+    }
+    
+    .submission-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .score-display {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--primary-color);
+        margin: 0.5rem 0 1rem;
+        padding: 0.5rem 1rem;
+        background-color: rgba(var(--primary-rgb), 0.1);
+        border-radius: 0.375rem;
+        display: inline-block;
+    }
+    
+    .code-display {
+        background-color: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        font-family: monospace;
+        font-size: 0.875rem;
+        white-space: pre-wrap;
+        overflow-x: auto;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* 编辑器区域 */
+    .code-editor-section {
+        margin-top: 2rem;
+    }
+    
+    .code-editor-header {
+        margin-bottom: 1rem;
+    }
+    
+    .code-editor-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+    }
+    
+    .code-editor-title i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="page-title">{{ assignment.title }}</h1>
+            <p class="page-subtitle">题目详情与代码提交</p>
+        </div>
+        <div>
+            {% if session.get('usertype') != '管理员' %}
+            <a href="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}" class="btn btn-primary me-2">
+                <i class="bi bi-pencil-square me-1"></i> 开始作答
+            </a>
+            {% else %}
+            <a href="{{ url_for('assignments.all_submissions') }}?assignment_id={{ assignment.id }}" class="btn btn-primary me-2">
+                <i class="bi bi-list-ul me-1"></i> 查看所有提交
+            </a>
+            {% endif %}
+            <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left me-1"></i> 返回题库
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- 题目详情卡片 -->
+<div class="assignment-card">
+    <div class="assignment-header">
+        <h3>题目信息</h3>
+        <div class="assignment-meta">
+            <div class="assignment-meta-item">
+                <i class="bi bi-hash"></i>
+                <span class="assignment-meta-label">题目ID:</span>
+                <span>{{ assignment.id }}</span>
+            </div>
+            
+            <div class="assignment-meta-item">
+                <i class="bi bi-people"></i>
+                <span class="assignment-meta-label">提交次数:</span>
+                <span>{{ assignment.count }}</span>
+            </div>
+            
+            <div class="assignment-meta-item">
+                <i class="bi bi-star"></i>
+                <span class="assignment-meta-label">平均分:</span>
+                <span>{{ assignment.average_score|round(2) }}</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="assignment-description">
+        <h4 class="mb-3">题目描述</h4>
+        <div class="markdown-body">
+            {{ assignment.description|safe }}
+        </div>
+    </div>
+</div>
+
+{% if session.get('usertype') == '管理员' %}
+<!-- 管理员视图 -->
+
+<!-- 管理员视图：提交统计信息 -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="bi bi-bar-chart"></i> 学生提交统计
+        </h3>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="stat-card primary">
+                    <i class="bi bi-people-fill stat-icon"></i>
+                    <div class="stat-value">{{ submission_count }}</div>
+                    <div class="stat-label">总提交次数</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card success">
+                    <i class="bi bi-award-fill stat-icon"></i>
+                    <div class="stat-value">{{ average_score|round(2) }}</div>
+                    <div class="stat-label">平均分</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card warning">
+                    <i class="bi bi-person-check-fill stat-icon"></i>
+                    <div class="stat-value">{{ student_count if student_count is defined else '0' }}</div>
+                    <div class="stat-label">参与学生数</div>
+                </div>
+            </div>
+        </div>
+        
+        {% if score_distribution is defined %}
+        <div class="mt-4">
+            <h4>分数分布</h4>
+            <div class="progress" style="height: 25px;">
+                <div class="progress-bar bg-danger" role="progressbar" 
+                     style="width: {{ (score_distribution.get(1, 0) / submission_count * 100) if submission_count > 0 else 0 }}%" 
+                     aria-valuenow="{{ score_distribution.get(1, 0) }}" aria-valuemin="0" aria-valuemax="{{ submission_count }}">
+                    1分: {{ score_distribution.get(1, 0) }}
+                </div>
+                <div class="progress-bar bg-warning" role="progressbar" 
+                     style="width: {{ (score_distribution.get(2, 0) / submission_count * 100) if submission_count > 0 else 0 }}%" 
+                     aria-valuenow="{{ score_distribution.get(2, 0) }}" aria-valuemin="0" aria-valuemax="{{ submission_count }}">
+                    2分: {{ score_distribution.get(2, 0) }}
+                </div>
+                <div class="progress-bar bg-info" role="progressbar" 
+                     style="width: {{ (score_distribution.get(3, 0) / submission_count * 100) if submission_count > 0 else 0 }}%" 
+                     aria-valuenow="{{ score_distribution.get(3, 0) }}" aria-valuemin="0" aria-valuemax="{{ submission_count }}">
+                    3分: {{ score_distribution.get(3, 0) }}
+                </div>
+                <div class="progress-bar bg-primary" role="progressbar" 
+                     style="width: {{ (score_distribution.get(4, 0) / submission_count * 100) if submission_count > 0 else 0 }}%" 
+                     aria-valuenow="{{ score_distribution.get(4, 0) }}" aria-valuemin="0" aria-valuemax="{{ submission_count }}">
+                    4分: {{ score_distribution.get(4, 0) }}
+                </div>
+                <div class="progress-bar bg-success" role="progressbar" 
+                     style="width: {{ (score_distribution.get(5, 0) / submission_count * 100) if submission_count > 0 else 0 }}%" 
+                     aria-valuenow="{{ score_distribution.get(5, 0) }}" aria-valuemin="0" aria-valuemax="{{ submission_count }}">
+                    5分: {{ score_distribution.get(5, 0) }}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 最近提交列表 -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="bi bi-clock-history"></i> 最近提交记录
+        </h3>
+    </div>
+    <div class="card-body">
+        {% if recent_submissions is defined and recent_submissions %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>学号</th>
+                        <th>姓名</th>
+                        <th>提交时间</th>
+                        <th>分数</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for submission in recent_submissions %}
+                    <tr>
+                        <td>{{ submission.student_id }}</td>
+                        <td>{{ submission.user.full_name if submission.user else '未知' }}</td>
+                        <td>{{ submission.submitted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            <span class="badge {% if submission.score >= 4 %}bg-success{% elif submission.score >= 3 %}bg-primary{% elif submission.score >= 2 %}bg-warning{% else %}bg-danger{% endif %}">
+                                {{ submission.score }}
+                            </span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('assignments.view_submission', submission_id=submission.id) }}" class="btn btn-sm btn-outline-primary">查看</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i> 暂无提交记录
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% else %}
+<!-- 学生视图 -->
+
+<!-- 最近提交记录 -->
+{% if latest_submission %}
+<div class="submission-card">
+    <div class="submission-header">
+        <h3 class="submission-title">
+            <i class="bi bi-clock-history"></i> 最近提交
+        </h3>
+    </div>
+    <div class="submission-body">
+        <div class="submission-meta">
+            <div>
+                <strong>提交时间:</strong> 
+                {{ latest_submission.submitted_at.strftime('%Y-%m-%d %H:%M:%S') }}
+            </div>
+            
+            <div>
+                <strong>语言:</strong> 
+                {{ latest_submission.language }}
+            </div>
+        </div>
+        
+        <div>
+            <strong>评分结果:</strong>
+            <div class="score-display">{{ latest_submission.score }}/5 分</div>
+        </div>
+        
+        <div>
+            <strong>提交的代码:</strong>
+            <div class="code-display">{{ latest_submission.code }}</div>
+        </div>
+        
+        <div class="mt-3">
+            <a href="{{ url_for('assignments.view_submission', submission_id=latest_submission.id) }}" class="btn btn-outline-primary">
+                <i class="bi bi-eye"></i> 查看详情
+            </a>
+            <a href="{{ url_for('assignments.download_code', submission_id=latest_submission.id) }}" class="btn btn-outline-secondary">
+                <i class="bi bi-download"></i> 下载代码
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 学生视图：提交统计信息 -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="bi bi-bar-chart"></i> 提交统计
+        </h3>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="stat-card primary">
+                    <i class="bi bi-people-fill stat-icon"></i>
+                    <div class="stat-value">{{ submission_count }}</div>
+                    <div class="stat-label">总提交次数</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card success">
+                    <i class="bi bi-award-fill stat-icon"></i>
+                    <div class="stat-value">{{ average_score|round(2) }}</div>
+                    <div class="stat-label">平均分</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card warning">
+                    <i class="bi bi-trophy-fill stat-icon"></i>
+                    <div class="stat-value">{{ max_score }}</div>
+                    <div class="stat-label">您的最高分</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-4 text-center">
+            <a href="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}" class="btn btn-primary btn-lg">
+                <i class="bi bi-code-square me-2"></i> 开始解答此题
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 初始化代码编辑器
+    document.addEventListener('DOMContentLoaded', function() {
+        // 三秒后隐藏闪现消息
+        setTimeout(function() {
+            var flashMessages = document.querySelectorAll('.flash-messages');
+            flashMessages.forEach(function(message) {
+                message.style.display = 'none';
+            });
+        }, 3000);
+    });
+</script>
+{% endblock %}

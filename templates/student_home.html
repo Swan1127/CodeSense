@@ -1,0 +1,1043 @@
+{% extends "layout.html" %}
+
+{% block title %}学生首页 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 基础样式优化 */
+    .card {
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .card-body {
+        padding: 1.5rem;
+    }
+    
+    .card-title {
+        margin-bottom: 1.25rem;
+        font-weight: 600;
+    }
+    
+    /* 数据卡片内部间距 */
+    .card .badge {
+        padding: 0.75rem;
+        font-size: 1.2rem;
+    }
+    
+    .card h3 {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin: 0.5rem 0;
+    }
+    
+    .text-muted {
+        margin-top: 0.5rem;
+    }
+    
+    /* 按钮样式优化 */
+    .btn-secondary {
+        padding: 0.5rem 1rem;
+        margin-top: 1.25rem;
+        font-weight: 500;
+    }
+    
+    /* 间距优化 */
+    .mt-3 {
+        margin-top: 1rem !important;
+    }
+    
+    .mb-3 {
+        margin-bottom: 1rem !important;
+    }
+    
+    .mb-4 {
+        margin-bottom: 1.5rem !important;
+    }
+    
+    /* 行间距优化 */
+    .row {
+        margin-bottom: 1rem;
+    }
+    
+    /* 进度条样式 */
+    .progress {
+        height: 10px;
+        background-color: #f3f4f6;
+        border-radius: 9999px;
+        overflow: hidden;
+        margin: 0.75rem 0 1.5rem 0;
+    }
+    
+    .progress-bar {
+        height: 100%;
+        border-radius: 9999px;
+        transition: width 0.3s ease;
+    }
+    
+    /* 能力分析部分优化 */
+    .d-flex.justify-content-between {
+        margin-top: 0.75rem;
+    }
+    
+    .chart-container {
+        height: 280px;
+        width: 100%;
+        position: relative;
+        margin-top: 1rem;
+        border: 1px solid #eee;
+        padding: 10px;
+    }
+    
+    /* 颜色样式 */
+    .bg-primary {
+        background-color: var(--primary-color);
+    }
+    
+    .bg-success {
+        background-color: var(--success);
+    }
+    
+    .bg-info {
+        background-color: var(--info);
+    }
+    
+    .bg-warning {
+        background-color: var(--warning);
+    }
+    
+    /* 学习建议部分 */
+    .alert {
+        padding: 1.25rem;
+        border-radius: 0.5rem;
+    }
+    
+    .alert h5 {
+        margin-bottom: 1rem;
+    }
+    
+    .alert ul {
+        padding-left: 1.5rem;
+        margin-top: 0.75rem;
+    }
+    
+    .alert li {
+        margin-bottom: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">欢迎使用学生程序设计能力评价系统</h1>
+    <p class="page-subtitle">通过完成编程作业提升您的代码能力，获取智能反馈和评分</p>
+</div>
+
+<!-- 数据概览卡片 -->
+<div class="row" style="margin-bottom: 2rem;">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body" style="padding: 1.5rem;">
+                <h5 class="card-title" style="margin-bottom: 1.5rem;"><i class="bi bi-journal-code" style="margin-right: 10px;"></i> 我的作业</h5>
+                
+                <!-- 重新排列卡片内容，使文本与图标分离 -->
+                <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
+                    <div class="text-center">
+                        <div class="badge badge-primary" style="padding: 0.75rem; font-size: 1.2rem; margin-bottom: 1rem;">
+                            <i class="bi bi-list-check"></i>
+                        </div>
+                        <h3 style="font-size: 1.8rem; font-weight: 700; margin: 0.75rem 0;">{{ assignments_count }}</h3>
+                        <p class="text-muted" style="margin-top: 0.5rem;">需要完成的作业</p>
+                    </div>
+                </div>
+                
+                <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-secondary btn-sm mt-3" style="padding: 0.5rem 1rem; margin-top: 1.25rem; font-weight: 500; width: 100%;">
+                    <i class="bi bi-arrow-right" style="margin-right: 8px;"></i> 查看所有作业
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body" style="padding: 1.5rem;">
+                <h5 class="card-title" style="margin-bottom: 1.5rem;"><i class="bi bi-check-circle" style="margin-right: 10px;"></i> 已提交</h5>
+                
+                <!-- 重新排列卡片内容，使文本与图标分离 -->
+                <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
+                    <div class="text-center">
+                        <div class="badge badge-success" style="padding: 0.75rem; font-size: 1.2rem; margin-bottom: 1rem;">
+                            <i class="bi bi-upload"></i>
+                        </div>
+                        <h3 style="font-size: 1.8rem; font-weight: 700; margin: 0.75rem 0;">{{ submissions_count }}</h3>
+                        <p class="text-muted" style="margin-top: 0.5rem;">已提交的作业</p>
+                    </div>
+                </div>
+                
+                <a href="{{ url_for('users.view_submissions') }}" class="btn btn-secondary btn-sm mt-3" style="padding: 0.5rem 1rem; margin-top: 1.25rem; font-weight: 500; width: 100%;">
+                    <i class="bi bi-arrow-right" style="margin-right: 8px;"></i> 查看提交记录
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body" style="padding: 1.5rem;">
+                <h5 class="card-title" style="margin-bottom: 1.5rem;"><i class="bi bi-star" style="margin-right: 10px;"></i> 平均得分</h5>
+                
+                <!-- 重新排列卡片内容，使文本与图标分离 -->
+                <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
+                    <div class="text-center">
+                        <div class="badge badge-warning" style="padding: 0.75rem; font-size: 1.2rem; margin-bottom: 1rem;">
+                            <i class="bi bi-bar-chart"></i>
+                        </div>
+                        <h3 style="font-size: 1.8rem; font-weight: 700; margin: 0.75rem 0;">{{ average_score|round(2, 'common') if average_score else '暂无' }}</h3>
+                        <p class="text-muted" style="margin-top: 0.5rem;">您的平均分数</p>
+                    </div>
+                </div>
+                
+                <a href="{{ url_for('main.user_profile', user_username=user.username) }}" class="btn btn-secondary btn-sm mt-3" style="padding: 0.5rem 1rem; margin-top: 1.25rem; font-weight: 500; width: 100%;">
+                    <i class="bi bi-arrow-right" style="margin-right: 8px;"></i> 查看详细数据
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 最近作业 -->
+<div class="card mt-4" style="margin-top: 2rem; margin-bottom: 2rem;">
+    <div class="card-header" style="padding: 1rem 1.5rem;">
+        <div class="card-title" style="margin-bottom: 0;">
+            <i class="bi bi-clock-history" style="margin-right: 10px;"></i> 近期作业
+        </div>
+    </div>
+    <div class="card-body" style="padding: 1.5rem;">
+        {% if recent_assignments %}
+        <div class="row">
+            {% for assignment in recent_assignments %}
+            <div class="col-md-6 mb-4">
+                <div class="card h-100" style="box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <div class="card-body" style="padding: 1.5rem;">
+                        <h5 class="card-title" style="margin-bottom: 1rem;">{{ assignment.title }}</h5>
+                        <p class="text-muted small" style="margin-bottom: 1rem;">
+                            <i class="bi bi-calendar"></i> 
+                            {% if assignment.due_date %}
+                            截止日期: {{ assignment.due_date.strftime('%Y-%m-%d') }}
+                            {% else %}
+                            无截止日期
+                            {% endif %}
+                        </p>
+                        <p class="card-text" style="margin-bottom: 1.25rem;">
+                            {{ assignment.description|truncate(120) }}
+                        </p>
+                        
+                        {% set submitted = assignment.id in submitted_assignments %}
+                        {% if submitted %}
+                        <div class="badge badge-success mb-3" style="margin-bottom: 1.25rem; padding: 0.5rem 0.75rem;">
+                            <i class="bi bi-check-circle"></i> 已提交
+                        </div>
+                        {% else %}
+                        <div class="badge badge-warning mb-3" style="margin-bottom: 1.25rem; padding: 0.5rem 0.75rem;">
+                            <i class="bi bi-exclamation-circle"></i> 未提交
+                        </div>
+                        {% endif %}
+                        
+                        <div class="d-flex justify-content-end">
+                            <a href="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}" class="btn btn-primary btn-sm" style="padding: 0.5rem 1rem; font-weight: 500;">
+                                {% if submitted %}
+                                <i class="bi bi-pencil"></i> 重新提交
+                                {% else %}
+                                <i class="bi bi-code"></i> 开始编码
+                                {% endif %}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info" style="padding: 1.25rem; margin: 1rem 0;">
+            <i class="bi bi-info-circle"></i> 目前没有可用的作业。请稍后再查看或联系您的老师。
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 能力分析 -->
+<div class="card mt-4" style="margin-top: 2rem; margin-bottom: 2rem;">
+    <div class="card-header" style="padding: 1rem 1.5rem;">
+        <div class="card-title" style="margin-bottom: 0;">
+            <i class="bi bi-graph-up" style="margin-right: 10px;"></i> 我的编程能力分析
+        </div>
+    </div>
+    <div class="card-body" style="padding: 1.5rem;">
+        <div class="row">
+            <div class="col-md-6">
+                <!-- 异步架构版能力发展趋势 -->
+                <div class="mb-4" style="margin-bottom: 2rem;" id="ability-trend-container">
+                    <h5 style="margin-bottom: 1.25rem;">
+                        <i class="bi bi-graph-up text-primary"></i> 能力发展趋势
+                        <span id="trend-status-badge" class="badge 
+                            {% if ability_analysis.get('_status') == 'processing' %}badge-warning
+                            {% elif ability_analysis.get('_status') == 'failed' %}badge-danger
+                            {% elif ability_analysis.get('_status') == 'completed' %}badge-success
+                            {% else %}badge-secondary
+                            {% endif %}" style="margin-left: 0.5rem; font-size: 0.75rem;">
+                            {% if ability_analysis.get('_status') == 'processing' %}
+                                <i class="bi bi-clock-fill"></i> 分析中
+                            {% elif ability_analysis.get('_status') == 'failed' %}
+                                <i class="bi bi-exclamation-triangle-fill"></i> 分析失败
+                            {% elif ability_analysis.get('_status') == 'completed' %}
+                                <i class="bi bi-check-circle-fill"></i> 已完成
+                            {% else %}
+                                <i class="bi bi-hourglass-split"></i> 准备中
+                            {% endif %}
+                        </span>
+                    </h5>
+                    
+                    <!-- 处理中状态特殊显示 -->
+                    {% if ability_analysis.get('_status') == 'processing' %}
+                    <div class="alert alert-primary" id="processing-alert">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">分析中...</span>
+                            </div>
+                            <div>
+                                <h6 class="mb-1"><i class="bi bi-cpu"></i> AI正在后台分析您的编程能力趋势</h6>
+                                <small class="text-muted">这是异步处理，不会影响页面使用，通常需要30-60秒...</small>
+                            </div>
+                        </div>
+                        <div class="progress mt-2" style="height: 4px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div id="trend-content" {% if ability_analysis.get('_status') == 'processing' %}style="opacity: 0.6;"{% endif %}>
+                        <div class="alert alert-info">
+                            <h6><i class="bi bi-info-circle"></i> 趋势分析</h6>
+                            <p id="trend-text">{{ ability_analysis.trend or "正在为您分析编程能力发展趋势..." }}</p>
+                        </div>
+                        
+                        <div class="alert alert-warning">
+                            <h6><i class="bi bi-lightbulb"></i> 改进建议</h6>
+                            <p id="improvement-text">{{ ability_analysis.improvement or "基于您的提交记录，我们将为您提供个性化的改进建议。" }}</p>
+                        </div>
+                        
+                        {% if ability_analysis.suggestions and ability_analysis.suggestions|length > 0 %}
+                        <div class="alert alert-success">
+                            <h6><i class="bi bi-check-circle"></i> 具体措施</h6>
+                            <ul class="mb-0" id="suggestions-list">
+                                {% for suggestion in ability_analysis.suggestions %}
+                                {% if suggestion|trim %}
+                                <li>{{ suggestion }}</li>
+                                {% endif %}
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-light" id="pending-suggestions">
+                            <h6><i class="bi bi-hourglass"></i> 具体措施</h6>
+                            <p class="mb-0">AI正在为您生成详细的改进建议...</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- 状态相关的操作按钮 -->
+                    <div class="text-end mt-3">
+                        <button class="btn btn-outline-primary btn-sm" id="refresh-trend-btn" onclick="refreshTrendStatus()" 
+                                {% if ability_analysis.get('_status') == 'processing' %}disabled{% endif %}>
+                            <i class="bi bi-arrow-clockwise"></i> 刷新状态
+                        </button>
+                        <small class="text-muted ms-2" id="last-updated">
+                            {% if ability_analysis.get('_last_updated') %}
+                                最后更新: {{ ability_analysis._last_updated }}
+                            {% elif ability_analysis.get('_status') == 'processing' %}
+                                正在分析中...
+                            {% else %}
+                                分析时间: <span id="current-time"></span>
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-4" style="margin-bottom: 2rem;">
+                    <h5 style="margin-bottom: 1.25rem;">能力评分</h5>
+                    
+                    <!-- 能力评分柱状图 -->
+                    <div class="chart-container mb-3">
+                        <canvas id="skillBarChart"></canvas>
+                    </div>
+                    
+                    <!-- 表格数据展示（作为备用） -->
+                    <div class="table-responsive mt-4">
+                        <table class="table table-bordered table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>能力维度</th>
+                                    <th>我的能力</th>
+                                    <th>班级平均</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>算法能力</strong></td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-primary" role="progressbar" style="width: {{ algorithm_score }}%;" aria-valuenow="{{ algorithm_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ algorithm_score }}</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ class_algorithm_score }}%;" aria-valuenow="{{ class_algorithm_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ class_algorithm_score }}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>代码风格</strong></td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-primary" role="progressbar" style="width: {{ style_score }}%;" aria-valuenow="{{ style_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ style_score }}</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ class_style_score }}%;" aria-valuenow="{{ class_style_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ class_style_score }}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>功能实现</strong></td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-primary" role="progressbar" style="width: {{ functionality_score }}%;" aria-valuenow="{{ functionality_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ functionality_score }}</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ class_functionality_score }}%;" aria-valuenow="{{ class_functionality_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ class_functionality_score }}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>效率优化</strong></td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-primary" role="progressbar" style="width: {{ efficiency_score }}%;" aria-valuenow="{{ efficiency_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ efficiency_score }}</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ class_efficiency_score }}%;" aria-valuenow="{{ class_efficiency_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ class_efficiency_score }}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>代码可读性</strong></td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-primary" role="progressbar" style="width: {{ readability_score }}%;" aria-valuenow="{{ readability_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ readability_score }}</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ class_readability_score }}%;" aria-valuenow="{{ class_readability_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2">{{ class_readability_score }}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="mb-4" style="margin-bottom: 2rem;">
+                    <h5 style="margin-bottom: 1.25rem;">最近提交记录</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>作业</th>
+                                    <th>提交时间</th>
+                                    <th>得分</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for submission in submissions[:5] %}
+                                <tr>
+                                    <td>{{ submission.assignment.title }}</td>
+                                    <td>{{ submission.submitted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        <span class="badge {% if submission.score >= 80 %}bg-success{% elif submission.score >= 60 %}bg-warning{% else %}bg-danger{% endif %}">
+                                            {{ submission.score }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- 引入Chart.js库 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 获取柱状图容器的Canvas上下文
+    var ctx = document.getElementById('skillBarChart').getContext('2d');
+    
+    // 准备数据
+    var labels = ['算法能力', '代码风格', '功能实现', '效率优化', '代码可读性'];
+    var studentData = [
+        {{ algorithm_score }}, 
+        {{ style_score }}, 
+        {{ functionality_score }}, 
+        {{ efficiency_score }}, 
+        {{ readability_score }}
+    ];
+    var classData = [
+        {{ class_algorithm_score }}, 
+        {{ class_style_score }}, 
+        {{ class_functionality_score }}, 
+        {{ class_efficiency_score }}, 
+        {{ class_readability_score }}
+    ];
+    
+    // 创建柱状图
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '我的能力',
+                    data: studentData,
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: '班级平均',
+                    data: classData,
+                    backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                title: {
+                    display: true,
+                    text: '能力评分对比图'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + context.raw + '分';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: '得分'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return value + '分';
+                        }
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: '能力维度'
+                    }
+                }
+            }
+        }
+    });
+});
+
+// 异步架构版：智能轮询系统
+let trendPollingInterval = null;
+const POLLING_INTERVAL = 5000; // 5秒轮询一次
+let pollCount = 0; // 轮询计数器
+const MAX_POLL_COUNT = 24; // 最大轮询次数（2分钟后停止，异步任务通常1-2分钟内完成）
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 异步架构已加载，检查能力趋势分析状态...');
+    
+    // 动态显示当前时间
+    function updateCurrentTime() {
+        const currentTimeElement = document.getElementById('current-time');
+        if (!currentTimeElement) return;
+        
+        const now = new Date();
+        const formattedTime = String(now.getHours()).padStart(2, '0') + ':' + 
+                            String(now.getMinutes()).padStart(2, '0');
+        currentTimeElement.textContent = formattedTime;
+    }
+    
+    // 更新时间显示
+    updateCurrentTime();
+    setInterval(updateCurrentTime, 60000); // 每分钟更新一次
+    
+    // 智能启动轮询机制
+    const statusBadge = document.getElementById('trend-status-badge');
+    if (statusBadge) {
+        const statusText = statusBadge.textContent || '';
+        if (statusText.includes('分析中') || statusText.includes('准备中') || statusText.includes('等待')) {
+            console.log('🔄 检测到分析任务需要监控，启动轮询...');
+            startTrendPolling();
+        } else if (statusText.includes('已完成')) {
+            console.log('✅ 能力趋势分析已完成');
+            // 即使已完成，也检查一次内容是否正确更新
+            setTimeout(() => refreshTrendStatus(), 1000);
+        } else {
+            console.log('⚠️ 状态未知，启动轮询以确保数据同步');
+            startTrendPolling(); // 默认启动轮询确保数据同步
+        }
+    } else {
+        console.log('⚠️ 未找到状态徽章，启动轮询以确保数据同步');
+        startTrendPolling(); // 保险起见启动轮询
+    }
+});
+
+// 开始轮询趋势状态
+function startTrendPolling() {
+    if (trendPollingInterval) {
+        clearInterval(trendPollingInterval);
+    }
+
+    pollCount = 0; // 重置计数器
+    console.log('🔄 开始轮询能力趋势分析状态，每5秒检查一次...');
+    
+    // 立即执行一次
+    refreshTrendStatus();
+    
+    // 设置定时轮询
+    trendPollingInterval = setInterval(() => {
+        pollCount++;
+        console.log(`🔍 第${pollCount}次轮询，检查分析状态...`);
+        
+        // 检查是否超过最大轮询次数
+        if (pollCount >= MAX_POLL_COUNT) {
+            console.log('⏰ 达到最大轮询次数，停止轮询');
+            stopTrendPolling();
+            showTrendInfo('分析任务运行时间较长，建议稍后手动刷新页面查看结果');
+            return;
+        }
+        
+        refreshTrendStatus();
+    }, POLLING_INTERVAL);
+}
+
+// 停止轮询
+function stopTrendPolling() {
+    if (trendPollingInterval) {
+        clearInterval(trendPollingInterval);
+        trendPollingInterval = null;
+        console.log('停止轮询能力趋势分析状态');
+    }
+}
+
+// 刷新趋势状态（优化版异步架构）
+async function refreshTrendStatus() {
+    const refreshBtn = document.getElementById('refresh-trend-btn');
+    const statusBadge = document.getElementById('trend-status-badge');
+    
+    try {
+        // 显示刷新状态
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> 刷新中...';
+        }
+        
+        // 调用API获取最新状态
+        const response = await fetch('/api/student/ability-trend-status', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin'  // 关键：确保发送session cookie
+        });
+        
+        console.log(`📡 HTTP响应状态: ${response.status} ${response.statusText}`);
+        
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+                console.error('❌ 认证失败，可能需要重新登录');
+                stopTrendPolling();
+                showTrendError('身份验证失败，请刷新页面重新登录');
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
+        }
+        
+        const responseData = await response.json();
+        console.log('📊 API完整响应:', responseData);
+        
+        // 检查响应格式（修复格式匹配问题）
+        if (!responseData || !responseData.success) {
+            const errorMsg = responseData ? (responseData.message || responseData.error || '未知错误') : '响应格式错误';
+            console.error('❌ API响应错误:', {
+                success: responseData?.success,
+                message: responseData?.message,
+                error: responseData?.error,
+                fullResponse: responseData
+            });
+            showTrendError(`API错误: ${errorMsg}`);
+            return;
+        }
+        
+        console.log('✅ API响应成功:', responseData.success);
+        
+        const data = responseData.data; // 注意：实际数据在data字段中
+        console.log('📊 解析后的数据:', {
+            status: data ? data.status : 'N/A',
+            hasAnalysis: !!(data && data.analysis),
+            analysisKeys: (data && data.analysis) ? Object.keys(data.analysis) : 'N/A',
+            trendLength: (data && data.analysis && data.analysis.trend) ? data.analysis.trend.length : 0,
+            suggestionsCount: (data && data.analysis && data.analysis.suggestions) ? data.analysis.suggestions.length : 0
+        });
+        
+        // 更新界面
+        updateTrendUI(data);
+        
+        // 如果收到完整的分析结果，显示成功提示
+        if (data.status === 'completed' && data.analysis) {
+            console.log('🎉 收到完整分析结果，准备动态更新页面');
+        }
+        
+        // 如果状态不再是processing，停止轮询
+        if (data.status !== 'processing') {
+            console.log(`✅ 分析完成，状态: ${data.status}，停止轮询`);
+            stopTrendPolling();
+            
+            // 根据最终状态显示相应提示
+            if (data.status === 'completed') {
+                showTrendSuccess('🎉 能力趋势分析完成！AI已为您生成了个性化的发展建议');
+            } else if (data.status === 'failed') {
+                showTrendError('😞 分析过程中遇到了问题，请稍后点击刷新重试');
+            }
+        } else {
+            console.log(`⏳ 分析进行中... (第${pollCount}/${MAX_POLL_COUNT}次检查)`);
+        }
+        
+    } catch (error) {
+        console.error('刷新趋势状态失败:', error);
+        showTrendError('获取分析状态失败，请检查网络连接或稍后重试');
+        
+        // 出错时停止轮询，避免无效请求
+        stopTrendPolling();
+        
+    } finally {
+        // 恢复刷新按钮
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> 刷新状态';
+        }
+    }
+}
+
+// 更新趋势UI
+function updateTrendUI(data) {
+    const statusBadge = document.getElementById('trend-status-badge');
+    const processingAlert = document.getElementById('processing-alert');
+    const trendContent = document.getElementById('trend-content');
+    const trendText = document.getElementById('trend-text');
+    const improvementText = document.getElementById('improvement-text');
+    let suggestionsList = document.getElementById('suggestions-list'); // 改用let以支持重新赋值
+    const lastUpdated = document.getElementById('last-updated');
+    
+    // 更新状态徽章
+    if (statusBadge) {
+        let badgeClass = 'badge-secondary';
+        let badgeText = '<i class="bi bi-hourglass-split"></i> 等待中';
+        
+        if (data.status === 'processing') {
+            badgeClass = 'badge-warning';
+            badgeText = '<i class="bi bi-clock-fill"></i> 分析中';
+        } else if (data.status === 'completed') {
+            badgeClass = 'badge-success';
+            badgeText = '<i class="bi bi-check-circle-fill"></i> 已完成';
+        } else if (data.status === 'failed') {
+            badgeClass = 'badge-danger';
+            badgeText = '<i class="bi bi-exclamation-triangle-fill"></i> 分析失败';
+        }
+        
+        statusBadge.className = `badge ${badgeClass}`;
+        statusBadge.innerHTML = badgeText;
+    }
+    
+    // 显示/隐藏处理中提示
+    if (processingAlert) {
+        processingAlert.style.display = data.status === 'processing' ? 'block' : 'none';
+    }
+    
+    // 更新内容透明度
+    if (trendContent) {
+        trendContent.style.opacity = data.status === 'processing' ? '0.6' : '1';
+    }
+    
+    // 动态更新分析内容（关键修复）
+    console.log('🔄 开始更新趋势内容，数据:', data);
+    
+    if (data.analysis && data.status === 'completed') {
+        console.log('✅ 检测到已完成的分析结果，开始更新DOM');
+        
+        // 更新趋势分析文本
+        if (trendText && data.analysis.trend) {
+            trendText.textContent = data.analysis.trend;
+            console.log('📊 趋势文本已更新');
+        }
+        
+        // 更新改进建议文本
+        if (improvementText && data.analysis.improvement) {
+            improvementText.textContent = data.analysis.improvement;
+            console.log('💡 改进建议已更新');
+        }
+        
+        // 动态更新具体措施列表（智能处理容器）
+        console.log('🔍 检查具体措施更新:', {
+            suggestionsListExists: !!suggestionsList,
+            hasAnalysisSuggestions: !!(data.analysis && data.analysis.suggestions),
+            suggestionsLength: data.analysis && data.analysis.suggestions ? data.analysis.suggestions.length : 0
+        });
+        
+        if (data.analysis && data.analysis.suggestions && data.analysis.suggestions.length > 0) {
+            console.log(`🚀 开始更新${data.analysis.suggestions.length}条具体措施`);
+            
+            const pendingSuggestions = document.getElementById('pending-suggestions');
+            
+            // 如果suggestions-list不存在，需要动态创建容器结构
+            if (!suggestionsList) {
+                console.log('🔨 suggestions-list不存在，动态创建容器');
+                
+                // 隐藏占位符
+                if (pendingSuggestions) {
+                    pendingSuggestions.style.display = 'none';
+                }
+                
+                // 创建新的建议容器
+                const newContainer = document.createElement('div');
+                newContainer.className = 'alert alert-success';
+                newContainer.innerHTML = `
+                    <h6><i class="bi bi-check-circle"></i> 具体措施</h6>
+                    <ul class="mb-0" id="suggestions-list"></ul>
+                `;
+                
+                // 插入到占位符后面
+                if (pendingSuggestions) {
+                    pendingSuggestions.parentNode.insertBefore(newContainer, pendingSuggestions.nextSibling);
+                } else {
+                    // 如果没有占位符，插入到改进建议后面
+                    const improvementDiv = document.querySelector('#improvement-text').closest('.alert');
+                    if (improvementDiv) {
+                        improvementDiv.parentNode.insertBefore(newContainer, improvementDiv.nextSibling);
+                    }
+                }
+                
+                // 重新获取suggestions-list引用
+                suggestionsList = document.getElementById('suggestions-list');
+                console.log('✅ 建议容器和列表已动态创建');
+            } else {
+                // 如果存在，确保容器可见
+                const suggestionsContainer = suggestionsList.closest('.alert');
+                if (suggestionsContainer) {
+                    suggestionsContainer.style.display = 'block';
+                }
+                // 隐藏占位符
+                if (pendingSuggestions) {
+                    pendingSuggestions.style.display = 'none';
+                }
+            }
+            
+            // 清空并添加新的建议
+            if (suggestionsList) {
+                suggestionsList.innerHTML = '';
+                
+                data.analysis.suggestions.forEach((suggestion, index) => {
+                    if (suggestion && suggestion.trim()) {
+                        const li = document.createElement('li');
+                        li.style.marginBottom = '8px';
+                        li.innerHTML = `<i class="bi bi-check-circle text-success me-2"></i>${suggestion}`;
+                        suggestionsList.appendChild(li);
+                        console.log(`📝 添加建议 ${index + 1}: ${suggestion.substring(0, 50)}...`);
+                    }
+                });
+                
+                console.log(`🎉 ${data.analysis.suggestions.length} 条具体措施已成功更新到DOM`);
+            }
+        } else {
+            console.log('⚠️ 具体措施数据为空或不存在');
+        }
+        
+        // 移除处理中的透明度效果
+        if (trendContent) {
+            trendContent.style.opacity = '1';
+        }
+        
+        console.log('🎉 所有内容更新完成！');
+    } else if (data.status === 'processing') {
+        console.log('⏳ 任务仍在处理中，保持当前显示');
+    } else {
+        console.log('⚠️ 未获取到有效的分析数据');
+    }
+    
+    // 更新最后更新时间
+    if (lastUpdated && data.status === 'completed') {
+        const now = new Date();
+        const formattedTime = now.getFullYear() + '-' + 
+                            String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                            String(now.getDate()).padStart(2, '0') + ' ' + 
+                            String(now.getHours()).padStart(2, '0') + ':' + 
+                            String(now.getMinutes()).padStart(2, '0');
+        lastUpdated.innerHTML = `最后更新: ${formattedTime}`;
+        
+        // 同时更新current-time元素
+        const currentTimeElement = document.getElementById('current-time');
+        if (currentTimeElement) {
+            currentTimeElement.textContent = formattedTime;
+        }
+    }
+    
+    // 显示成功提示
+    if (data.status === 'completed') {
+        showTrendSuccess('能力趋势分析已完成！');
+    }
+}
+
+// 显示成功提示
+function showTrendSuccess(message) {
+    const toast = createToast(message, 'success');
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.remove();
+    }, 5000);
+}
+
+// 显示成功提示
+function showTrendSuccess(message) {
+    const toast = createToast(message, 'success');
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+}
+
+// 显示错误提示
+function showTrendError(message) {
+    const toast = createToast(message, 'error');
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 6000);
+}
+
+// 显示信息提示
+function showTrendInfo(message) {
+    const toast = createToast(message, 'info');
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+}
+
+// 创建Toast提示
+function createToast(message, type) {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 6px;
+        color: white;
+        z-index: 9999;
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        animation: slideInRight 0.3s ease-out;
+    `;
+    
+    if (type === 'success') {
+        toast.style.backgroundColor = '#28a745';
+        toast.innerHTML = `<i class="bi bi-check-circle-fill"></i> ${message}`;
+    } else if (type === 'info') {
+        toast.style.backgroundColor = '#17a2b8';
+        toast.innerHTML = `<i class="bi bi-info-circle-fill"></i> ${message}`;
+    } else {
+        toast.style.backgroundColor = '#dc3545';
+        toast.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> ${message}`;
+    }
+    
+    return toast;
+}
+
+// 添加CSS动画
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    .spin {
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+`;
+document.head.appendChild(style);
+
+// 页面卸载时清理轮询
+window.addEventListener('beforeunload', function() {
+    stopTrendPolling();
+});
+</script>
+{% endblock %}

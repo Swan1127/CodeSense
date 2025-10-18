@@ -1,0 +1,71 @@
+/* 导航栏修复样式 - 强制横向排列 */
+
+/* 最高优先级CSS - !important属性 */
+.navbar-nav {
+    display: flex !important; /* 强制显示 */
+    flex-direction: row !important; /* 强制横向排列 */
+    flex-wrap: wrap !important; /* 允许换行 */
+    justify-content: center !important;
+    gap: 10px !important;
+    width: auto !important;
+    padding: 5px !important;
+}
+
+/* 列表项样式 */
+.navbar-nav > li {
+    display: inline-block !important; /* 强制列表项内联显示 */
+    float: left !important; /* 旧浏览器兼容 */
+    margin: 0 5px !important;
+    padding: 2px !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+}
+
+/* 链接样式 */
+.navbar-link {
+    white-space: nowrap !important; /* 防止文本换行 */
+    display: inline-block !important;
+    text-align: center !important;
+}
+
+/* 覆盖Bootstrap的导航栏样式 */
+.navbar-nav.flex-column {
+    flex-direction: row !important;
+}
+
+/* 覆盖所有可能的媒体查询 */
+@media all {
+    .navbar-nav {
+        flex-direction: row !important;
+        display: flex !important;
+    }
+    
+    .navbar-nav > li {
+        display: inline-block !important;
+        float: left !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .navbar-container {
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 16px !important;
+        padding: 10px 0 !important;
+    }
+    
+    .navbar-nav {
+        margin: 10px 0 !important;
+        padding: 0 !important;
+        flex-direction: row !important; /* 即使在小屏幕上也保持横向 */
+        align-items: center !important;
+        width: 100% !important;
+        justify-content: center !important;
+    }
+    
+    .navbar-user {
+        margin-top: 10px !important;
+        justify-content: center !important;
+        width: 100% !important;
+    }
+} 

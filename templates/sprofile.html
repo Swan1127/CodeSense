@@ -1,0 +1,237 @@
+{% extends "layout.html" %}
+
+{% block title %}用户资料 - {{ user.full_name or user.username }} - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .profile-container {
+        padding: 2rem 0;
+    }
+    
+    .profile-header {
+        background-color: #fff;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        padding: 2rem;
+        margin-bottom: 2rem;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .profile-avatar {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background-color: var(--primary-color);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+    
+    .profile-name {
+        font-size: 1.75rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    
+    .profile-id {
+        color: #6b7280;
+        margin-bottom: 1.5rem;
+    }
+    
+    .profile-meta {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 2rem;
+        margin-top: 1rem;
+    }
+    
+    .meta-item {
+        text-align: center;
+    }
+    
+    .meta-value {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+    
+    .meta-label {
+        color: #6b7280;
+        font-size: 0.875rem;
+    }
+    
+    .profile-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.375rem 0.75rem;
+        background-color: #e0f2fe;
+        color: #0369a1;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    
+    .profile-badge.admin {
+        background-color: #fee2e2;
+        color: #b91c1c;
+    }
+    
+    .profile-card {
+        background-color: #fff;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+    }
+    
+    .profile-card-header {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+        font-size: 1.25rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+    }
+    
+    .profile-card-header i {
+        margin-right: 0.75rem;
+        color: var(--primary-color);
+    }
+    
+    .profile-card-body {
+        padding: 1.5rem;
+    }
+    
+    .profile-detail-table {
+        width: 100%;
+    }
+    
+    .profile-detail-table td,
+    .profile-detail-table th {
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    
+    .profile-detail-table th {
+        font-weight: 500;
+        color: #6b7280;
+        width: 30%;
+    }
+    
+    .back-button {
+        margin-bottom: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container profile-container">
+    <div class="back-button">
+        <a href="{{ url_for('users.manage_users') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-1"></i> 返回用户列表
+        </a>
+    </div>
+    
+    <div class="profile-header">
+        <div class="profile-avatar">
+            <i class="bi bi-person"></i>
+        </div>
+        <h1 class="profile-name">{{ user.full_name }}</h1>
+        <p class="profile-id">{{ user.username }} | {{ user.student_id }}</p>
+        
+        <div class="profile-badge {% if user.usertype == '管理员' %}admin{% endif %}">
+            {{ user.usertype }}
+        </div>
+        
+        <div class="profile-meta">
+            <div class="meta-item">
+                <div class="meta-value">{{ user.submit_count }}</div>
+                <div class="meta-label">提交次数</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-value">{{ user.user_ascore }}</div>
+                <div class="meta-label">平均得分</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-value">{{ user.user_tscore }}</div>
+                <div class="meta-label">总分</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="profile-card">
+                <div class="profile-card-header">
+                    <i class="bi bi-person-vcard"></i> 基本信息
+                </div>
+                <div class="profile-card-body">
+                    <table class="profile-detail-table">
+                        <tr>
+                            <th>用户名</th>
+                            <td>{{ user.username }}</td>
+                        </tr>
+                        <tr>
+                            <th>学号</th>
+                            <td>{{ user.student_id }}</td>
+                        </tr>
+                        <tr>
+                            <th>姓名</th>
+                            <td>{{ user.full_name }}</td>
+                        </tr>
+                        <tr>
+                            <th>班级</th>
+                            <td>{{ user.class_name or '未设置' }}</td>
+                        </tr>
+                        <tr>
+                            <th>用户类型</th>
+                            <td>{{ user.usertype }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="profile-card">
+                <div class="profile-card-header">
+                    <i class="bi bi-graph-up"></i> 学习统计
+                </div>
+                <div class="profile-card-body">
+                    <table class="profile-detail-table">
+                        <tr>
+                            <th>提交次数</th>
+                            <td>{{ user.submit_count }}</td>
+                        </tr>
+                        <tr>
+                            <th>平均分数</th>
+                            <td>{{ user.user_ascore }}</td>
+                        </tr>
+                        <tr>
+                            <th>总分</th>
+                            <td>{{ user.user_tscore }}</td>
+                        </tr>
+                        <tr>
+                            <th>最近提交</th>
+                            <td>{{ user.last_submit_time or '暂无数据' }}</td>
+                        </tr>
+                    </table>
+                    
+                    <div class="text-center mt-4">
+                        <a href="{{ url_for('users.view_submissions', student_id=user.student_id) }}" class="btn btn-primary">
+                            <i class="bi bi-list-ul me-1"></i> 查看提交记录
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

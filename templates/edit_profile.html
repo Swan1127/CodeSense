@@ -1,0 +1,132 @@
+{% extends "layout.html" %}
+
+{% block title %}编辑资料 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .edit-profile-container {
+        max-width: 600px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background-color: #fff;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    .edit-profile-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .edit-profile-header h1 {
+        font-size: 1.75rem;
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group label {
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        transition: border-color 0.2s ease;
+    }
+    
+    .form-control:focus {
+        border-color: var(--primary-color);
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    }
+    
+    .btn-submit {
+        width: 100%;
+        padding: 0.75rem;
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 0.375rem;
+        font-weight: 500;
+        transition: background-color 0.2s ease;
+    }
+    
+    .btn-submit:hover {
+        background-color: #0056b3;
+    }
+    
+    .back-link {
+        display: inline-block;
+        margin-top: 1rem;
+        color: #6b7280;
+        text-decoration: none;
+        transition: color 0.2s ease;
+    }
+    
+    .back-link:hover {
+        color: var(--primary-color);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="edit-profile-container">
+    <div class="edit-profile-header">
+        <h1>编辑个人资料</h1>
+    </div>
+    
+    <form method="POST">
+        {{ form.csrf_token }}
+        
+        <div class="form-group">
+            {{ form.username.label }}
+            {{ form.username(class="form-control") }}
+            {% if form.username.errors %}
+                <div class="text-danger">
+                    {% for error in form.username.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            {{ form.full_name.label }}
+            {{ form.full_name(class="form-control") }}
+            {% if form.full_name.errors %}
+                <div class="text-danger">
+                    {% for error in form.full_name.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            {{ form.class_name.label }}
+            {{ form.class_name(class="form-control") }}
+            {% if form.class_name.errors %}
+                <div class="text-danger">
+                    {% for error in form.class_name.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        
+        {{ form.submit(class="btn-submit") }}
+    </form>
+    
+    <a href="{{ url_for('users.view_submissions') }}" class="back-link">
+        <i class="bi bi-arrow-left"></i> 返回个人中心
+    </a>
+</div>
+{% endblock %} 

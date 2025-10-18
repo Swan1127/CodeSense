@@ -1,0 +1,238 @@
+{% extends "layout.html" %}
+
+{% block title %}我的作业 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card {
+        border: none;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    
+    .table {
+        margin-bottom: 0;
+    }
+    
+    .table th {
+        font-weight: 600;
+        color: #374151;
+        background-color: #f9fafb;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .table td {
+        padding: 0.75rem 1rem;
+        vertical-align: middle;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .table tbody tr:hover {
+        background-color: #f9fafb;
+    }
+    
+    .table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .table a {
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 500;
+    }
+    
+    .table a:hover {
+        color: var(--primary-hover);
+        text-decoration: underline;
+    }
+    
+    .badge {
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.25rem 0.5rem;
+        border-radius: 9999px;
+    }
+    
+    .badge-success {
+        background-color: #ecfdf5;
+        color: #10b981;
+    }
+    
+    .badge-warning {
+        background-color: #fffbeb;
+        color: #f59e0b;
+    }
+    
+    .badge-danger {
+        background-color: #fef2f2;
+        color: #ef4444;
+    }
+    
+    .pagination {
+        display: flex;
+        justify-content: center;
+        margin-top: 1.5rem;
+        gap: 0.5rem;
+    }
+    
+    .page-link {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.375rem;
+        border: 1px solid #e5e7eb;
+        color: var(--primary-color);
+        background-color: #fff;
+        font-size: 0.875rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.15s ease;
+    }
+    
+    .page-link:hover {
+        background-color: #f9fafb;
+        border-color: #d1d5db;
+        z-index: 2;
+    }
+    
+    .page-link.active {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+        color: #fff;
+    }
+    
+    .page-info {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.375rem;
+        background-color: #f3f4f6;
+        color: #6b7280;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="page-title">我的作业</h1>
+            <p class="page-subtitle">查看和完成所有编程作业，提升你的编程能力</p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">
+            <i class="bi bi-journal-code"></i> 作业列表
+        </div>
+    </div>
+    <div class="card-body">
+        {% if assignments %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th width="80">ID</th>
+                        <th>标题</th>
+                        <th width="120">提交次数</th>
+                        <th width="120">平均分</th>
+                        <th width="120">个人最高分</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for assignment in assignments %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}">
+                                {{ assignment.id }}
+                            </a>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}">
+                                {{ assignment.title }}
+                            </a>
+                        </td>
+                        <td>{{ assignment.count }}</td>
+                        <td>{{ assignment.average_score }}</td>
+                        <td>
+                            {% if assignment.max_student_score %}
+                                <span class="badge {% if assignment.max_student_score >= 4.0 %}badge-success{% elif assignment.max_student_score >= 3.0 %}badge-warning{% else %}badge-danger{% endif %}">
+                                    {{ assignment.max_student_score }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted">未提交</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 分页 -->
+        <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if not assignments.has_prev %}disabled{% endif %}" style="list-style-type: none;">
+                    <a href="{{ url_for('assignments.student_assignments', page=assignments.prev_num) }}" class="page-link">
+                        <i class="bi bi-chevron-left"></i> 上一页
+                    </a>
+                </li>
+                {% for p in assignments.iter_pages() %}
+                    {% if p %}
+                        <li class="page-item {% if p == assignments.page %}active{% endif %}" style="list-style-type: none;">
+                            <a href="{{ url_for('assignments.student_assignments', page=p) }}" class="page-link">{{ p }}</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled" style="list-style-type: none;"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+                <li class="page-item {% if not assignments.has_next %}disabled{% endif %}" style="list-style-type: none;">
+                    <a href="{{ url_for('assignments.student_assignments', page=assignments.next_num) }}" class="page-link">
+                        下一页
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i> 当前没有可用的作业。
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-lightning-charge me-2"></i> 刷题技巧</h5>
+                <p class="text-muted">持续练习是提高编程能力的关键。每天解决一道题目，你的编程能力将会稳步提升。</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-stars me-2"></i> 评分标准</h5>
+                <p class="text-muted">系统会从算法能力、代码风格、功能实现、效率优化和代码可读性五个维度进行评估。</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-question-circle me-2"></i> 需要帮助？</h5>
+                <p class="text-muted">如果你在解题过程中遇到困难，可以查看<a href="{{ url_for('main.help') }}">使用帮助</a>或联系教师获取支持。</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,410 @@
+{% extends "layout.html" %}
+
+{% block title %}API文档 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .api-section {
+        padding: 2rem;
+        background-color: #fff;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        margin-bottom: 2rem;
+    }
+    
+    .api-section h2 {
+        color: var(--primary-color);
+        margin-bottom: 1.5rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+    }
+    
+    .api-section h2 i {
+        margin-right: 10px;
+        font-size: 1.25rem;
+    }
+    
+    .api-section h3 {
+        color: #374151;
+        margin: 1.5rem 0 1rem 0;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+    }
+    
+    .api-section h3 i {
+        margin-right: 10px;
+    }
+    
+    .api-section p {
+        margin-bottom: 1rem;
+        line-height: 1.7;
+    }
+    
+    .endpoint-card {
+        padding: 1.5rem;
+        background-color: #f9fafb;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        margin-bottom: 1.5rem;
+    }
+    
+    .endpoint-card h4 {
+        color: var(--primary-color);
+        margin-bottom: 1rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+    }
+    
+    .endpoint-method {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        margin-right: 10px;
+    }
+    
+    .method-get {
+        background-color: #10b981;
+        color: white;
+    }
+    
+    .method-post {
+        background-color: #3b82f6;
+        color: white;
+    }
+    
+    .method-put {
+        background-color: #f59e0b;
+        color: white;
+    }
+    
+    .method-delete {
+        background-color: #ef4444;
+        color: white;
+    }
+    
+    .endpoint-path {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.9rem;
+        color: #374151;
+    }
+    
+    .endpoint-description {
+        margin: 0.75rem 0;
+        color: #4b5563;
+    }
+    
+    .code-example {
+        background-color: #282c34;
+        color: #abb2bf;
+        padding: 1.25rem;
+        border-radius: 0.5rem;
+        margin: 1rem 0;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        overflow-x: auto;
+    }
+    
+    .response-example {
+        background-color: #f9fafb;
+        color: #111827;
+        padding: 1.25rem;
+        border-radius: 0.5rem;
+        margin: 1rem 0;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        overflow-x: auto;
+        border: 1px solid #e5e7eb;
+    }
+    
+    .parameter-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+    }
+    
+    .parameter-table th {
+        text-align: left;
+        padding: 0.75rem;
+        background-color: #f3f4f6;
+        font-weight: 600;
+        color: #374151;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    
+    .parameter-table td {
+        padding: 0.75rem;
+        border-bottom: 1px solid #e5e7eb;
+        color: #4b5563;
+    }
+    
+    .required-badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background-color: #ef4444;
+        color: white;
+        margin-left: 0.5rem;
+    }
+    
+    .optional-badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background-color: #9ca3af;
+        color: white;
+        margin-left: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">API文档</h1>
+    <p class="page-subtitle">学生程序设计能力评价系统API接口说明</p>
+</div>
+
+<div class="api-section">
+    <h2><i class="bi bi-journal-code"></i>API概述</h2>
+    <p>学生程序设计能力评价系统提供了一组RESTful API，允许开发者通过编程方式访问系统功能。所有API都返回JSON格式的数据，使用标准的HTTP状态码表示请求状态。</p>
+    
+    <h3><i class="bi bi-shield-lock"></i>认证</h3>
+    <p>大多数API需要用户身份验证才能访问。认证通过基于会话的Cookie进行，这意味着您需要先通过网页登录系统，然后才能使用API。</p>
+    
+    <h3><i class="bi bi-arrow-return-right"></i>响应格式</h3>
+    <p>所有API响应都有以下统一的JSON格式：</p>
+    <div class="code-example">
+<pre>{
+  "success": true,          // 操作是否成功
+  "message": "获取成功",    // 操作消息
+  "data": {                 // 返回的数据
+    // 具体数据
+  }
+}</pre>
+    </div>
+</div>
+
+<div class="api-section">
+    <h2><i class="bi bi-list"></i>作业相关API</h2>
+    
+    <div class="endpoint-card">
+        <h4>
+            <span class="endpoint-method method-get">GET</span>
+            <span class="endpoint-path">/api/assignments</span>
+        </h4>
+        <p class="endpoint-description">获取所有作业列表</p>
+        
+        <h5>响应示例</h5>
+        <div class="response-example">
+<pre>{
+  "success": true,
+  "message": "获取作业列表成功",
+  "data": {
+    "assignments": [
+      {
+        "id": 1,
+        "title": "冒泡排序算法",
+        "description": "实现一个冒泡排序算法",
+        "average_score": 3.5,
+        "created_time": "2023-05-10T14:30:00"
+      },
+      // ... 更多作业
+    ]
+  }
+}</pre>
+        </div>
+    </div>
+    
+    <div class="endpoint-card">
+        <h4>
+            <span class="endpoint-method method-get">GET</span>
+            <span class="endpoint-path">/api/assignments/{assignment_id}</span>
+        </h4>
+        <p class="endpoint-description">获取指定作业的详细信息</p>
+        
+        <h5>参数</h5>
+        <table class="parameter-table">
+            <thead>
+                <tr>
+                    <th>参数名</th>
+                    <th>参数位置</th>
+                    <th>类型</th>
+                    <th>描述</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>assignment_id<span class="required-badge">必填</span></td>
+                    <td>URL</td>
+                    <td>整数</td>
+                    <td>作业ID</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h5>响应示例</h5>
+        <div class="response-example">
+<pre>{
+  "success": true,
+  "message": "获取作业详情成功",
+  "data": {
+    "assignment": {
+      "id": 1,
+      "title": "冒泡排序算法",
+      "description": "实现一个冒泡排序算法，对整数数组进行排序。",
+      "average_score": 3.5,
+      "count": 25,
+      "total_score": 87.5,
+      "created_time": "2023-05-10T14:30:00"
+    }
+  }
+}</pre>
+        </div>
+    </div>
+</div>
+
+<div class="api-section">
+    <h2><i class="bi bi-file-earmark-code"></i>提交相关API</h2>
+    
+    <div class="endpoint-card">
+        <h4>
+            <span class="endpoint-method method-get">GET</span>
+            <span class="endpoint-path">/api/submissions/{student_id}</span>
+        </h4>
+        <p class="endpoint-description">获取学生的提交记录（需要身份验证，只能获取自己或管理员可获取所有）</p>
+        
+        <h5>参数</h5>
+        <table class="parameter-table">
+            <thead>
+                <tr>
+                    <th>参数名</th>
+                    <th>参数位置</th>
+                    <th>类型</th>
+                    <th>描述</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>student_id<span class="required-badge">必填</span></td>
+                    <td>URL</td>
+                    <td>字符串</td>
+                    <td>学生ID</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h5>响应示例</h5>
+        <div class="response-example">
+<pre>{
+  "success": true,
+  "message": "获取提交记录成功",
+  "data": {
+    "submissions": [
+      {
+        "id": 101,
+        "student_id": "2021001",
+        "assignment_id": 1,
+        "score": 4,
+        "language": "cpp",
+        "submitted_at": "2023-05-15T10:30:00"
+      },
+      // ... 更多提交记录
+    ]
+  }
+}</pre>
+        </div>
+    </div>
+</div>
+
+<div class="api-section">
+    <h2><i class="bi bi-people"></i>用户相关API</h2>
+    
+    <div class="endpoint-card">
+        <h4>
+            <span class="endpoint-method method-get">GET</span>
+            <span class="endpoint-path">/api/users</span>
+        </h4>
+        <p class="endpoint-description">获取所有用户列表（仅管理员可用）</p>
+        
+        <h5>响应示例</h5>
+        <div class="response-example">
+<pre>{
+  "success": true,
+  "message": "获取用户列表成功",
+  "data": {
+    "users": [
+      {
+        "student_id": "2021001",
+        "username": "student1",
+        "full_name": "张三",
+        "class_name": "计算机科学1班",
+        "usertype": "学生",
+        "submit_count": 15,
+        "user_ascore": 3.8
+      },
+      // ... 更多用户
+    ]
+  }
+}</pre>
+        </div>
+    </div>
+</div>
+
+<div class="api-section">
+    <h2><i class="bi bi-info-circle"></i>使用示例</h2>
+    
+    <h3><i class="bi bi-code-slash"></i>JavaScript示例</h3>
+    <div class="code-example">
+<pre>// 获取所有作业
+async function getAssignments() {
+  try {
+    const response = await fetch('/api/assignments');
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log('作业列表:', result.data.assignments);
+      return result.data.assignments;
+    } else {
+      console.error('获取作业失败:', result.message);
+      return [];
+    }
+  } catch (error) {
+    console.error('API请求错误:', error);
+    return [];
+  }
+}</pre>
+    </div>
+    
+    <h3><i class="bi bi-code-slash"></i>Python示例</h3>
+    <div class="code-example">
+<pre>import requests
+
+# 获取学生提交记录
+def get_student_submissions(student_id):
+    try:
+        # 注意：需要包含会话Cookie进行身份验证
+        response = requests.get(f'http://example.com/api/submissions/{student_id}')
+        result = response.json()
+        
+        if result['success']:
+            print(f"学生 {student_id} 的提交记录:", result['data']['submissions'])
+            return result['data']['submissions']
+        else:
+            print("获取提交记录失败:", result['message'])
+            return []
+    except Exception as e:
+        print("API请求错误:", str(e))
+        return []</pre>
+    </div>
+</div>
+{% endblock %} 

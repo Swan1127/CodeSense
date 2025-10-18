@@ -1,0 +1,278 @@
+{% extends "layout.html" %}
+
+{% block title %}班级对比分析 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .comparison-header {
+        background: linear-gradient(135deg, var(--primary-color), #667eea);
+        color: white;
+        border-radius: 0.5rem;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .comparison-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .class-comparison-card {
+        background: white;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .class-comparison-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: var(--primary-color);
+    }
+    
+    .class-name {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: var(--primary-color);
+    }
+    
+    .metric-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .metric-row:last-child {
+        border-bottom: none;
+    }
+    
+    .metric-label {
+        font-weight: 500;
+    }
+    
+    .metric-value {
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+    
+    .progress-comparison {
+        margin-top: 1rem;
+    }
+    
+    .progress-item {
+        margin-bottom: 0.5rem;
+    }
+    
+    .progress-label {
+        font-size: 0.875rem;
+        margin-bottom: 0.25rem;
+    }
+    
+    .progress {
+        height: 0.5rem;
+        border-radius: 0.25rem;
+    }
+    
+    .chart-container {
+        background: white;
+        border-radius: 0.5rem;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    .ranking-table {
+        background: white;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    .rank-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        font-weight: 600;
+        color: white;
+    }
+    
+    .rank-1 { background: #ffd700; }
+    .rank-2 { background: #c0c0c0; }
+    .rank-3 { background: #cd7f32; }
+    .rank-other { background: #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="comparison-header">
+        <div class="row">
+            <div class="col-md-8">
+                <h1>班级对比分析</h1>
+                <p class="mb-0">对比各班级的学习情况和表现</p>
+            </div>
+            <div class="col-md-4 text-right">
+                <a href="{{ url_for('classes.class_list') }}" class="btn btn-outline-light">
+                    <i class="bi bi-arrow-left"></i> 返回班级管理
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 班级对比卡片 -->
+    <div class="comparison-grid">
+        {% for item in comparison_data %}
+        <div class="class-comparison-card">
+            <div class="class-name">{{ item.class.name }}</div>
+            
+            <div class="metric-row">
+                <div class="metric-label">学生数量</div>
+                <div class="metric-value">{{ item.stats.student_count }}人</div>
+            </div>
+            
+            <div class="metric-row">
+                <div class="metric-label">平均分</div>
+                <div class="metric-value">{{ "%.1f"|format(item.stats.avg_score) }}分</div>
+            </div>
+            
+            <div class="metric-row">
+                <div class="metric-label">总提交数</div>
+                <div class="metric-value">{{ item.stats.total_submissions }}次</div>
+            </div>
+            
+            <div class="metric-row">
+                <div class="metric-label">活跃学生</div>
+                <div class="metric-value">{{ item.stats.active_students }}人</div>
+            </div>
+            
+            <div class="metric-row">
+                <div class="metric-label">参与率</div>
+                <div class="metric-value">
+                    {{ "%.1f"|format(item.stats.active_students / item.stats.student_count * 100) if item.stats.student_count > 0 else 0 }}%
+                </div>
+            </div>
+            
+            <div class="progress-comparison">
+                <h6>作业完成情况</h6>
+                {% for score_item in item.assignment_scores[:5] %}
+                <div class="progress-item">
+                    <div class="progress-label">{{ score_item.assignment[:20] }}{{ '...' if score_item.assignment|length > 20 else '' }}</div>
+                    <div class="progress">
+                        <div class="progress-bar" 
+                             style="width: {{ (score_item.avg_score / 5 * 100) if score_item.avg_score > 0 else 0 }}%"
+                             role="progressbar">
+                        </div>
+                    </div>
+                    <small class="text-muted">平均: {{ score_item.avg_score }}分</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- 综合排名表 -->
+    <div class="ranking-table">
+        <h4>班级综合排名</h4>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>排名</th>
+                        <th>班级</th>
+                        <th>学生数</th>
+                        <th>平均分</th>
+                        <th>总提交数</th>
+                        <th>活跃学生</th>
+                        <th>参与率</th>
+                        <th>综合评分</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set ns = namespace() %}
+                    {% set ns.ranking = comparison_data|sort(attribute='stats.avg_score', reverse=true) %}
+                    {% for item in ns.ranking %}
+                    <tr>
+                        <td>
+                            {% set rank = loop.index %}
+                            <span class="rank-badge {% if rank == 1 %}rank-1{% elif rank == 2 %}rank-2{% elif rank == 3 %}rank-3{% else %}rank-other{% endif %}">
+                                {{ rank }}
+                            </span>
+                        </td>
+                        <td>
+                            <strong>{{ item.class.name }}</strong>
+                            <br>
+                            <small class="text-muted">{{ item.class.major }}</small>
+                        </td>
+                        <td>{{ item.stats.student_count }}</td>
+                        <td>
+                            <span class="badge {% if item.stats.avg_score >= 4.0 %}badge-success{% elif item.stats.avg_score >= 3.0 %}badge-warning{% else %}badge-secondary{% endif %}">
+                                {{ "%.1f"|format(item.stats.avg_score) }}
+                            </span>
+                        </td>
+                        <td>{{ item.stats.total_submissions }}</td>
+                        <td>{{ item.stats.active_students }}</td>
+                        <td>{{ "%.1f"|format(item.stats.active_students / item.stats.student_count * 100) if item.stats.student_count > 0 else 0 }}%</td>
+                        <td>
+                            {% set comprehensive_score = (item.stats.avg_score * 0.4 + (item.stats.active_students / item.stats.student_count * 100 * 0.05) + (item.stats.total_submissions / item.stats.student_count * 0.1)) if item.stats.student_count > 0 else 0 %}
+                            <span class="badge badge-primary">{{ "%.1f"|format(comprehensive_score) }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- 数据分析说明 -->
+    <div class="row mt-4">
+        <div class="col-md-8">
+            <div class="alert alert-info">
+                <h6><i class="bi bi-info-circle"></i> 数据说明</h6>
+                <ul class="mb-0">
+                    <li><strong>平均分</strong>：班级所有学生的平均得分</li>
+                    <li><strong>活跃学生</strong>：至少提交过一次作业的学生数量</li>
+                    <li><strong>参与率</strong>：活跃学生占班级总人数的比例</li>
+                    <li><strong>综合评分</strong>：基于平均分(40%)、参与率(50%)和人均提交数(10%)的综合指标</li>
+                </ul>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6>快速操作</h6>
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('classes.sync_classes') }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-arrow-repeat"></i> 更新数据
+                        </a>
+                        <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-sm btn-outline-success">
+                            <i class="bi bi-plus"></i> 添加作业
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 可以添加图表库来显示更丰富的对比数据
+console.log('班级对比页面加载完成');
+</script>
+{% endblock %}

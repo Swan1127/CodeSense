@@ -1,0 +1,212 @@
+{% extends "layout.html" %}
+
+{% block title %}班级管理 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .class-card {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .class-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+    
+    .class-header {
+        display: flex;
+        justify-content: between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    
+    .class-name {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+    
+    .class-meta {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .meta-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 0.25rem;
+        flex: 1;
+    }
+    
+    .meta-value {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+    
+    .meta-label {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+    
+    .top-students {
+        margin-top: 1rem;
+    }
+    
+    .student-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .student-item:last-child {
+        border-bottom: none;
+    }
+    
+    .stats-overview {
+        background: white;
+        border-radius: 0.5rem;
+        padding: 2rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+    }
+    
+    .btn-group {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>班级管理</h1>
+                <div>
+                    <a href="{{ url_for('classes.class_comparison') }}" class="btn btn-info">
+                        <i class="bi bi-bar-chart"></i> 班级对比
+                    </a>
+                    <form method="POST" action="{{ url_for('classes.sync_classes') }}" style="display: inline;">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-arrow-repeat"></i> 同步数据
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 统计概览 -->
+    <div class="stats-overview">
+        <h3>概览统计</h3>
+        <div class="row">
+            <div class="col-md-3">
+                <div class="meta-item">
+                    <div class="meta-value">{{ total_classes }}</div>
+                    <div class="meta-label">总班级数</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="meta-item">
+                    <div class="meta-value">{{ class_data|selectattr('stats.student_count', 'gt', 0)|sum(attribute='stats.student_count') }}</div>
+                    <div class="meta-label">总学生数</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="meta-item">
+                    <div class="meta-value">{{ class_data|selectattr('stats.total_submissions', 'gt', 0)|sum(attribute='stats.total_submissions') }}</div>
+                    <div class="meta-label">总提交数</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="meta-item">
+                    <div class="meta-value">{{ "%.1f"|format((class_data|selectattr('stats.student_count', 'gt', 0)|sum(attribute='stats.avg_score'*'stats.student_count'))/(class_data|selectattr('stats.student_count', 'gt', 0)|sum(attribute='stats.student_count')) if class_data|selectattr('stats.student_count', 'gt', 0)|sum(attribute='stats.student_count') > 0 else 0) }}</div>
+                    <div class="meta-label">整体平均分</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 班级列表 -->
+    <div class="row">
+        {% for item in class_data %}
+        <div class="col-lg-6">
+            <div class="class-card">
+                <div class="class-header">
+                    <div class="class-name">{{ item.class.name }}</div>
+                    <div class="btn-group">
+                        <a href="{{ url_for('classes.class_detail', class_id=item.class.id) }}" class="btn btn-sm btn-outline-primary">
+                            详情
+                        </a>
+                        <a href="{{ url_for('classes.edit_class', class_id=item.class.id) }}" class="btn btn-sm btn-outline-secondary">
+                            编辑
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="class-meta">
+                    <div class="meta-item">
+                        <div class="meta-value">{{ item.stats.student_count }}</div>
+                        <div class="meta-label">学生数</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-value">{{ "%.1f"|format(item.stats.avg_score) }}</div>
+                        <div class="meta-label">平均分</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-value">{{ item.stats.total_submissions }}</div>
+                        <div class="meta-label">提交数</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-value">{{ item.stats.active_students }}</div>
+                        <div class="meta-label">活跃学生</div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>年级:</strong> {{ item.class.grade or '未设置' }}</p>
+                        <p class="mb-1"><strong>专业:</strong> {{ item.class.major or '未设置' }}</p>
+                        <p class="mb-1"><strong>班主任:</strong> {{ item.class.teacher_name or '未分配' }}</p>
+                    </div>
+                    
+                    {% if item.top_students %}
+                    <div class="col-md-6">
+                        <div class="top-students">
+                            <h6>前3名学生:</h6>
+                            {% for student in item.top_students %}
+                            <div class="student-item">
+                                <span>{{ student.full_name }}</span>
+                                <span class="badge badge-primary">{{ "%.1f"|format(student.user_ascore) }}分</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 可以添加一些图表展示
+</script>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% macro code_editor(name, value="", height=500) %}
+<div class="cpp-editor" id="editor-{{ name }}">
+    <div class="editor-toolbar">
+        <div class="editor-toolbar-left">
+            <div class="editor-language">
+                <i class="bi bi-filetype-cpp"></i> C++
+            </div>
+        </div>
+        <div class="editor-toolbar-right">
+            <button type="button" class="editor-btn" data-action="format" title="格式化代码">
+                <i class="bi bi-text-indent-left"></i>
+            </button>
+            <button type="button" class="editor-btn" data-action="fullscreen" title="全屏编辑">
+                <i class="bi bi-fullscreen"></i>
+            </button>
+        </div>
+    </div>
+    
+    <div class="editor-container" data-height="{{ height }}">
+        <textarea id="{{ name }}" name="{{ name }}" class="form-control editor-textarea" 
+                  placeholder="在此输入C++代码..." 
+                  autocomplete="off" spellcheck="false">{{ value }}</textarea>
+        <div id="monaco-{{ name }}" class="monaco-container"></div>
+        <div class="editor-loading">
+            <div class="spinner"></div>
+            <div class="loading-text">加载编辑器中...</div>
+        </div>
+    </div>
+    
+    <div class="editor-statusbar">
+        <div class="editor-stats">
+            <span class="cursor-position">行 <span class="line-number">1</span>, 列 <span class="column-number">1</span></span>
+            <span class="char-stats">总计: <span class="char-count">0</span> 字符</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 设置编辑器高度
+        const editorElement = document.getElementById('editor-{{ name }}');
+        if (editorElement) {
+            const container = editorElement.querySelector('.editor-container');
+            const height = container.getAttribute('data-height');
+            if (container && height) {
+                container.style.height = height + 'px';
+            }
+        }
+        
+        if (typeof initEditor === 'function') {
+            initEditor('{{ name }}');
+        } else {
+            console.warn('编辑器初始化函数未找到，设置延迟加载');
+            const checkInterval = setInterval(function() {
+                if (typeof initEditor === 'function') {
+                    initEditor('{{ name }}');
+                    clearInterval(checkInterval);
+                }
+            }, 500);
+            
+            setTimeout(function() {
+                clearInterval(checkInterval);
+                if (document.querySelector('.editor-loading')) {
+                    document.querySelector('.editor-loading').style.display = 'none';
+                }
+                console.error('编辑器初始化函数未能加载，使用基本文本编辑器');
+            }, 5000);
+        }
+    });
+</script>
+{% endmacro %} 

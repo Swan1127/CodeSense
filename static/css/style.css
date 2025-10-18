@@ -1,0 +1,99 @@
+/* 
+ * 学生程序设计能力评价系统
+ * 全局样式表
+ */
+
+/* 隐藏列表标记 */
+li::marker {
+    display: none;
+}
+
+/* 移除导航和控件列表的小黑点，但保留内容列表的标记 */
+.navbar-nav,
+.dropdown-menu,
+.pagination,
+.nav,
+.breadcrumb,
+.list-unstyled {
+    list-style-type: none;
+    padding-left: 0;
+    margin-left: 0;
+}
+
+/* 确保所有分页列表项没有标记 */
+.page-item {
+    list-style: none !important;
+}
+
+/* 通用无标记列表样式 */
+.no-bullet {
+    list-style-type: none;
+    padding-left: 0;
+    margin-left: 0;
+}
+
+/* 内容列表样式 - 这些列表需要显示标记 */
+.content-list {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+/* 内容列表中的列表项 */
+.content-list li {
+    margin-bottom: 0.5rem;
+}
+
+/* 确保内容类列表有正确的缩进和标记 */
+.card-body ul:not(.pagination):not(.nav):not(.navbar-nav):not(.dropdown-menu):not(.list-unstyled) {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.card-body ol {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+/* 页面标题样式 */
+.page-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: #1f2937;
+}
+
+.page-subtitle {
+    color: #6b7280;
+    margin-bottom: 1.5rem;
+}
+
+/* 卡片标题样式 */
+.card-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+}
+
+.card-title i {
+    margin-right: 0.5rem;
+}
+
+/* 表格样式优化 */
+.table th {
+    font-weight: 600;
+    color: #374151;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .d-flex {
+        flex-wrap: wrap;
+    }
+    
+    .btn-group {
+        margin-bottom: 0.5rem;
+    }
+}
+

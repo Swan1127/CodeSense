@@ -1,0 +1,437 @@
+{% extends "layout.html" %}
+
+{% block title %}能力趋势分析监控 - 管理员面板{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 15px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+    }
+    
+    .status-badge {
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .status-pending { background: #6c757d; color: white; }
+    .status-processing { 
+        background: #ffc107; 
+        color: #000; 
+        animation: pulse 2s infinite;
+    }
+    .status-completed { background: #28a745; color: white; }
+    .status-failed { background: #dc3545; color: white; }
+    
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.7; }
+        100% { opacity: 1; }
+    }
+    
+    .monitor-card {
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+    
+    .monitor-card:hover {
+        box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    }
+    
+    .refresh-btn {
+        border-radius: 25px;
+        padding: 0.5rem 1.5rem;
+        background: linear-gradient(45deg, #28a745, #20c997);
+        border: none;
+        color: white;
+        transition: all 0.3s ease;
+    }
+    
+    .refresh-btn:hover {
+        background: linear-gradient(45deg, #20c997, #28a745);
+        transform: translateY(-2px);
+    }
+    
+    .batch-btn {
+        border-radius: 25px;
+        padding: 0.5rem 1.5rem;
+        background: linear-gradient(45deg, #007bff, #6f42c1);
+        border: none;
+        color: white;
+        transition: all 0.3s ease;
+    }
+    
+    .batch-btn:hover {
+        background: linear-gradient(45deg, #6f42c1, #007bff);
+        transform: translateY(-2px);
+    }
+    
+    .recent-table {
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    
+    .recent-table th {
+        background: #f8f9fa;
+        border: none;
+        font-weight: 600;
+        color: #495057;
+    }
+    
+    .recent-table td {
+        border: none;
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="bi bi-cpu"></i> 能力趋势分析监控</h2>
+            <p class="text-muted mb-0">监控和管理学生能力趋势分析任务</p>
+        </div>
+        <div>
+            <button class="btn refresh-btn me-2" onclick="refreshStatistics()">
+                <i class="bi bi-arrow-clockwise"></i> 刷新数据
+            </button>
+            <button class="btn batch-btn" onclick="startBatchUpdate()">
+                <i class="bi bi-lightning-charge"></i> 批量更新
+            </button>
+        </div>
+    </div>
+    
+    <!-- 统计卡片 -->
+    <div class="row mb-4" id="stats-container">
+        <div class="col-md-3">
+            <div class="card stats-card text-center">
+                <div class="card-body">
+                    <i class="bi bi-hourglass-split" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                    <h3 id="pending-count">-</h3>
+                    <p class="mb-0">等待中</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card text-center" style="background: linear-gradient(135deg, #ffc107 0%, #ff8f00 100%);">
+                <div class="card-body">
+                    <i class="bi bi-cpu" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                    <h3 id="processing-count">-</h3>
+                    <p class="mb-0">分析中</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card text-center" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
+                <div class="card-body">
+                    <i class="bi bi-check-circle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                    <h3 id="completed-count">-</h3>
+                    <p class="mb-0">已完成</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card text-center" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);">
+                <div class="card-body">
+                    <i class="bi bi-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                    <h3 id="failed-count">-</h3>
+                    <p class="mb-0">失败</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 最近更新记录 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card monitor-card">
+                <div class="card-header bg-transparent">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clock-history"></i> 最近更新记录
+                        <span class="badge bg-info ms-2" id="total-students">-</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table recent-table" id="recent-table">
+                            <thead>
+                                <tr>
+                                    <th>学生ID</th>
+                                    <th>最后更新</th>
+                                    <th>提交次数</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-tbody">
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">
+                                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                                            <span class="visually-hidden">加载中...</span>
+                                        </div>
+                                        加载数据中...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批量更新确认模态框 -->
+<div class="modal fade" id="batchUpdateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-lightning-charge"></i> 批量更新确认
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>您确定要为<strong>所有学生</strong>启动能力趋势分析任务吗？</p>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>注意：</strong>此操作将消耗大量API调用额度，请确认后再执行。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="confirmBatchUpdate()">
+                    <i class="bi bi-check-circle"></i> 确认执行
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let refreshInterval = null;
+const AUTO_REFRESH_INTERVAL = 30000; // 30秒自动刷新
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', function() {
+    refreshStatistics();
+    startAutoRefresh();
+});
+
+// 开始自动刷新
+function startAutoRefresh() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+    refreshInterval = setInterval(refreshStatistics, AUTO_REFRESH_INTERVAL);
+}
+
+// 停止自动刷新
+function stopAutoRefresh() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+    }
+}
+
+// 刷新统计数据
+async function refreshStatistics() {
+    try {
+        const response = await fetch('/api/admin/trend-statistics', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        const data = result.data;
+        
+        // 更新统计数字
+        document.getElementById('pending-count').textContent = data.status_counts.pending || 0;
+        document.getElementById('processing-count').textContent = data.status_counts.processing || 0;
+        document.getElementById('completed-count').textContent = data.status_counts.completed || 0;
+        document.getElementById('failed-count').textContent = data.status_counts.failed || 0;
+        document.getElementById('total-students').textContent = `总计 ${data.total_students} 学生`;
+        
+        // 更新最近记录表格
+        updateRecentTable(data.recent_updates);
+        
+        console.log('统计数据刷新完成');
+        
+    } catch (error) {
+        console.error('刷新统计数据失败:', error);
+        showToast('刷新数据失败，请检查网络连接', 'error');
+    }
+}
+
+// 更新最近记录表格
+function updateRecentTable(recentUpdates) {
+    const tbody = document.getElementById('recent-tbody');
+    
+    if (!recentUpdates || recentUpdates.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center text-muted">暂无最近更新记录</td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = recentUpdates.map(record => `
+        <tr>
+            <td><strong>${record.student_id}</strong></td>
+            <td>${record.last_updated}</td>
+            <td>
+                <span class="badge bg-primary">${record.submissions_count} 次</span>
+            </td>
+            <td>
+                <span class="status-badge status-completed">
+                    <i class="bi bi-check-circle"></i> 已完成
+                </span>
+            </td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshStudent('${record.student_id}')">
+                    <i class="bi bi-arrow-clockwise"></i> 重新分析
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// 刷新单个学生
+async function refreshStudent(studentId) {
+    try {
+        const response = await fetch('/api/admin/batch-update-trends', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                student_ids: [studentId]
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        showToast(`学生 ${studentId} 的能力趋势分析任务已启动`, 'success');
+        
+        // 3秒后刷新数据
+        setTimeout(refreshStatistics, 3000);
+        
+    } catch (error) {
+        console.error(`刷新学生 ${studentId} 失败:`, error);
+        showToast(`刷新学生 ${studentId} 失败`, 'error');
+    }
+}
+
+// 显示批量更新对话框
+function startBatchUpdate() {
+    const modal = new bootstrap.Modal(document.getElementById('batchUpdateModal'));
+    modal.show();
+}
+
+// 确认批量更新
+async function confirmBatchUpdate() {
+    try {
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('batchUpdateModal'));
+        modal.hide();
+        
+        // 显示加载状态
+        showToast('正在启动批量更新任务...', 'info');
+        
+        const response = await fetch('/api/admin/batch-update-trends', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({})
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        showToast(result.data.message, 'success');
+        
+        // 5秒后刷新数据
+        setTimeout(refreshStatistics, 5000);
+        
+    } catch (error) {
+        console.error('批量更新失败:', error);
+        showToast('批量更新启动失败', 'error');
+    }
+}
+
+// 显示Toast提示
+function showToast(message, type = 'info') {
+    const toastContainer = document.getElementById('toast-container') || createToastContainer();
+    
+    const toastId = 'toast-' + Date.now();
+    const toastHtml = `
+        <div class="toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'primary'} border-0" 
+             role="alert" id="${toastId}">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-${type === 'error' ? 'exclamation-triangle' : type === 'success' ? 'check-circle' : 'info-circle'}"></i>
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    `;
+    
+    toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+    
+    const toastElement = document.getElementById(toastId);
+    const toast = new bootstrap.Toast(toastElement, { delay: 5000 });
+    toast.show();
+    
+    // 自动移除
+    setTimeout(() => {
+        toastElement.remove();
+    }, 6000);
+}
+
+// 创建Toast容器
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container position-fixed top-0 end-0 p-3';
+    container.style.zIndex = '9999';
+    document.body.appendChild(container);
+    return container;
+}
+
+// 页面卸载时清理
+window.addEventListener('beforeunload', function() {
+    stopAutoRefresh();
+});
+</script>
+{% endblock %}
+

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="学生程序设计能力评价系统 - 基于机器学习的代码能力评估平台">
+    <title>{% block title %}学生程序设计能力评价系统{% endblock %}</title>
+    
+    <!-- 导航栏紧急修复样式 -->
+    <style>
+        .navbar-nav {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: wrap !important;
+            justify-content: center !important;
+        }
+        .navbar-nav > li {
+            display: inline-block !important;
+            margin: 0 5px !important;
+        }
+    </style>
+    
+    <!-- 引入Google字体 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- 引入图标库 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    
+    <!-- 添加Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+    
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/darcula.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldgutter.min.css">
+    
+    <!-- 引入自定义CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='modern.css') }}">
+    
+    <!-- 导航栏修复样式 - 添加时间戳以防止缓存 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='navbar-fix.css') }}?v={{ now().timestamp() }}">
+    
+    <!-- 页面特定的CSS -->
+    {% block extra_css %}{% endblock %}
+    
+    <!-- 页面特定的头部内容（如脚本） -->
+    {% block extra_head %}{% endblock %}
+    
+    <!-- 导航栏修复CSS -->
+    <style>
+        .navbar-nav {
+            display: flex !important; /* 强制横向显示 */
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        @media (max-width: 768px) {
+            .navbar-container {
+                flex-direction: column;
+                align-items: center;
+                gap: 16px;
+            }
+            
+            .navbar-user {
+                margin-top: 10px;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container navbar-container">
+            <a href="{{ url_for('main.home') }}" class="navbar-brand">
+                <i class="bi bi-code-square" style="margin-right: 12px;"></i>
+                <span>学生程序设计能力评价系统</span>
+            </a>
+            
+            <ul class="navbar-nav">
+                {% if session.get('login') %}
+                    {% if session.get('usertype') == '管理员' %}
+                    <li><a href="{{ url_for('main.home') }}" class="navbar-link {% if request.path == url_for('main.home') %}active{% endif %}">首页</a></li>
+                    <li><a href="{{ url_for('assignments.manage_assignments') }}" class="navbar-link {% if 'assignments' in request.path %}active{% endif %}">作业管理</a></li>
+                    <li><a href="{{ url_for('users.manage_users') }}" class="navbar-link {% if 'users' in request.path %}active{% endif %}">学生管理</a></li>
+                    <li><a href="{{ url_for('classes.class_list') }}" class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
+                    <li><a href="{{ url_for('api.api_docs') }}" class="navbar-link {% if 'api' in request.path %}active{% endif %}">API文档</a></li>
+                    {% else %}
+                    <li><a href="{{ url_for('main.home') }}" class="navbar-link {% if request.path == url_for('main.home') %}active{% endif %}">首页</a></li>
+                    <li><a href="{{ url_for('assignments.manage_assignments') }}" class="navbar-link {% if 's_assignments' in request.path %}active{% endif %}">我的作业</a></li>
+                    <li><a href="{{ url_for('users.view_submissions') }}" class="navbar-link {% if 'submissions' in request.path %}active{% endif %}">提交记录</a></li>
+                    {% endif %}
+                {% else %}
+                <li><a href="{{ url_for('auth.login') }}" class="navbar-link {% if request.path == url_for('auth.login') %}active{% endif %}">登录</a></li>
+                <li><a href="{{ url_for('auth.register') }}" class="navbar-link {% if request.path == url_for('auth.register') %}active{% endif %}">注册</a></li>
+                {% endif %}
+            </ul>
+            
+            <div class="navbar-user">
+                {% if session.get('login') %}
+                <span class="badge badge-primary">
+                    {% if session.get('usertype') == '管理员' %}教师{% else %}学生{% endif %}
+                </span>
+                <a href="{% if session.get('usertype') == '管理员' %}{{ url_for('main.profile') }}{% else %}{{ url_for('main.profile') }}{% endif %}" class="navbar-link">
+                    <i class="bi bi-person-circle" style="margin-right: 8px;"></i>
+                    {{ session.get('full_name') or session.get('username') }}
+                </a>
+                <a href="{{ url_for('auth.logout') }}" class="navbar-link">
+                    <i class="bi bi-box-arrow-right" style="margin-right: 8px;"></i>
+                    退出
+                </a>
+                {% else %}
+                <a href="{{ url_for('auth.login') }}" class="navbar-button">
+                    <i class="bi bi-box-arrow-in-right" style="margin-right: 10px;"></i>
+                    登录系统
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+    
+    <!-- 主内容区 -->
+    <main class="main-content">
+        <div class="container">
+            <!-- 闪现消息 -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'message' else 'info' }}">
+                            <i class="bi bi-info-circle-fill"></i> {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <!-- 页面内容 -->
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+    
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container footer-content">
+            <div class="footer-links">
+                <a href="{{ url_for('main.about') }}">关于系统</a>
+                <a href="{{ url_for('main.help') }}">使用帮助</a>
+                <a href="{{ url_for('main.contact') }}">联系我们</a>
+            </div>
+            <div class="footer-copyright">
+                &copy; {{ now().year }} 学生程序设计能力评价系统 - 版权所有
+            </div>
+        </div>
+    </footer>
+    
+    <!-- 基础JavaScript库 -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
+    
+    <!-- 备用Bootstrap加载 -->
+    <script>
+        // 检查Bootstrap是否成功加载
+        setTimeout(function() {
+            if (typeof bootstrap === 'undefined') {
+                console.warn('Bootstrap未正确加载，尝试使用备用CDN');
+                // 加载备用CSS
+                var backupCSS = document.createElement('link');
+                backupCSS.rel = 'stylesheet';
+                backupCSS.href = 'https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.1.3/css/bootstrap.min.css';
+                document.head.appendChild(backupCSS);
+                
+                // 加载备用JS
+                var backupScript = document.createElement('script');
+                backupScript.src = 'https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.1.3/js/bootstrap.bundle.min.js';
+                backupScript.onload = function() {
+                    console.log('Bootstrap已通过备用CDN加载');
+                    // 重新初始化页面上的Bootstrap组件
+                    initBootstrapComponents();
+                };
+                document.head.appendChild(backupScript);
+            } else {
+                console.log('Bootstrap已正确加载:', bootstrap.Modal ? '包含Modal组件' : '缺少Modal组件');
+                // 确保Bootstrap组件被正确初始化
+                initBootstrapComponents();
+            }
+        }, 1000);
+        
+        // 初始化Bootstrap组件
+        function initBootstrapComponents() {
+            // 初始化所有模态框
+            document.querySelectorAll('.modal').forEach(function(modal) {
+                new bootstrap.Modal(modal);
+            });
+            
+            // 初始化所有工具提示
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(tooltip) {
+                new bootstrap.Tooltip(tooltip);
+            });
+            
+            // 初始化所有下拉菜单
+            document.querySelectorAll('.dropdown-toggle').forEach(function(dropdown) {
+                new bootstrap.Dropdown(dropdown);
+            });
+        }
+    </script>
+    
+    <!-- 添加jQuery (某些Bootstrap组件可能需要) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+    
+    <!-- CodeMirror 基础脚本 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/selection/active-line.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldgutter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/brace-fold.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/indent-fold.min.js"></script>
+    
+    <!-- 自定义JavaScript -->
+    <script>
+        // 初始化图标
+        document.addEventListener('DOMContentLoaded', function() {
+            // 使表单出错时添加错误样式
+            document.querySelectorAll('.form-control').forEach(input => {
+                if (input.nextElementSibling && input.nextElementSibling.classList.contains('form-error')) {
+                    input.classList.add('is-invalid');
+                }
+            });
+            
+            // 强制导航栏水平排列
+            const navbarNav = document.querySelector('.navbar-nav');
+            if (navbarNav) {
+                navbarNav.style.cssText = 'display: flex !important; flex-direction: row !important; flex-wrap: wrap !important;';
+                
+                // 处理每个导航项
+                const navItems = navbarNav.querySelectorAll('li');
+                navItems.forEach(item => {
+                    item.style.cssText = 'display: inline-block !important; float: left !important; margin: 0 5px !important;';
+                });
+            }
+            
+            // 检查CodeMirror是否正确加载
+            if (typeof CodeMirror === 'undefined') {
+                console.error('CodeMirror 未加载，尝试通过本地CDN加载');
+                
+                // 创建失败提示
+                var errorMsg = document.createElement('div');
+                errorMsg.className = 'alert alert-danger';
+                errorMsg.innerHTML = '<i class="bi bi-exclamation-triangle"></i> 代码编辑器加载失败，请刷新页面或使用其他浏览器尝试。';
+                
+                // 插入到页面顶部
+                document.querySelector('.main-content .container').prepend(errorMsg);
+                
+                // 尝试重新加载关键脚本
+                loadScript('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js', function() {
+                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js', function() {
+                        loadScript('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js', function() {
+                            // 脚本加载完成，刷新页面
+                            window.location.reload();
+                        });
+                    });
+                });
+            } else {
+                console.log('CodeMirror 已正确加载');
+                
+                // 检查各模式是否正确加载
+                if (!CodeMirror.modes['text/x-c++src']) {
+                    console.warn('C++ 模式未加载，尝试加载');
+                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js');
+                }
+                
+                if (!CodeMirror.modes['python']) {
+                    console.warn('Python 模式未加载，尝试加载');
+                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js');
+                }
+            }
+        });
+        
+        // 动态加载脚本辅助函数
+        function loadScript(url, callback) {
+            var script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = url;
+            script.onload = callback || function(){};
+            script.onerror = function() {
+                console.error('脚本加载失败:', url);
+                // 尝试使用备用CDN
+                var backupUrl = url.replace('cdnjs.cloudflare.com', 'cdn.bootcdn.net/ajax/libs');
+                console.log('尝试备用CDN:', backupUrl);
+                var backupScript = document.createElement('script');
+                backupScript.type = 'text/javascript';
+                backupScript.src = backupUrl;
+                document.head.appendChild(backupScript);
+            };
+            document.head.appendChild(script);
+        }
+    </script>
+    
+    <!-- 页面特定的JavaScript -->
+    {% block extra_js %}{% endblock %}
+</body>
+</html> 

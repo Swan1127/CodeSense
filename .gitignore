@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 虚拟环境
+venv/
+ENV/
+env/
+
+# Flask
+instance/
+flask_session/
+.webassets-cache
+
+# 数据库
+*.sqlite
+*.db
+
+# 日志
+logs/
+*.log
+
+# 本地环境配置（敏感信息）
+.env
+.env.local
+.env.production
+.env.*.local
+# 但允许env.example提交
+!env.example
+
+# IDE 文件
+.idea/
+.vscode/
+*.swp
+
+# 上传文件和临时文件
+uploads/*
+!uploads/.gitkeep
+
+# 机器学习模型文件（如果很大）
+# models/*.pth
+# CodeBERT_model/
+
+# 其他
+*.xlsx
+*.xls
+.DS_Store
+Thumbs.db

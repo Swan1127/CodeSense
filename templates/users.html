@@ -1,0 +1,958 @@
+﻿{% extends "layout.html" %}
+
+{% block title %}用户管理 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<!-- 引入Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- 引入Animate.css -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+
+<style>
+    :root {
+        --primary-color: #4361ee;
+        --primary-light: #4895ef;
+        --primary-dark: #3f37c9;
+        --secondary-color: #f72585;
+        --success-color: #4cc9f0;
+        --warning-color: #f8961e;
+        --danger-color: #f94144;
+        --light-color: #f8f9fa;
+        --dark-color: #212529;
+        --gray-100: #f8f9fa;
+        --gray-200: #e9ecef;
+        --gray-300: #dee2e6;
+        --gray-400: #ced4da;
+        --gray-500: #adb5bd;
+        --gray-600: #6c757d;
+        --gray-700: #495057;
+        --gray-800: #343a40;
+        --gray-900: #212529;
+        --border-radius: 0.5rem;
+        --box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        --transition: all 0.3s ease;
+    }
+    
+    /* 强制分页居中 */
+    .pagination {
+        display: flex;
+        justify-content: center !important;
+        margin: 0 auto;
+    }
+    
+    nav.pagination-nav {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    }
+    
+    /* 暗色模式变量 */
+    [data-theme="dark"] {
+        --primary-color: #4895ef;
+        --primary-light: #4cc9f0;
+        --primary-dark: #4361ee;
+        --secondary-color: #f72585;
+        --success-color: #4cc9f0;
+        --warning-color: #f8961e;
+        --danger-color: #f94144;
+        --light-color: #212529;
+        --dark-color: #f8f9fa;
+        --gray-100: #212529;
+        --gray-200: #343a40;
+        --gray-300: #495057;
+        --gray-400: #6c757d;
+        --gray-500: #adb5bd;
+        --gray-600: #ced4da;
+        --gray-700: #dee2e6;
+        --gray-800: #e9ecef;
+        --gray-900: #f8f9fa;
+        --box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+    }
+    
+    body {
+        background-color: var(--gray-100);
+        color: var(--gray-800);
+        transition: var(--transition);
+    }
+    
+    /* 仪表盘布局 */
+    .dashboard {
+        display: grid;
+        /* 方案1: 上面两个下面两个的布局 */
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: auto auto;
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    /* 方案2: 四个并列的布局 (取消注释使用此方案) */
+    /*
+    .dashboard {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    */
+    
+    .stat-card {
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+        box-shadow: var(--box-shadow);
+        transition: var(--transition);
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    [data-theme="dark"] .stat-card {
+        background-color: var(--gray-200);
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+    }
+    
+    .stat-card.primary::before {
+        background-color: var(--primary-color);
+    }
+    
+    .stat-card.success::before {
+        background-color: var(--success-color);
+    }
+    
+    .stat-card.warning::before {
+        background-color: var(--warning-color);
+    }
+    
+    .stat-card.danger::before {
+        background-color: var(--danger-color);
+    }
+    
+    .stat-icon {
+        font-size: 2rem;
+        margin-bottom: 1rem;
+        color: var(--primary-color);
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    
+    .stat-label {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+    }
+    
+    /* 搜索和筛选区域 */
+    .search-container {
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+        box-shadow: var(--box-shadow);
+        margin-bottom: 2rem;
+        transition: var(--transition);
+    }
+    
+    [data-theme="dark"] .search-container {
+        background-color: var(--gray-200);
+    }
+    
+    .search-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    .search-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--gray-800);
+        display: flex;
+        align-items: center;
+    }
+    
+    .search-title i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+    
+    .search-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    .search-input {
+        flex: 1;
+        min-width: 250px;
+        position: relative;
+    }
+    
+    .search-input input {
+        width: 100%;
+        padding: 0.75rem 1rem 0.75rem 2.5rem;
+        border-radius: var(--border-radius);
+        border: 1px solid var(--gray-300);
+        background-color: var(--gray-100);
+        color: var(--gray-800);
+        transition: var(--transition);
+    }
+    
+    [data-theme="dark"] .search-input input {
+        background-color: var(--gray-300);
+        color: var(--gray-900);
+        border-color: var(--gray-400);
+    }
+    
+    .search-input i {
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--gray-500);
+    }
+    
+    .search-input input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.25);
+    }
+    
+    .filter-select {
+        min-width: 200px;
+        position: relative;
+    }
+    
+    .filter-select select {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border-radius: var(--border-radius);
+        border: 1px solid var(--gray-300);
+        background-color: var(--gray-100);
+        color: var(--gray-800);
+        appearance: none;
+        transition: var(--transition);
+    }
+    
+    [data-theme="dark"] .filter-select select {
+        background-color: var(--gray-300);
+        color: var(--gray-900);
+        border-color: var(--gray-400);
+    }
+    
+    .filter-select::after {
+        content: '\F282';
+        font-family: 'Bootstrap Icons';
+        position: absolute;
+        right: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--gray-500);
+        pointer-events: none;
+    }
+    
+    .filter-select select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.25);
+    }
+    
+    .search-btn {
+        padding: 0.75rem 1.5rem;
+        border-radius: var(--border-radius);
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .search-btn i {
+        margin-right: 0.5rem;
+    }
+    
+    .search-btn:hover {
+        background-color: var(--primary-dark);
+        transform: translateY(-2px);
+    }
+    
+    /* 用户列表 */
+    .users-container {
+        background-color: white;
+        border-radius: var(--border-radius);
+        box-shadow: var(--box-shadow);
+        overflow: hidden;
+        transition: var(--transition);
+    }
+    
+    [data-theme="dark"] .users-container {
+        background-color: var(--gray-200);
+    }
+    
+    .users-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--gray-300);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .users-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--gray-800);
+        display: flex;
+        align-items: center;
+    }
+    
+    .users-title i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+    
+    .users-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .users-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    
+    .users-table th {
+        background-color: var(--gray-100);
+        color: var(--gray-700);
+        font-weight: 600;
+        text-align: left;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--gray-300);
+    }
+    
+    [data-theme="dark"] .users-table th {
+        background-color: var(--gray-300);
+        color: var(--gray-900);
+    }
+    
+    .users-table td {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--gray-300);
+        color: var(--gray-800);
+    }
+    
+    [data-theme="dark"] .users-table td {
+        color: var(--gray-900);
+    }
+    
+    .users-table tr:hover {
+        background-color: var(--gray-100);
+    }
+    
+    [data-theme="dark"] .users-table tr:hover {
+        background-color: var(--gray-300);
+    }
+    
+    .user-name {
+        font-weight: 500;
+        color: var(--primary-color);
+        text-decoration: none;
+        transition: var(--transition);
+    }
+    
+    .user-name:hover {
+        color: var(--primary-dark);
+        text-decoration: underline;
+    }
+    
+    .user-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.35rem 0.75rem;
+        border-radius: 9999px;
+        font-weight: 500;
+        font-size: 0.75rem;
+    }
+    
+    .badge-admin {
+        background-color: rgba(249, 65, 68, 0.1);
+        color: var(--danger-color);
+    }
+    
+    .badge-student {
+        background-color: rgba(76, 201, 240, 0.1);
+        color: var(--success-color);
+    }
+    
+    .user-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .action-btn {
+        padding: 0.35rem 0.75rem;
+        border-radius: var(--border-radius);
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .action-btn i {
+        margin-right: 0.25rem;
+    }
+    
+    .action-btn.view {
+        background-color: rgba(67, 97, 238, 0.1);
+        color: var(--primary-color);
+        border: none;
+    }
+    
+    .action-btn.view:hover {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    
+    .action-btn.delete {
+        background-color: rgba(249, 65, 68, 0.1);
+        color: var(--danger-color);
+        border: none;
+    }
+    
+    .action-btn.delete:hover {
+        background-color: var(--danger-color);
+        color: white;
+    }
+    
+    /* 空状态 */
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: var(--gray-600);
+    }
+    
+    .empty-state i {
+        font-size: 3.5rem;
+        margin-bottom: 1rem;
+        color: var(--gray-400);
+        opacity: 0.7;
+    }
+    
+    .empty-state h3 {
+        font-size: 1.25rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        color: var(--gray-700);
+    }
+    
+    .empty-state p {
+        max-width: 24rem;
+        margin: 0 auto;
+        color: var(--gray-600);
+    }
+    
+    /* 数据可视化 */
+    .chart-container {
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+        box-shadow: var(--box-shadow);
+        margin-bottom: 2rem;
+        transition: var(--transition);
+    }
+    
+    [data-theme="dark"] .chart-container {
+        background-color: var(--gray-200);
+    }
+    
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+    
+    .chart-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--gray-800);
+        display: flex;
+        align-items: center;
+    }
+    
+    .chart-title i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+    
+    .chart-wrapper {
+        position: relative;
+        height: 300px;
+    }
+    
+    /* 响应式调整 */
+    @media (max-width: 992px) {
+        .dashboard {
+            /* 方案1: 在小屏幕上变为单列 */
+            grid-template-columns: 1fr;
+            grid-template-rows: auto;
+        }
+        
+        /* 方案2: 在小屏幕上变为两列 (取消注释使用此方案) */
+        /*
+        .dashboard {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        */
+        
+        .search-form {
+            flex-direction: column;
+        }
+        
+        .search-input, .filter-select, .search-btn {
+            width: 100%;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .dashboard {
+            grid-template-columns: 1fr;
+        }
+        
+        .users-table {
+            display: block;
+            overflow-x: auto;
+        }
+        
+        .users-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+        
+        .user-actions {
+            flex-direction: column;
+        }
+    }
+    
+    /* 动画效果 */
+    .animate__animated {
+        animation-duration: 0.5s;
+    }
+    
+    /* 自定义分页居中样式 */
+    .pagination-nav {
+        text-align: center;
+        display: flex;
+        justify-content: center;
+    }
+    
+    .pagination-centered {
+        margin: 0 auto;
+        display: inline-flex;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- 统计卡片 -->
+    <div class="dashboard animate__animated animate__fadeIn">
+        <div class="stat-card primary">
+            <i class="fas fa-users stat-icon"></i>
+            <div class="stat-value">{{ total_users }}</div>
+            <div class="stat-label">总用户数</div>
+        </div>
+        <div class="stat-card success">
+            <i class="fas fa-file-code stat-icon"></i>
+            <div class="stat-value">{{ total_submissions }}</div>
+            <div class="stat-label">总提交数</div>
+        </div>
+        <div class="stat-card warning">
+            <i class="fas fa-user-graduate stat-icon"></i>
+            <div class="stat-value">{{ student_count }}</div>
+            <div class="stat-label">学生用户</div>
+        </div>
+        <div class="stat-card danger">
+            <i class="fas fa-user-shield stat-icon"></i>
+            <div class="stat-value">{{ admin_count }}</div>
+            <div class="stat-label">管理员用户</div>
+        </div>
+    </div>
+
+    <!-- 图表区域 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">用户类型分布</h5>
+                    <div style="height: 300px;">
+                        <canvas id="userTypeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">提交数量分布</h5>
+                    <div style="height: 300px;">
+                        <canvas id="submissionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 搜索和筛选区域 -->
+    <div class="search-container animate__animated animate__fadeIn">
+        <div class="search-header">
+            <h5 class="search-title">
+                <i class="fas fa-search me-2"></i>搜索用户
+            </h5>
+            <a href="{{ url_for('users.export_users') }}" class="btn btn-primary">
+                <i class="fas fa-download me-2"></i>导出数据
+            </a>
+        </div>
+        <form method="GET" class="search-form">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <input type="text" class="form-control" name="search" placeholder="搜索用户名/学号/姓名" value="{{ request.args.get('search', '') }}">
+                </div>
+                <div class="col-md-3">
+                    <label for="user-type-select" class="visually-hidden">用户类型</label>
+                    <select id="user-type-select" class="form-select" name="user_type" aria-label="选择用户类型">
+                        <option value="">所有用户类型</option>
+                        <option value="学生" {% if request.args.get('user_type') == '学生' %}selected{% endif %}>学生</option>
+                        <option value="管理员" {% if request.args.get('user_type') == '管理员' %}selected{% endif %}>管理员</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-search me-2"></i>搜索
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- 用户列表 -->
+    <div class="card animate__animated animate__fadeIn">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>用户名</th>
+                            <th>学号</th>
+                            <th>姓名</th>
+                            <th>用户类型</th>
+                            <th>提交次数</th>
+                            <th>平均分数</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in pagination.items %}
+                        <tr>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.student_id }}</td>
+                            <td>{{ user.full_name }}</td>
+                            <td>
+                                <span class="badge {% if user.usertype == '管理员' %}bg-danger{% else %}bg-primary{% endif %}">
+                                    {{ user.usertype }}
+                                </span>
+                            </td>
+                            <td>{{ user.submit_count }}</td>
+                            <td>{{ "%.2f"|format(user.user_ascore) }}</td>
+                            <td>
+                                <a href="{{ url_for('users.view_student_details', student_id=user.student_id) }}" class="btn btn-sm btn-info">
+                                    <i class="fas fa-eye"></i> 查看
+                                </a>
+                                <button class="btn btn-sm btn-danger delete-btn" data-user-id="{{ user.student_id }}">
+                                    <i class="fas fa-trash"></i> 删除
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 分页 -->
+    <nav class="mt-4 pagination-nav">
+        <ul class="pagination pagination-centered">
+            {% if pagination.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('users.manage_users', page=pagination.prev_num, search=search_term, user_type=user_type) }}">上一页</a>
+            </li>
+            {% endif %}
+            
+            {% for page in pagination.iter_pages() %}
+                {% if page %}
+                    <li class="page-item {% if page == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('users.manage_users', page=page, search=search_term, user_type=user_type) }}">{{ page }}</a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                {% endif %}
+            {% endfor %}
+            
+            {% if pagination.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('users.manage_users', page=pagination.next_num, search=search_term, user_type=user_type) }}">下一页</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+
+<!-- 删除确认模态框 -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除这个用户吗？此操作不可撤销。</p>
+                <div id="adminWarning" class="alert alert-danger d-none">
+                    <i class="fas fa-exclamation-triangle"></i> 无法删除管理员用户！
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">删除</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 直接嵌入图表数据
+var userTypeData = {{ user_type_chart_data|tojson|safe }};
+var submissionData = {{ submission_chart_data|tojson|safe }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 获取图表元素
+    var userTypeChart = document.getElementById('userTypeChart');
+    var submissionChart = document.getElementById('submissionChart');
+    
+    console.log('开始初始化图表...');
+    console.log('用户类型数据:', userTypeData);
+    console.log('提交数量数据:', submissionData);
+    
+    // 用户类型分布图表
+    if (userTypeChart) {
+        try {
+            console.log('初始化用户类型图表...');
+            var userTypeCtx = userTypeChart.getContext('2d');
+            new Chart(userTypeCtx, {
+                type: 'pie',
+                data: {
+                    labels: userTypeData.labels || ['学生', '管理员'],
+                    datasets: [{
+                        data: userTypeData.data || [0, 0],
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.8)',
+                            'rgba(255, 99, 132, 0.8)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            display: true
+                        }
+                    }
+                }
+            });
+            console.log('用户类型图表初始化完成');
+        } catch (e) {
+            console.error('初始化用户类型图表时出错:', e);
+        }
+    }
+
+    // 提交数量分布图表
+    if (submissionChart) {
+        try {
+            console.log('初始化提交数量图表...');
+            var submissionCtx = submissionChart.getContext('2d');
+            new Chart(submissionCtx, {
+                type: 'bar',
+                data: {
+                    labels: submissionData.labels || ['0-5次', '6-10次', '11-15次', '16-20次', '20次以上'],
+                    datasets: [{
+                        label: '用户数量',
+                        data: submissionData.data || [0, 0, 0, 0, 0],
+                        backgroundColor: 'rgba(75, 192, 192, 0.8)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            console.log('提交数量图表初始化完成');
+        } catch (e) {
+            console.error('初始化提交数量图表时出错:', e);
+        }
+    }
+
+    // 确保Bootstrap已加载
+    var initModal = function() {
+        try {
+            // 删除确认
+            var deleteModalElement = document.getElementById('deleteModal');
+            var adminWarning = document.getElementById('adminWarning');
+            var deleteModal = null;
+            
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                deleteModal = new bootstrap.Modal(deleteModalElement);
+                console.log('模态框已使用Bootstrap初始化');
+            } else if (typeof $ !== 'undefined' && $.fn.modal) {
+                $(deleteModalElement).modal({backdrop: 'static'});
+                deleteModal = {
+                    show: function() { $(deleteModalElement).modal('show'); },
+                    hide: function() { $(deleteModalElement).modal('hide'); }
+                };
+                console.log('模态框已使用jQuery初始化');
+            } else {
+                console.error('无法初始化模态框：Bootstrap组件未加载');
+                return;
+            }
+            
+            var userIdToDelete = null;
+            var isAdmin = false;
+
+            // 确保关闭按钮工作
+            document.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    console.log('关闭按钮被点击');
+                    if (deleteModal) {
+                        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                            deleteModal.hide();
+                        } else if (typeof $ !== 'undefined' && $.fn.modal) {
+                            $(deleteModalElement).modal('hide');
+                        }
+                    }
+                });
+            });
+
+            // 同样处理取消按钮
+            document.querySelector('.modal-footer .btn-secondary').addEventListener('click', function() {
+                console.log('取消按钮被点击');
+                if (deleteModal) {
+                    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        deleteModal.hide();
+                    } else if (typeof $ !== 'undefined' && $.fn.modal) {
+                        $(deleteModalElement).modal('hide');
+                    }
+                }
+            });
+
+            document.querySelectorAll('.delete-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    userIdToDelete = this.dataset.userId;
+                    // 检查是否为管理员用户
+                    var userType = this.closest('tr').querySelector('td:nth-child(4) .user-badge').textContent.trim();
+                    isAdmin = (userType === '管理员');
+                    console.log('用户类型:', userType, '是管理员:', isAdmin);
+                    
+                    // 如果是管理员，显示警告
+                    if (isAdmin) {
+                        adminWarning.classList.remove('d-none');
+                        document.getElementById('confirmDelete').disabled = true;
+                    } else {
+                        adminWarning.classList.add('d-none');
+                        document.getElementById('confirmDelete').disabled = false;
+                    }
+                    
+                    deleteModal.show();
+                });
+            });
+
+            document.getElementById('confirmDelete').addEventListener('click', function() {
+                if (userIdToDelete) {
+                    if (isAdmin) {
+                        alert('无法删除管理员用户');
+                        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                            deleteModal.hide();
+                        } else if (typeof $ !== 'undefined' && $.fn.modal) {
+                            $(deleteModalElement).modal('hide');
+                        }
+                    } else {
+                        var deleteUrl = "{{ url_for('users.delete_user', student_id='') }}" + userIdToDelete;
+                        window.location.href = deleteUrl;
+                    }
+                }
+            });
+        } catch (e) {
+            console.error('初始化模态框时出错:', e);
+        }
+    };
+    
+    // 如果Bootstrap已加载，直接初始化，否则等待加载完成
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        initModal();
+    } else {
+        // 等待Bootstrap加载完成
+        var checkInterval = setInterval(function() {
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                clearInterval(checkInterval);
+                initModal();
+            }
+        }, 200);
+        
+        // 如果10秒后仍未加载完成，停止检查
+        setTimeout(function() {
+            clearInterval(checkInterval);
+            console.error('Bootstrap加载超时');
+        }, 10000);
+    }
+});
+</script>
+{% endblock %} 

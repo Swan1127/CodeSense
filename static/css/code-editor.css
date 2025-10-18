@@ -1,0 +1,331 @@
+/* 代码编辑器主容器 */
+.code-editor {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    background-color: #fff;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1.5rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* 工具栏 */
+.editor-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.editor-toolbar-left, .editor-toolbar-right {
+    display: flex;
+    align-items: center;
+}
+
+.editor-language {
+    font-weight: 600;
+    color: #3b82f6;
+    display: flex;
+    align-items: center;
+}
+
+.editor-language i {
+    margin-right: 8px;
+}
+
+.editor-toolbar-right {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* 按钮样式 */
+.editor-btn {
+    background: transparent;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4b5563;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.editor-btn:hover {
+    background-color: #e5e7eb;
+    color: #1f2937;
+}
+
+.editor-btn.active {
+    background-color: #dbeafe;
+    color: #2563eb;
+}
+
+/* 下拉菜单 */
+.editor-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    width: 120px;
+    background-color: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    display: none;
+}
+
+.editor-btn:hover .editor-dropdown {
+    display: block;
+}
+
+.dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.dropdown-item:hover {
+    background-color: #f3f4f6;
+}
+
+/* 编辑器容器 */
+.editor-container {
+    position: relative;
+    flex: 1;
+    min-height: 100px;
+}
+
+.editor-textarea {
+    width: 100%;
+    height: 100%;
+    padding: 12px;
+    border: none;
+    resize: none;
+    font-family: Consolas, Monaco, "Andale Mono", monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1f2937;
+    background-color: #fff;
+    /* 确保在Safari中也能正常工作 */
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none;
+}
+
+.editor-textarea:focus {
+    outline: none;
+}
+
+.monaco-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    display: none;
+}
+
+/* 加载指示器 */
+.editor-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.9);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #e5e7eb;
+    border-radius: 50%;
+    border-top-color: #3b82f6;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-text {
+    margin-top: 12px;
+    font-size: 14px;
+    color: #4b5563;
+}
+
+/* 状态栏 */
+.editor-statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    background-color: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.editor-stats {
+    display: flex;
+    gap: 12px;
+}
+
+.editor-mode {
+    font-weight: 500;
+}
+
+/* 全屏模式 */
+.code-editor.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
+    border-radius: 0;
+}
+
+.code-editor.fullscreen .editor-container {
+    height: calc(100vh - 90px) !important;
+}
+
+/* 深色主题 */
+.code-editor.dark-theme {
+    border-color: #374151;
+    background-color: #1f2937;
+}
+
+.code-editor.dark-theme .editor-toolbar,
+.code-editor.dark-theme .editor-statusbar {
+    background-color: #111827;
+    border-color: #374151;
+    color: #9ca3af;
+}
+
+.code-editor.dark-theme .editor-btn {
+    color: #9ca3af;
+}
+
+.code-editor.dark-theme .editor-btn:hover {
+    background-color: #374151;
+    color: #e5e7eb;
+}
+
+.code-editor.dark-theme .editor-btn.active {
+    background-color: #1e3a8a;
+    color: #60a5fa;
+}
+
+.code-editor.dark-theme .editor-textarea {
+    background-color: #1f2937;
+    color: #e5e7eb;
+}
+
+.code-editor.dark-theme .editor-dropdown {
+    background-color: #1f2937;
+    border-color: #374151;
+}
+
+.code-editor.dark-theme .dropdown-item {
+    color: #e5e7eb;
+}
+
+.code-editor.dark-theme .dropdown-item:hover {
+    background-color: #374151;
+}
+
+.code-editor.dark-theme .editor-loading {
+    background-color: rgba(31, 41, 55, 0.9);
+}
+
+.code-editor.dark-theme .spinner {
+    border-color: #374151;
+    border-top-color: #60a5fa;
+}
+
+.code-editor.dark-theme .loading-text {
+    color: #9ca3af;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .editor-stats {
+        gap: 8px;
+    }
+    
+    .selection-stats, .char-stats {
+        display: none;
+    }
+}
+
+/* 通知样式 */
+.editor-notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px 15px;
+    background-color: #10b981;
+    color: white;
+    border-radius: 4px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 10000;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+.editor-notification.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.editor-notification.error {
+    background-color: #ef4444;
+}
+
+/* Safari特定优化 */
+@media not all and (min-resolution:.001dpcm) { 
+    @supports (-webkit-appearance:none) {
+        .editor-textarea {
+            /* Safari特定样式修复 */
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        /* 修复Safari中的滚动条样式 */
+        .editor-textarea::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        .editor-textarea::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .editor-textarea::-webkit-scrollbar-thumb {
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+        
+        /* 确保Safari中下拉菜单正常工作 */
+        .editor-dropdown {
+            /* 修复Safari中的z-index堆叠问题 */
+            transform: translateZ(0);
+        }
+    }
+} 

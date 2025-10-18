@@ -1,0 +1,450 @@
+{% extends "layout.html" %}
+
+{% block title %}管理员个人中心 - 学生程序设计能力评价系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .profile-header {
+        background-color: var(--primary-color);
+        color: white;
+        padding: 2rem;
+        border-radius: 0.5rem;
+        margin-bottom: 2rem;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .profile-header::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.4) 100%);
+        z-index: 1;
+    }
+    
+    .profile-info {
+        position: relative;
+        z-index: 2;
+    }
+    
+    .profile-avatar {
+        width: 8rem;
+        height: 8rem;
+        border-radius: 50%;
+        border: 3px solid white;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
+        object-fit: cover;
+        background-color: #f0f0f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 3rem;
+        color: var(--primary-color);
+    }
+    
+    .profile-name {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    
+    .profile-subtitle {
+        font-size: 1.1rem;
+        opacity: 0.9;
+        margin-bottom: 1rem;
+    }
+    
+    .profile-stats {
+        display: flex;
+        gap: 2rem;
+        margin-top: 1rem;
+    }
+    
+    .stat-item {
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+    
+    .stat-label {
+        font-size: 0.875rem;
+        opacity: 0.8;
+    }
+    
+    .profile-edit-btn {
+        position: absolute;
+        top: 1.5rem;
+        right: 1.5rem;
+        z-index: 3;
+    }
+    
+    .admin-card {
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        margin-bottom: 1.5rem;
+    }
+    
+    .admin-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+    
+    .admin-card .card-header {
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+        background-color: rgba(var(--bs-primary-rgb), 0.05);
+        font-weight: 600;
+    }
+    
+    .admin-card .card-body {
+        padding: 1.5rem;
+    }
+    
+    .admin-card .card-icon {
+        font-size: 2.5rem;
+        color: var(--primary-color);
+        margin-bottom: 1rem;
+    }
+    
+    .quick-link {
+        padding: 1rem;
+        border-radius: 8px;
+        background-color: #f8f9fa;
+        display: flex;
+        align-items: center;
+        margin-bottom: 1rem;
+        text-decoration: none;
+        color: #495057;
+        transition: all 0.2s ease;
+    }
+    
+    .quick-link:hover {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    
+    .quick-link i {
+        font-size: 1.5rem;
+        margin-right: 1rem;
+    }
+    
+    .activity-item {
+        padding: 0.75rem 0;
+        display: flex;
+        align-items: flex-start;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .activity-item:last-child {
+        border-bottom: none;
+    }
+    
+    .activity-icon {
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 50%;
+        background-color: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 1rem;
+        color: var(--primary-color);
+    }
+    
+    .activity-details {
+        flex: 1;
+    }
+    
+    .activity-message {
+        margin-bottom: 0.25rem;
+        color: #212529;
+    }
+    
+    .activity-time {
+        font-size: 0.75rem;
+        color: #6c757d;
+    }
+    
+    .badge-role {
+        background-color: #e7f0ff;
+        color: #0056b3;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-weight: 500;
+        font-size: 0.875rem;
+    }
+    
+    .stats-small-card {
+        border-radius: 8px;
+        padding: 1.25rem;
+        background-color: white;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        margin-bottom: 1rem;
+    }
+    
+    .stats-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        color: var(--primary-color);
+    }
+    
+    .stats-label {
+        color: #6c757d;
+        font-size: 0.875rem;
+    }
+    
+    .stats-icon {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        font-size: 2rem;
+        opacity: 0.2;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="profile-header">
+    <div class="profile-info">
+        <div class="profile-avatar">
+            <i class="bi bi-person-gear"></i>
+        </div>
+        <h1 class="profile-name">{{ user.username }}</h1>
+        <p class="profile-subtitle">
+            <span class="badge-role">管理员</span>
+            <span class="ms-2">{{ user.full_name }}</span>
+        </p>
+        
+        <div class="profile-stats">
+            <div class="stat-item">
+                <div class="stat-value">{{ total_students }}</div>
+                <div class="stat-label">学生总数</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ total_assignments }}</div>
+                <div class="stat-label">作业总数</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ total_submissions }}</div>
+                <div class="stat-label">提交总数</div>
+            </div>
+        </div>
+    </div>
+    
+    <a href="{{ url_for('users.edit_profile') }}" class="btn btn-light profile-edit-btn">
+        <i class="bi bi-pencil"></i> 编辑个人资料
+    </a>
+</div>
+
+<div class="row">
+    <!-- 左侧：管理员信息和快捷方式 -->
+    <div class="col-md-4">
+        <!-- 个人信息卡片 -->
+        <div class="card admin-card">
+            <div class="card-header">
+                <i class="bi bi-person-badge me-2"></i> 个人信息
+            </div>
+            <div class="card-body">
+                <table class="table table-hover">
+                    <tbody>
+                        <tr>
+                            <th style="width: 40%">ID</th>
+                            <td>{{ user.student_id }}</td>
+                        </tr>
+                        <tr>
+                            <th>姓名</th>
+                            <td>{{ user.full_name }}</td>
+                        </tr>
+                        <tr>
+                            <th>职务</th>
+                            <td>{{ user.usertype }}</td>
+                        </tr>
+                        <tr>
+                            <th>注册时间</th>
+                            <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                        </tr>
+                        <tr>
+                            <th>邮箱</th>
+                            <td>{{ admin_email }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- 快速链接 -->
+        <div class="card admin-card">
+            <div class="card-header">
+                <i class="bi bi-lightning me-2"></i> 快捷操作
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('assignments.add_assignment') }}" class="quick-link">
+                    <i class="bi bi-plus-circle"></i>
+                    <span>添加新作业</span>
+                </a>
+                <a href="{{ url_for('users.manage_users') }}" class="quick-link">
+                    <i class="bi bi-people"></i>
+                    <span>管理学生账户</span>
+                </a>
+                <a href="{{ url_for('assignments.manage_assignments') }}" class="quick-link">
+                    <i class="bi bi-list-check"></i>
+                    <span>管理作业列表</span>
+                </a>
+                <a href="{{ url_for('main.export_data') }}" class="quick-link">
+                    <i class="bi bi-file-earmark-arrow-down"></i>
+                    <span>导出系统数据</span>
+                </a>
+                <a href="{{ url_for('main.admin_dashboard') }}" class="quick-link">
+                    <i class="bi bi-speedometer2"></i>
+                    <span>仪表盘概览</span>
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右侧：系统概览和最近活动 -->
+    <div class="col-md-8">
+        <!-- 系统概览 -->
+        <div class="card admin-card">
+            <div class="card-header">
+                <i class="bi bi-graph-up me-2"></i> 系统概览
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="stats-small-card position-relative">
+                            <div class="stats-value">{{ today_submissions }}</div>
+                            <div class="stats-label">今日提交</div>
+                            <i class="bi bi-calendar-check stats-icon"></i>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="stats-small-card position-relative">
+                            <div class="stats-value">{{ today_logins }}</div>
+                            <div class="stats-label">今日登录</div>
+                            <i class="bi bi-box-arrow-in-right stats-icon"></i>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="stats-small-card position-relative">
+                            <div class="stats-value">{{ average_score|round(1) }}</div>
+                            <div class="stats-label">平均分数</div>
+                            <i class="bi bi-star stats-icon"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 系统状态图表 -->
+                <div class="chart-container mt-4" style="height: 300px;">
+                    <canvas id="systemStatusChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 最近活动 -->
+        <div class="card admin-card">
+            <div class="card-header">
+                <i class="bi bi-activity me-2"></i> 最近活动
+            </div>
+            <div class="card-body">
+                {% if recent_activities %}
+                    {% for activity in recent_activities %}
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="{{ activity.icon }}"></i>
+                        </div>
+                        <div class="activity-details">
+                            <div class="activity-message">{{ activity.message }}</div>
+                            <div class="activity-time">{{ activity.time }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center p-3">
+                        <i class="bi bi-inbox text-muted d-block mb-3" style="font-size: 2rem;"></i>
+                        <p class="text-muted">暂无活动记录</p>
+                    </div>
+                {% endif %}
+                
+                <div class="text-center mt-3">
+                    <a href="#" class="btn btn-outline-primary btn-sm">查看更多活动</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 系统状态图表
+        const statusCtx = document.getElementById('systemStatusChart');
+        if (statusCtx) {
+            new Chart(statusCtx, {
+                type: 'line',
+                data: {
+                    labels: {{ chart_dates|safe }},
+                    datasets: [
+                        {
+                            label: '登录次数',
+                            data: {{ login_counts|safe }},
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: true
+                        },
+                        {
+                            label: '提交次数',
+                            data: {{ submission_counts|safe }},
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '数量'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: '日期'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: '系统使用情况 (近7天)'
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %} 

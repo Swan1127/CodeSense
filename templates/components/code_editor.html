@@ -1,0 +1,113 @@
+{% macro code_editor(name, value="", language="python", height=500) %}
+<div class="code-editor" id="code-editor-{{ name }}">
+    <div class="editor-toolbar">
+        <div class="editor-toolbar-left">
+            <div class="editor-language">
+                {% if language == 'python' %}
+                <i class="bi bi-filetype-py"></i> Python
+                {% elif language == 'java' %}
+                <i class="bi bi-filetype-java"></i> Java
+                {% elif language == 'c' %}
+                <i class="bi bi-filetype-c"></i> C
+                {% elif language == 'cpp' %}
+                <i class="bi bi-filetype-cpp"></i> C++
+                {% else %}
+                <i class="bi bi-code-slash"></i> {{ language|capitalize }}
+                {% endif %}
+            </div>
+        </div>
+        <div class="editor-toolbar-right">
+            <button type="button" class="editor-btn" data-action="font-size" title="字体大小">
+                <i class="bi bi-fonts"></i>
+                <div class="editor-dropdown">
+                    <div class="dropdown-item" data-size="12">小 (12px)</div>
+                    <div class="dropdown-item" data-size="14">中 (14px)</div>
+                    <div class="dropdown-item" data-size="16">大 (16px)</div>
+                    <div class="dropdown-item" data-size="18">特大 (18px)</div>
+                </div>
+            </button>
+            <button type="button" class="editor-btn" data-action="theme" title="切换主题">
+                <i class="bi bi-moon-stars"></i>
+            </button>
+            <button type="button" class="editor-btn" data-action="indent" title="增加缩进">
+                <i class="bi bi-arrow-right"></i>
+            </button>
+            <button type="button" class="editor-btn" data-action="outdent" title="减少缩进">
+                <i class="bi bi-arrow-left"></i>
+            </button>
+            <button type="button" class="editor-btn" data-action="comment" title="注释/取消注释">
+                <i class="bi bi-slash-square"></i>
+            </button>
+            <button type="button" class="editor-btn" data-action="find" title="查找/替换">
+                <i class="bi bi-search"></i>
+            </button>
+            <button type="button" class="editor-btn" data-action="format" title="格式化代码">
+                <i class="bi bi-text-indent-left"></i>
+            </button>
+            <button type="button" class="editor-btn" data-action="copy" title="复制代码">
+                <i class="bi bi-clipboard"></i>
+            </button>
+            <button type="button" class="editor-btn" data-action="fullscreen" title="全屏编辑">
+                <i class="bi bi-fullscreen"></i>
+            </button>
+        </div>
+    </div>
+    
+    <div class="editor-container" style="height: {{ height }}px;">
+        <textarea id="{{ name }}" name="{{ name }}" class="form-control editor-textarea" 
+                  placeholder="在此输入{{ language|capitalize }}代码..." 
+                  autocomplete="off" spellcheck="false">{{ value }}</textarea>
+        <div id="monaco-{{ name }}" class="monaco-container"></div>
+        <div class="editor-loading">
+            <div class="spinner"></div>
+            <div class="loading-text">加载编辑器中...</div>
+        </div>
+    </div>
+    
+    <div class="editor-statusbar">
+        <div class="editor-stats">
+            <span class="cursor-position">行 <span class="line-number">1</span>, 列 <span class="column-number">1</span></span>
+            <span class="selection-stats">选择: <span class="selection-count">0</span> 字符</span>
+            <span class="char-stats">总计: <span class="char-count">0</span> 字符</span>
+        </div>
+        <div class="editor-mode">
+            <span class="mode-indicator">加载中...</span>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/code-editor.css') }}">
+<script src="{{ url_for('static', filename='js/code-editor.js') }}" defer></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof initEditor === 'function') {
+            initEditor({
+                id: '{{ name }}',
+                language: '{{ language }}',
+                height: {{ height }},
+                autoFocus: false
+            });
+        } else {
+            console.warn('编辑器初始化函数未找到，设置延迟加载');
+            const checkInterval = setInterval(function() {
+                if (typeof initEditor === 'function') {
+                    initEditor({
+                        id: '{{ name }}',
+                        language: '{{ language }}',
+                        height: {{ height }},
+                        autoFocus: false
+                    });
+                    clearInterval(checkInterval);
+                    console.log('编辑器初始化成功（延迟加载）');
+                }
+            }, 500);
+            
+            setTimeout(function() {
+                clearInterval(checkInterval);
+                console.error('编辑器初始化函数未能加载，请刷新页面重试');
+            }, 10000);
+        }
+    });
+</script>
+{% endmacro %} 
