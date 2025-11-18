@@ -6,19 +6,22 @@ from flask import Blueprint, render_template, request, jsonify, flash, redirect,
 from flask_login import login_required, current_user
 from sqlalchemy import func, desc
 from models import db, Class, User, Assignment, Submission
-from utils.auth import admin_required
+from utils.auth import admin_required, admin_or_teacher_required
 
 classes = Blueprint('classes', __name__, url_prefix='/classes')
 
 @classes.route('/')
 @login_required
-@admin_required
+@admin_or_teacher_required
 def class_list():
-    """班级列表页面"""
-    # 获取所有班级及其统计信息
+    """班级列表页面. 管理员可以看到所有班级, 教师只能看到自己管理的班级."""
     class_data = []
-    all_classes = Class.query.all()
     
+    if current_user.is_admin:
+        all_classes = Class.query.order_by(Class.name).all()
+    else: # is_teacher
+        all_classes = current_user.managed_classes.order_by(Class.name).all()
+
     for cls in all_classes:
         stats = cls.get_statistics()
         class_data.append({
@@ -30,17 +33,32 @@ def class_list():
     # 按学生数量排序
     class_data.sort(key=lambda x: x['stats']['student_count'], reverse=True)
     
+    # 计算总体统计数据
+    total_students = sum(cd['stats']['student_count'] for cd in class_data)
+    total_submissions = sum(cd['stats']['total_submissions'] for cd in class_data)
+    total_weighted_score = sum(cd['stats']['avg_score'] * cd['stats']['student_count'] for cd in class_data)
+    
+    overall_avg_score = total_weighted_score / total_students if total_students > 0 else 0
+    
     return render_template('classes/class_list.html', 
                          class_data=class_data,
-                         total_classes=len(all_classes))
+                         total_classes=len(all_classes),
+                         total_students=total_students,
+                         total_submissions_overall=total_submissions,
+                         overall_avg_score=overall_avg_score)
 
 @classes.route('/<int:class_id>')
 @login_required
-@admin_required
+@admin_or_teacher_required
 def class_detail(class_id):
-    """班级详情页面"""
+    """班级详情页面. 教师只能访问自己管理的班级."""
     cls = Class.query.get_or_404(class_id)
-    
+
+    # 权限检查: 管理员可以访问任何班级, 教师只能访问自己的班级
+    if not current_user.is_admin and cls.teacher_id != current_user.student_id:
+        flash('您没有权限访问此班级详情', 'danger')
+        return redirect(url_for('classes.class_list'))
+
     # 获取班级统计
     stats = cls.get_statistics()
     
@@ -167,16 +185,19 @@ def sync_classes():
 @login_required
 @admin_required
 def edit_class(class_id):
-    """编辑班级信息"""
+    """编辑班级信息 (管理员专属)"""
     cls = Class.query.get_or_404(class_id)
+    # 获取所有教师用户以供选择
+    teachers = User.query.filter_by(usertype='教师').all()
     
     if request.method == 'POST':
-        cls.teacher_name = request.form.get('teacher_name')
+        cls.teacher_id = request.form.get('teacher_id')
         cls.major = request.form.get('major')
         cls.grade = request.form.get('grade')
+        cls.name = request.form.get('name')
         
         db.session.commit()
         flash('班级信息更新成功', 'success')
         return redirect(url_for('classes.class_detail', class_id=class_id))
     
-    return render_template('classes/edit_class.html', cls=cls)
+    return render_template('classes/edit_class.html', cls=cls, teachers=teachers)

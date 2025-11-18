@@ -65,6 +65,69 @@ def admin_password_required(f):
 
 
 def validate_admin_password(password):
+
+
     """验证管理员密码是否正确"""
+
+
     admin_password = os.environ.get('ADMIN_PASSWORD') or 'admin123'
-    return password == admin_password 
+
+
+    return password == admin_password
+
+
+
+
+
+def admin_or_teacher_required(f):
+
+
+    """检查用户是否是管理员或教师的装饰器"""
+
+
+    @wraps(f)
+
+
+    def decorated_function(*args, **kwargs):
+
+
+        if not current_user.is_authenticated:
+
+
+            flash('请先登录', 'warning')
+
+
+            return redirect(url_for('auth.login', next=request.url))
+
+
+        
+
+
+        if not (current_user.is_admin or current_user.is_teacher):
+
+
+            flash('您没有权限访问此页面', 'danger')
+
+
+            return redirect(url_for('main.home'))
+
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+def teacher_required(f):
+    """检查用户是否是教师的装饰器"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            flash('请先登录', 'warning')
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.is_teacher:
+            flash('您没有权限访问此页面，需要教师身份', 'danger')
+            return redirect(url_for('main.home'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+ 

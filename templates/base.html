@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}学生程序设计能力评价系统{% endblock %}</title>
+    <title>{% block title %}CodeSense 酷森思{% endblock %}</title>
     <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     
     <!-- 列表样式修复 -->
@@ -88,7 +88,7 @@
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('main.index') }}">
                 <i class="bi bi-code-square text-primary"></i>
-                <span class="ms-2">学生程序设计能力评价系统</span>
+                <span class="ms-2">CodeSense 酷森思</span>
             </a>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -104,16 +104,39 @@
                     </li>
                     
                     {% if current_user.is_authenticated %}
-                        {% if current_user.role == 'student' %}
+                        {% if current_user.usertype == '学生' %}
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'assignments.student_assignments' %}active{% endif %}" href="{{ url_for('assignments.student_assignments') }}">
+                            <a class="nav-link {% if 's_assignments' in request.endpoint %}active{% endif %}" href="{{ url_for('assignments.s_assignments') }}">
                                 <i class="bi bi-journal-code"></i> 我的作业
                             </a>
                         </li>
-                        {% elif current_user.role == 'teacher' %}
+                        {% endif %}
+
+                        {% if current_user.is_admin or current_user.is_teacher %}
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'assignments.teacher_assignments' %}active{% endif %}" href="{{ url_for('assignments.teacher_assignments') }}">
-                                <i class="bi bi-journal-check"></i> 作业管理
+                            <a class="nav-link {% if 'classes' in request.endpoint %}active{% endif %}" href="{{ url_for('classes.class_list') }}">
+                                <i class="bi bi-collection"></i> 班级管理
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        {% if current_user.is_teacher %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if 'assignments' in request.endpoint and 's_assignments' not in request.endpoint %}active{% endif %}" href="{{ url_for('assignments.teacher_assignments') }}">
+                                <i class="bi bi-card-checklist"></i> 作业管理
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        {% if current_user.is_admin %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if 'assignments' in request.endpoint and 's_assignments' not in request.endpoint %}active{% endif %}" href="{{ url_for('assignments.assignments_list') }}">
+                                <i class="bi bi-card-checklist"></i> 作业管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if 'users' in request.endpoint %}active{% endif %}" href="{{ url_for('users.user_list') }}">
+                                <i class="bi bi-people"></i> 用户管理
                             </a>
                         </li>
                         {% endif %}
@@ -172,7 +195,7 @@
     <!-- 页脚 -->
     <footer class="footer mt-auto py-3 bg-light border-top">
         <div class="container text-center">
-            <span class="text-muted">© 2024 学生程序设计能力评价系统 | 基于机器学习的代码评估</span>
+            <span class="text-muted">© 2024 CodeSense 酷森思 | 基于机器学习的代码评估</span>
         </div>
     </footer>
     

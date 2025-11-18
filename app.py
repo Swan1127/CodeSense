@@ -1,5 +1,5 @@
 """
-基于机器学习的学生程序设计能力评价系统
+CodeSense 酷森思 - 基于机器学习的代码能力评价系统
 主程序入口文件
 版本: v0.2.0
 修改日期: 2025-10-16
@@ -8,6 +8,7 @@ import os
 import sys
 import logging
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+from logging import FileHandler
 from datetime import datetime
 from flask import Flask, request
 from flask_login import LoginManager
@@ -116,13 +117,22 @@ def setup_logging(app):
     app.logger.addHandler(error_log_handler)
     
     # 3. 访问日志处理器
-    access_log_handler = TimedRotatingFileHandler(
-        os.path.join(log_dir, 'access.log'),
-        when='midnight',
-        interval=1,
-        backupCount=7,
-        encoding='utf-8'
-    )
+    if app.debug:
+        # 在开发/调试模式下，使用简单的文件处理器以避免Windows上的文件锁定问题
+        access_log_handler = FileHandler(
+            os.path.join(log_dir, 'access.log'), encoding='utf-8'
+        )
+        print("✓ 开发模式：为访问日志启用 FileHandler")
+    else:
+        # 在生产模式下，使用按时间轮转的处理器
+        access_log_handler = TimedRotatingFileHandler(
+            os.path.join(log_dir, 'access.log'),
+            when='midnight',
+            interval=1,
+            backupCount=7,
+            encoding='utf-8'
+        )
+        print("✓ 生产模式：为访问日志启用 TimedRotatingFileHandler")
     access_log_handler.setLevel(logging.INFO)
     access_formatter = logging.Formatter(
         '%(asctime)s %(message)s'

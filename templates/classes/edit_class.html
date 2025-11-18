@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 
-{% block title %}编辑班级 - {{ cls.name }} - 学生程序设计能力评价系统{% endblock %}
+{% block title %}编辑班级 - {{ cls.name }} - CodeSense 酷森思{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -63,9 +63,8 @@
         
         <form method="POST">
             <div class="form-group">
-                <label class="form-label">班级名称</label>
-                <input type="text" class="form-control" value="{{ cls.name }}" readonly>
-                <small class="form-text text-muted">班级名称不可修改</small>
+                <label class="form-label" for="name">班级名称</label>
+                <input type="text" class="form-control" id="name" name="name" value="{{ cls.name }}" required>
             </div>
             
             <div class="form-group">
@@ -92,13 +91,15 @@
             </div>
             
             <div class="form-group">
-                <label class="form-label" for="teacher_name">班主任姓名</label>
-                <input type="text" 
-                       class="form-control" 
-                       id="teacher_name" 
-                       name="teacher_name" 
-                       value="{{ cls.teacher_name or '' }}"
-                       placeholder="请输入班主任姓名">
+                <label class="form-label" for="teacher_id">指派教师</label>
+                <select class="form-control" id="teacher_id" name="teacher_id">
+                    <option value="">-- 未指派 --</option>
+                    {% for teacher in teachers %}
+                        <option value="{{ teacher.student_id }}" {{ 'selected' if teacher.student_id == cls.teacher_id else '' }}>
+                            {{ teacher.full_name or teacher.username }} ({{ teacher.student_id }})
+                        </option>
+                    {% endfor %}
+                </select>
             </div>
             
             <div class="form-group">

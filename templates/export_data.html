@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 
-{% block title %}导出数据 - 学生程序设计能力评价系统{% endblock %}
+{% block title %}导出数据 - CodeSense 酷森思{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -74,11 +74,11 @@
                 </div>
                 <div class="export-title">用户数据</div>
                 <div class="export-description">
-                    导出所有用户的信息，包括学号、用户名、姓名、班级、用户类型等。
+                    导出用户的信息，包括学号、用户名、姓名、班级、用户类型等。
                 </div>
-                <a href="{{ url_for('main.download_data', export_type='users') }}" class="btn btn-primary">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#userFilterModal">
                     <i class="bi bi-download"></i> 导出用户数据
-                </a>
+                </button>
             </div>
             
             <div class="export-option">
@@ -100,11 +100,11 @@
                 </div>
                 <div class="export-title">提交记录</div>
                 <div class="export-description">
-                    导出所有代码提交记录，包括提交ID、作业ID、学号、提交时间、代码、评分等。
+                    导出代码提交记录，包括提交ID、作业ID、学号、提交时间、代码、评分等。
                 </div>
-                <a href="{{ url_for('main.download_data', export_type='submissions') }}" class="btn btn-primary">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#submissionFilterModal">
                     <i class="bi bi-download"></i> 导出提交记录
-                </a>
+                </button>
             </div>
             
             <div class="export-option">
@@ -115,9 +115,9 @@
                 <div class="export-description">
                     一次性导出所有数据，包括用户、作业、提交记录和系统日志，以ZIP压缩包形式下载。
                 </div>
-                <a href="{{ url_for('main.download_data', export_type='all') }}" class="btn btn-success">
+                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#allDataFilterModal">
                     <i class="bi bi-download"></i> 导出全部数据
-                </a>
+                </button>
             </div>
         </div>
     </div>
@@ -138,4 +138,195 @@
         <p>建议定期导出数据作为备份，以防系统出现问题或数据丢失。</p>
     </div>
 </div>
+
+<!-- 用户数据筛选模态框 -->
+<div class="modal fade" id="userFilterModal" tabindex="-1" aria-labelledby="userFilterModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="userFilterModalLabel"><i class="bi bi-funnel"></i> 筛选用户数据</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="userFilterForm">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 您可以选择筛选条件，留空则导出所有用户数据
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="userClassFilter" class="form-label">按班级筛选</label>
+                        <select class="form-select" id="userClassFilter" name="class_name">
+                            <option value="">全部班级</option>
+                            {% for class_name in class_list %}
+                            <option value="{{ class_name }}">{{ class_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="userIdFilter" class="form-label">按学号筛选</label>
+                        <input type="text" class="form-control" id="userIdFilter" name="student_id" placeholder="输入学号（留空导出所有）">
+                        <small class="form-text text-muted">输入学号可精确导出某个用户的数据</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-download"></i> 开始导出
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 提交记录筛选模态框 -->
+<div class="modal fade" id="submissionFilterModal" tabindex="-1" aria-labelledby="submissionFilterModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="submissionFilterModalLabel"><i class="bi bi-funnel"></i> 筛选提交记录</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="submissionFilterForm">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 您可以选择筛选条件，留空则导出所有提交记录
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="submissionClassFilter" class="form-label">按班级筛选</label>
+                        <select class="form-select" id="submissionClassFilter" name="class_name">
+                            <option value="">全部班级</option>
+                            {% for class_name in class_list %}
+                            <option value="{{ class_name }}">{{ class_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="submissionIdFilter" class="form-label">按学号筛选</label>
+                        <input type="text" class="form-control" id="submissionIdFilter" name="student_id" placeholder="输入学号（留空导出所有）">
+                        <small class="form-text text-muted">输入学号可精确导出某个学生的提交记录</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-download"></i> 开始导出
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 全部数据筛选模态框 -->
+<div class="modal fade" id="allDataFilterModal" tabindex="-1" aria-labelledby="allDataFilterModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="allDataFilterModalLabel"><i class="bi bi-funnel"></i> 筛选全部数据</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="allDataFilterForm">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 您可以选择筛选条件，留空则导出所有数据
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="allDataClassFilter" class="form-label">按班级筛选</label>
+                        <select class="form-select" id="allDataClassFilter" name="class_name">
+                            <option value="">全部班级</option>
+                            {% for class_name in class_list %}
+                            <option value="{{ class_name }}">{{ class_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="allDataIdFilter" class="form-label">按学号筛选</label>
+                        <input type="text" class="form-control" id="allDataIdFilter" name="student_id" placeholder="输入学号（留空导出所有）">
+                        <small class="form-text text-muted">输入学号可精确导出某个学生的所有数据</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-download"></i> 开始导出
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// 处理用户数据导出表单提交
+document.getElementById('userFilterForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const params = new URLSearchParams();
+    
+    const className = formData.get('class_name');
+    const studentId = formData.get('student_id');
+    
+    if (className) params.append('class_name', className);
+    if (studentId) params.append('student_id', studentId);
+    
+    const url = "{{ url_for('main.download_data', export_type='users') }}" + 
+                (params.toString() ? '?' + params.toString() : '');
+    
+    window.location.href = url;
+    
+    // 关闭模态框
+    const modal = bootstrap.Modal.getInstance(document.getElementById('userFilterModal'));
+    modal.hide();
+});
+
+// 处理提交记录导出表单提交
+document.getElementById('submissionFilterForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const params = new URLSearchParams();
+    
+    const className = formData.get('class_name');
+    const studentId = formData.get('student_id');
+    
+    if (className) params.append('class_name', className);
+    if (studentId) params.append('student_id', studentId);
+    
+    const url = "{{ url_for('main.download_data', export_type='submissions') }}" + 
+                (params.toString() ? '?' + params.toString() : '');
+    
+    window.location.href = url;
+    
+    // 关闭模态框
+    const modal = bootstrap.Modal.getInstance(document.getElementById('submissionFilterModal'));
+    modal.hide();
+});
+
+// 处理全部数据导出表单提交
+document.getElementById('allDataFilterForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const params = new URLSearchParams();
+    
+    const className = formData.get('class_name');
+    const studentId = formData.get('student_id');
+    
+    if (className) params.append('class_name', className);
+    if (studentId) params.append('student_id', studentId);
+    
+    const url = "{{ url_for('main.download_data', export_type='all') }}" + 
+                (params.toString() ? '?' + params.toString() : '');
+    
+    window.location.href = url;
+    
+    // 关闭模态框
+    const modal = bootstrap.Modal.getInstance(document.getElementById('allDataFilterModal'));
+    modal.hide();
+});
+</script>
 {% endblock %} 

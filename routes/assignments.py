@@ -2,9 +2,10 @@
 作业相关路由
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response, current_app
-from models import db, User, Assignment, Submission, SystemLog
+from flask_login import current_user
+from models import db, User, Assignment, Submission, SystemLog, AssignmentKnowledgePoint, KnowledgePointScore
 from forms import AssignmentForm, SubmissionForm
-from utils.auth import login_required, admin_required
+from utils.auth import login_required, admin_required, teacher_required
 from utils.code_evaluator import evaluate_cpp_code, initialize_models
 from io import BytesIO
 from sqlalchemy import desc
@@ -245,11 +246,7 @@ def view_assignment(assignment_id):
         score_distribution = {int(score): count for score, count in score_counts}
         
         # 获取最近的10个提交记录
-        recent_submissions = Submission.query\
-            .filter_by(assignment_id=assignment_id)\
-            .order_by(desc(Submission.submitted_at))\
-            .limit(10)\
-            .all()
+        recent_submissions = Submission.query.filter_by(assignment_id=assignment_id).order_by(desc(Submission.submitted_at)).limit(10).all()
             
         # 添加用户信息到提交记录
         for submission in recent_submissions:
@@ -431,6 +428,63 @@ def submit_code(assignment_id):
                 current_app.logger.info(f"已触发学生 {student_id} 的能力趋势异步更新任务: {task_id}")
             except Exception as e:
                 current_app.logger.error(f"触发能力趋势异步更新失败: {str(e)}", exc_info=True)
+
+            # 【新增】更新知识点评分
+            try:
+                from models import AssignmentKnowledgePoint, KnowledgePointScore
+                from services.ai_evaluator import AIEvaluator
+
+                # 获取作业的知识点标签
+                assignment_kps = AssignmentKnowledgePoint.query.filter_by(
+                    assignment_id=assignment_id
+                ).all()
+
+                if assignment_kps:
+                    # 如果教师已标注知识点，直接使用
+                    current_app.logger.info(f"作业 {assignment_id} 已有 {len(assignment_kps)} 个知识点标签")
+                    for kp in assignment_kps:
+                        KnowledgePointScore.update_score(
+                            student_id=student_id,
+                            knowledge_point=kp.knowledge_point,
+                            assignment_score=submission.score * 20,  # 转换为0-100分
+                            difficulty=kp.difficulty,
+                            weight=kp.weight
+                        )
+                else:
+                    # 如果没有标注，使用AI自动检测
+                    current_app.logger.info(f"作业 {assignment_id} 无知识点标签，使用AI自动检测")
+                    api_key = current_app.config.get('ZHIPU_API_KEY') or os.environ.get('ZHIPU_API_KEY')
+                    if api_key:
+                        ai_evaluator = AIEvaluator(api_key)
+                        detected_kps = ai_evaluator.detect_code_knowledge_points(code, assignment.title)
+
+                        # 保存AI检测的知识点
+                        for kp_data in detected_kps:
+                            # 添加到作业知识点表（标记为AI检测）
+                            AssignmentKnowledgePoint.add_to_assignment(
+                                assignment_id=assignment_id,
+                                knowledge_point=kp_data['knowledge_point'],
+                                weight=kp_data.get('weight', 1.0),
+                                difficulty=kp_data.get('difficulty', 1.0),
+                                auto_detected=True
+                            )
+
+                            # 更新学生知识点评分
+                            KnowledgePointScore.update_score(
+                                student_id=student_id,
+                                knowledge_point=kp_data['knowledge_point'],
+                                assignment_score=submission.score * 20,
+                                difficulty=kp_data.get('difficulty', 1.0),
+                                weight=kp_data.get('weight', 1.0)
+                            )
+
+                        current_app.logger.info(f"AI检测到 {len(detected_kps)} 个知识点并已更新评分")
+                    else:
+                        current_app.logger.warning("AI服务未配置，无法自动检测知识点")
+
+            except Exception as e:
+                current_app.logger.error(f"更新知识点评分失败: {str(e)}", exc_info=True)
+                # 知识点更新失败不影响主流程
             
             if submission.status == 'evaluated':
                 flash(f'代码评估完成！您的得分：{submission.score}/5分', 'success')
@@ -528,14 +582,22 @@ def student_assignments():
     page = request.args.get('page', 1, type=int)
     
     try:
-        # 获取学生ID
-        student_id = session.get('student_id')
+        # 获取学生ID和班级
+        student_id = current_user.student_id
+        class_name = current_user.class_name
+        
         if not student_id:
             flash('会话已过期，请重新登录', 'danger')
             return redirect(url_for('auth.login'))
         
-        # 查询所有作业
-        assignments_query = Assignment.query
+        # 根据学生所在班级筛选作业
+        if class_name:
+            assignments_query = Assignment.query.filter(
+                Assignment.target_classes.like(f'%{class_name}%')
+            )
+        else:
+            # 如果学生没有班级，则不显示任何作业
+            assignments_query = Assignment.query.filter(db.false())
         
         # 获取排序参数
         sort_by = request.args.get('sort', 'id')
@@ -599,8 +661,22 @@ def view_submission(submission_id):
     """查看提交详情"""
     try:
         submission = Submission.query.get_or_404(submission_id)
-        # 检查是否为当前用户的提交或管理员
-        if submission.student_id != session.get('student_id') and session.get('usertype') != '管理员':
+        
+        # 权限检查
+        allowed = False
+        # 1. 提交者本人
+        if current_user.is_authenticated and submission.student_id == current_user.student_id:
+            allowed = True
+        # 2. 管理员
+        elif current_user.is_authenticated and current_user.is_admin:
+            allowed = True
+        # 3. 学生的任课教师
+        elif current_user.is_authenticated and current_user.is_teacher:
+            student = User.query.get(submission.student_id)
+            if student and student.class_id in [c.id for c in current_user.managed_classes]:
+                allowed = True
+
+        if not allowed:
             flash('您无权查看此提交', 'danger')
             return redirect(url_for('main.home'))
         
@@ -773,4 +849,102 @@ def submission_history(assignment_id):
             'average_score': average_score,
             'best_score': best_score
         }
-    ) 
+    )
+            
+@assignments.route('/teacher')
+@login_required
+@teacher_required
+def teacher_assignments():
+    """教师查看自己创建的作业列表"""
+    # 只获取当前教师创建的作业
+    teacher_assignments = Assignment.query.filter_by(creator_id=current_user.student_id).order_by(Assignment.id.desc()).all()
+    
+    # 获取教师管理的班级名称列表
+    managed_classes = [cls.name for cls in current_user.managed_classes]
+    
+    # 为每个作业添加一个状态，表示是否已布置给教师的班级
+    for assignment in teacher_assignments:
+        assigned_to_my_classes = []
+        target_classes = assignment.get_target_class_list()
+        for cls_name in target_classes:
+            if cls_name in managed_classes:
+                assigned_to_my_classes.append(cls_name)
+        assignment.assigned_to_my_classes = assigned_to_my_classes
+
+    return render_template('teacher_assignments.html', assignments=teacher_assignments)
+
+
+@assignments.route('/assign/<int:assignment_id>', methods=['GET', 'POST'])
+@login_required
+@teacher_required
+def assign_to_classes(assignment_id):
+    """为教师的班级指派作业"""
+    assignment = Assignment.query.get_or_404(assignment_id)
+    managed_classes = current_user.managed_classes.all()
+    
+    if request.method == 'POST':
+        # 获取教师从表单中选择的班级
+        selected_class_names = request.form.getlist('class_names')
+        
+        # 获取该作业当前已分配的所有班级
+        current_target_classes = set(assignment.get_target_class_list())
+        
+        # 从当前列表中移除该教师管理的所有班级，以便用新的选择替换
+        teacher_class_names = {cls.name for cls in managed_classes}
+        current_target_classes -= teacher_class_names
+        
+        # 添加教师本次选择的班级
+        new_target_classes = current_target_classes.union(set(selected_class_names))
+        
+        # 更新作业的目标班级列表
+        assignment.set_target_classes(list(new_target_classes))
+        
+        try:
+            db.session.commit()
+            flash(f'作业 "{assignment.title}" 的班级分配已更新。', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'更新失败: {str(e)}', 'danger')
+            
+        return redirect(url_for('assignments.teacher_assignments'))
+
+    # GET请求：准备数据以渲染表单
+    assigned_classes = set(assignment.get_target_class_list())
+    return render_template('assign_form.html', assignment=assignment, managed_classes=managed_classes, assigned_classes=assigned_classes)
+
+
+@assignments.route('/teacher/add', methods=['GET', 'POST'])
+@login_required
+@teacher_required
+def add_teacher_assignment():
+    """教师创建新作业"""
+    form = AssignmentForm()
+    if form.validate_on_submit():
+        # 检查作业ID是否已存在
+        assignment_id = form.assignment_id.data
+        existing_assignment = Assignment.query.get(assignment_id)
+        
+        if existing_assignment:
+            flash('该作业ID已存在，请使用其他ID', 'danger')
+            return render_template('teacher_add_assignment.html', form=form)
+
+        new_assignment = Assignment(
+            id=form.assignment_id.data,
+            title=form.title.data,
+            description=form.description.data,
+            creator_id=current_user.student_id, # Set the creator
+            total_score=0,
+            average_score=0.0,
+            count=0
+        )
+        
+        try:
+            db.session.add(new_assignment)
+            db.session.commit()
+            flash('作业创建成功！', 'success')
+            return redirect(url_for('assignments.teacher_assignments'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'创建作业失败: {str(e)}', 'danger')
+            
+    return render_template('teacher_add_assignment.html', form=form)

@@ -137,7 +137,7 @@ class AsyncTaskManager:
                 
     def _handle_ability_trend_update(self, task):
         """处理能力趋势更新任务"""
-        from models import db, AbilityTrend, Submission
+        from models import db, AbilityTrend, Submission, User, Assignment
         from services.ai_evaluator import AIEvaluator
         import os
         
@@ -160,10 +160,40 @@ class AsyncTaskManager:
                 trend.status = 'processing'
                 db.session.commit()
                 
-                # 获取学生提交记录
-                submissions = Submission.query.filter_by(student_id=student_id).all()
-                submission_data = []
+                # 获取学生信息和已分配的作业
+                user = User.query.get(student_id)
+                if not user:
+                    self.logger.warning(f"找不到学生 {student_id}，无法进行能力分析")
+                    trend.status = 'failed'
+                    db.session.commit()
+                    return
+
+                class_name = user.class_name
+                assigned_assignment_ids = []
+                if class_name:
+                    assigned_assignments = Assignment.query.filter(
+                        Assignment.target_classes.like(f'%{class_name}%')
+                    ).all()
+                    assigned_assignment_ids = [a.id for a in assigned_assignments]
+
+                if not assigned_assignment_ids:
+                    self.logger.info(f"学生 {student_id} 所在的班级没有分配任何作业，跳过分析")
+                    trend.status = 'completed' # No work to do, so it's "complete"
+                    trend.trend_data = json.dumps({
+                        "trend": "暂无已分配的作业",
+                        "improvement": "请等待教师分配作业后再进行分析。",
+                        "suggestions": []
+                    })
+                    db.session.commit()
+                    return
+
+                # 获取学生对已分配作业的提交记录
+                submissions = Submission.query.filter(
+                    Submission.student_id == student_id,
+                    Submission.assignment_id.in_(assigned_assignment_ids)
+                ).all()
                 
+                submission_data = []
                 for sub in submissions:
                     if sub.code and sub.assignment:
                         submission_data.append({
@@ -175,8 +205,13 @@ class AsyncTaskManager:
                 
                 if not submission_data:
                     if self.logger:
-                        self.logger.info(f"学生 {student_id} 暂无提交记录，跳过分析")
+                        self.logger.info(f"学生 {student_id} 对已分配的作业暂无提交记录，跳过分析")
                     trend.status = 'completed'
+                    trend.trend_data = json.dumps({
+                        "trend": "您还没有对已分配的作业进行任何提交",
+                        "improvement": "请先完成一些作业再来分析能力趋势。",
+                        "suggestions": []
+                    })
                     db.session.commit()
                     return
                 
@@ -195,7 +230,14 @@ class AsyncTaskManager:
                 if self.logger:
                     self.logger.info(f"调用AI API分析学生 {student_id} 的 {len(submission_data)} 次提交")
                 ability_analysis = ai_evaluator.analyze_ability_trend(submission_data)
-                
+
+                # 检查AI分析是否返回错误
+                if isinstance(ability_analysis, dict) and ability_analysis.get("trend") == "分析过程中出现错误":
+                    self.logger.error(f"AI分析为学生 {student_id} 返回了一个错误，标记任务为失败")
+                    trend.status = 'failed'
+                    db.session.commit()
+                    return
+
                 # 保存结果
                 AbilityTrend.update_trend(student_id, ability_analysis, len(submission_data))
                 if self.logger:

@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="学生程序设计能力评价系统 - 基于机器学习的代码能力评估平台">
-    <title>{% block title %}学生程序设计能力评价系统{% endblock %}</title>
+    <meta name="description" content="CodeSense 酷森思 - 基于机器学习的代码能力评估平台">
+    <title>{% block title %}CodeSense 酷森思{% endblock %}</title>
     
     <!-- 导航栏紧急修复样式 -->
     <style>
@@ -77,21 +77,31 @@
         <div class="container navbar-container">
             <a href="{{ url_for('main.home') }}" class="navbar-brand">
                 <i class="bi bi-code-square" style="margin-right: 12px;"></i>
-                <span>学生程序设计能力评价系统</span>
+                <span>CodeSense 酷森思</span>
             </a>
             
             <ul class="navbar-nav">
                 {% if session.get('login') %}
+                    <li><a href="{{ url_for('main.home') }}" class="navbar-link {% if request.path == url_for('main.home') %}active{% endif %}">首页</a></li>
+
+                    {# Student Links #}
+                    {% if session.get('usertype') == '学生' %}
+                        <li><a href="{{ url_for('assignments.student_assignments') }}" class="navbar-link {% if 's_assignments' in request.path %}active{% endif %}">我的作业</a></li>
+                        <li><a href="{{ url_for('users.view_submissions') }}" class="navbar-link {% if 'submissions' in request.path %}active{% endif %}">提交记录</a></li>
+                    {% endif %}
+
+                    {# Teacher Links #}
+                    {% if session.get('usertype') == '教师' %}
+                        <li><a href="{{ url_for('classes.class_list') }}" class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
+                        <li><a href="{{ url_for('assignments.teacher_assignments') }}" class="navbar-link {% if 'assignments' in request.path %}active{% endif %}">作业管理</a></li>
+                    {% endif %}
+
+                    {# Admin Links #}
                     {% if session.get('usertype') == '管理员' %}
-                    <li><a href="{{ url_for('main.home') }}" class="navbar-link {% if request.path == url_for('main.home') %}active{% endif %}">首页</a></li>
-                    <li><a href="{{ url_for('assignments.manage_assignments') }}" class="navbar-link {% if 'assignments' in request.path %}active{% endif %}">作业管理</a></li>
-                    <li><a href="{{ url_for('users.manage_users') }}" class="navbar-link {% if 'users' in request.path %}active{% endif %}">学生管理</a></li>
-                    <li><a href="{{ url_for('classes.class_list') }}" class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
-                    <li><a href="{{ url_for('api.api_docs') }}" class="navbar-link {% if 'api' in request.path %}active{% endif %}">API文档</a></li>
-                    {% else %}
-                    <li><a href="{{ url_for('main.home') }}" class="navbar-link {% if request.path == url_for('main.home') %}active{% endif %}">首页</a></li>
-                    <li><a href="{{ url_for('assignments.manage_assignments') }}" class="navbar-link {% if 's_assignments' in request.path %}active{% endif %}">我的作业</a></li>
-                    <li><a href="{{ url_for('users.view_submissions') }}" class="navbar-link {% if 'submissions' in request.path %}active{% endif %}">提交记录</a></li>
+                        <li><a href="{{ url_for('assignments.manage_assignments') }}" class="navbar-link {% if 'assignments' in request.path %}active{% endif %}">作业管理</a></li>
+                        <li><a href="{{ url_for('users.manage_users') }}" class="navbar-link {% if 'users' in request.path %}active{% endif %}">用户管理</a></li>
+                        <li><a href="{{ url_for('classes.class_list') }}" class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
+                        <li><a href="{{ url_for('api.api_docs') }}" class="navbar-link {% if 'api' in request.path %}active{% endif %}">API文档</a></li>
                     {% endif %}
                 {% else %}
                 <li><a href="{{ url_for('auth.login') }}" class="navbar-link {% if request.path == url_for('auth.login') %}active{% endif %}">登录</a></li>
@@ -101,8 +111,16 @@
             
             <div class="navbar-user">
                 {% if session.get('login') %}
-                <span class="badge badge-primary">
-                    {% if session.get('usertype') == '管理员' %}教师{% else %}学生{% endif %}
+                <span class="badge 
+                    {% if session.get('usertype') == '管理员' %}
+                        bg-danger
+                    {% elif session.get('usertype') == '教师' %}
+                        bg-success
+                    {% else %}
+                        bg-primary
+                    {% endif %}
+                ">
+                    {{ session.get('usertype') }}
                 </span>
                 <a href="{% if session.get('usertype') == '管理员' %}{{ url_for('main.profile') }}{% else %}{{ url_for('main.profile') }}{% endif %}" class="navbar-link">
                     <i class="bi bi-person-circle" style="margin-right: 8px;"></i>
@@ -150,7 +168,7 @@
                 <a href="{{ url_for('main.contact') }}">联系我们</a>
             </div>
             <div class="footer-copyright">
-                &copy; {{ now().year }} 学生程序设计能力评价系统 - 版权所有
+                &copy; {{ now().year }} CodeSense 酷森思 - 版权所有
             </div>
         </div>
     </footer>

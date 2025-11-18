@@ -2,7 +2,7 @@
 {% from "components/code_editor_new.html" import code_editor %}
 {% from "components/code_formatter.html" import format_code_block, format_markdown_content, format_ai_response %}
 
-{% block title %}代码提交 - {{ assignment.title }} - 学生程序设计能力评价系统{% endblock %}
+{% block title %}代码提交 - {{ assignment.title }} - CodeSense 酷森思{% endblock %}
 
 {% block extra_css %}
 <!-- C++编辑器样式 -->
@@ -75,45 +75,388 @@
         position: relative;
     }
     
+    /* AI助手聊天样式 - 优化版 */
     .ai-assistant-panel {
-        background-color: #ffffff;
-        border-radius: 0.75rem;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
         display: flex;
         flex-direction: column;
-        max-height: 100%;
+        max-height: calc(100vh - 250px);
+        min-height: 600px;
+        overflow: hidden;
     }
-    
+
     .ai-assistant-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1rem;
-        background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+        padding: 1.25rem 1.5rem;
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
         color: white;
-        border-radius: 0.75rem 0.75rem 0 0;
+        flex-shrink: 0;
+        border-bottom: 3px solid rgba(255, 255, 255, 0.2);
     }
-    
-    .ai-assistant-content {
+
+    .ai-assistant-header h5 {
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin: 0;
+    }
+
+    .ai-chat-messages {
         flex: 1;
-        padding: 1.5rem;
         overflow-y: auto;
+        padding: 1.5rem;
+        background: linear-gradient(to bottom, #f9fafb 0%, #f3f4f6 100%);
     }
-    
-    .ai-message {
-        padding: 1rem;
-        background-color: #f8f9fa;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
-        border-left: 4px solid #2575fc;
+
+    /* 自定义滚动条 */
+    .ai-chat-messages::-webkit-scrollbar {
+        width: 6px;
     }
-    
-    .ai-suggestion {
-        margin-top: 0.5rem;
-        padding: 0.5rem;
-        background-color: #e9f5ff;
-        border-radius: 0.5rem;
-        border-left: 3px solid #0d6efd;
+
+    .ai-chat-messages::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .ai-chat-messages::-webkit-scrollbar-thumb {
+        background: #d1d5db;
+        border-radius: 10px;
+    }
+
+    .ai-chat-messages::-webkit-scrollbar-thumb:hover {
+        background: #9ca3af;
+    }
+
+    .ai-message-wrapper {
+        display: flex;
+        margin-bottom: 1.25rem;
+        animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(12px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .ai-message-wrapper.user-message {
+        justify-content: flex-end;
+    }
+
+    .ai-message-wrapper.assistant-message {
+        justify-content: flex-start;
+    }
+
+    .ai-message-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .user-message .ai-message-avatar {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        margin-left: 0.875rem;
+        order: 2;
+    }
+
+    .assistant-message .ai-message-avatar {
+        background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        color: white;
+        margin-right: 0.875rem;
+    }
+
+    .ai-message-content {
+        max-width: 70%;
+        padding: 0.875rem 1rem;
+        border-radius: 16px;
+        position: relative;
+        word-wrap: break-word;
+        line-height: 1.5;
+        font-size: 0.875rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .user-message .ai-message-content {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+
+    .assistant-message .ai-message-content {
+        background: white;
+        color: #1f2937;
+        border: 1px solid #e5e7eb;
+        border-bottom-left-radius: 4px;
+    }
+
+    .ai-message-time {
+        font-size: 0.75rem;
+        color: #9ca3af;
+        margin-top: 0.375rem;
+        padding: 0 0.5rem;
+        font-style: italic;
+    }
+
+    .ai-chat-input-area {
+        padding: 1.25rem 1.5rem;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        flex-shrink: 0;
+    }
+
+    .ai-chat-input-wrapper {
+        display: flex;
+        gap: 0.875rem;
+        align-items: flex-end;
+    }
+
+    .ai-chat-textarea {
+        flex: 1;
+        border: 2px solid #e5e7eb;
+        border-radius: 20px;
+        padding: 0.875rem 1.125rem;
+        resize: none;
+        max-height: 120px;
+        font-size: 0.95rem;
+        transition: all 0.2s;
+        font-family: inherit;
+    }
+
+    .ai-chat-textarea:focus {
+        outline: none;
+        border-color: #8b5cf6;
+        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+    }
+
+    .ai-send-button {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        border: none;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        flex-shrink: 0;
+        font-size: 1.1rem;
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    }
+
+    .ai-send-button:hover:not(:disabled) {
+        transform: scale(1.08) translateY(-1px);
+        box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+    }
+
+    .ai-send-button:active:not(:disabled) {
+        transform: scale(1.02);
+    }
+
+    .ai-send-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+
+    .ai-typing-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        padding: 0.625rem 1.125rem;
+        color: #6b7280;
+        font-size: 0.875rem;
+    }
+
+    .ai-typing-dots {
+        display: flex;
+        gap: 0.25rem;
+    }
+
+    .ai-typing-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        animation: typingDot 1.4s infinite;
+    }
+
+    .ai-typing-dot:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .ai-typing-dot:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    @keyframes typingDot {
+        0%, 60%, 100% {
+            transform: translateY(0);
+            opacity: 0.6;
+        }
+        30% {
+            transform: translateY(-10px);
+            opacity: 1;
+        }
+    }
+
+    .ai-welcome-message {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: #6b7280;
+    }
+
+    .ai-welcome-icon {
+        font-size: 4rem;
+        margin-bottom: 1.25rem;
+        filter: grayscale(20%);
+    }
+
+    .ai-welcome-message h5 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 0.75rem;
+    }
+
+    .ai-welcome-message p {
+        font-size: 0.95rem;
+        color: #6b7280;
+        margin-bottom: 1.5rem;
+    }
+
+    .ai-quick-prompts {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .ai-quick-prompt-btn {
+        padding: 0.75rem 1rem;
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        background: white;
+        color: #6366f1;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .ai-quick-prompt-btn:hover {
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        color: white;
+        border-color: transparent;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    /* Markdown样式优化 */
+    .assistant-message .ai-message-content p {
+        margin-bottom: 0.75em;
+    }
+
+    .assistant-message .ai-message-content p:last-child {
+        margin-bottom: 0;
+    }
+
+    .assistant-message .ai-message-content code {
+        background: #f3f4f6;
+        padding: 0.2em 0.5em;
+        border-radius: 4px;
+        font-size: 0.8em;
+        color: #dc2626;
+        font-family: 'Consolas', 'Monaco', monospace;
+    }
+
+    .assistant-message .ai-message-content pre {
+        background: #1f2937;
+        padding: 0.875rem;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 0.75em 0;
+    }
+
+    .assistant-message .ai-message-content pre code {
+        background: transparent;
+        padding: 0;
+        color: #e5e7eb;
+        font-size: 0.8125rem;
+    }
+
+    .assistant-message .ai-message-content ul,
+    .assistant-message .ai-message-content ol {
+        padding-left: 1.5em;
+        margin: 0.75em 0;
+        font-size: 0.875rem;
+    }
+
+    .assistant-message .ai-message-content li {
+        margin-bottom: 0.375em;
+        line-height: 1.5;
+    }
+
+    .assistant-message .ai-message-content strong {
+        font-weight: 600;
+        color: #111827;
+    }
+
+    .assistant-message .ai-message-content h1,
+    .assistant-message .ai-message-content h2,
+    .assistant-message .ai-message-content h3 {
+        font-weight: 600;
+        color: #111827;
+        margin-top: 1em;
+        margin-bottom: 0.5em;
+        font-size: 1rem;
+    }
+
+    /* 清空按钮样式 */
+    #clear-chat {
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        transition: all 0.2s;
+    }
+
+    #clear-chat:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* 流式输出打字机光标效果 */
+    .ai-message-content[data-streaming="true"]::after {
+        content: '▋';
+        color: #8b5cf6;
+        animation: blink 1s step-end infinite;
+        margin-left: 2px;
+    }
+
+    @keyframes blink {
+        0%, 50% {
+            opacity: 1;
+        }
+        51%, 100% {
+            opacity: 0;
+        }
     }
     
     .feedback-metrics {
@@ -495,72 +838,44 @@
             </form>
         </div>
         
-        <!-- AI助手和反馈区域 -->
+        <!-- AI助手聊天界面 -->
         <div class="ai-assistant-panel">
             <div class="ai-assistant-header">
                 <h5 class="mb-0">
                     <i class="bi bi-robot"></i> AI编程助手
                 </h5>
-                <div class="ai-mode-switch">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="aiAdvancedMode">
-                        <label class="form-check-label" for="aiAdvancedMode">高级模式</label>
-                    </div>
-                </div>
+                <button class="btn btn-sm btn-outline-light" id="clear-chat" title="清空对话">
+                    <i class="bi bi-trash"></i>
+                </button>
             </div>
-            
-            <div class="ai-assistant-content" id="ai-advice-content">
-                <div class="text-center p-5" id="ai-placeholder">
-                    <img src="{{ url_for('static', filename='img/ai-assistant.svg') }}" alt="AI助手" style="max-width: 150px; opacity: 0.6;">
-                    <h5 class="mt-4">AI编程助手</h5>
-                    <p class="text-muted">点击"获取代码建议"按钮，AI将分析您的代码并提供个性化的改进建议和学习指导。</p>
-                    <div class="d-flex justify-content-center mt-3">
-                        <button class="btn btn-sm btn-outline-primary" id="help-me-start">
-                            <i class="bi bi-magic"></i> 帮我开始
-                        </button>
+
+            <div class="ai-chat-messages" id="ai-chat-messages">
+                <!-- 欢迎消息 -->
+                <div class="ai-welcome-message" id="welcome-message">
+                    <div class="ai-welcome-icon">🤖</div>
+                    <h5>你好！我是AI编程助手</h5>
+                    <p>我可以帮你：分析代码、提供建议、解答疑问、调试错误</p>
+                    <div class="ai-quick-prompts">
+                        <button class="ai-quick-prompt-btn" data-prompt="帮我分析这段代码">分析代码</button>
+                        <button class="ai-quick-prompt-btn" data-prompt="这段代码有什么问题？">检查错误</button>
+                        <button class="ai-quick-prompt-btn" data-prompt="如何优化这段代码？">优化建议</button>
+                        <button class="ai-quick-prompt-btn" data-prompt="这段代码的时间复杂度是多少？">复杂度分析</button>
                     </div>
                 </div>
-                
-                <div id="ai-loading" style="display: none;" class="text-center p-4">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">加载中...</span>
-                    </div>
-                    <p class="mt-2">AI正在分析您的代码，请稍候...</p>
-                </div>
-                
-                <div id="ai-response" style="display: none;">
-                    <!-- 这里将动态填充AI反馈 -->
-                </div>
-                
-                <div class="feedback-metrics" id="code-metrics" style="display: none;">
-                    <div class="metric-card">
-                        <div class="text-muted">算法能力</div>
-                        <div class="metric-value" id="algorithm-score">-</div>
-                        <div class="progress" style="height: 4px;">
-                            <div class="progress-bar bg-primary" id="algorithm-bar" role="progressbar" style="width: 0%"></div>
-                        </div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="text-muted">代码风格</div>
-                        <div class="metric-value" id="style-score">-</div>
-                        <div class="progress" style="height: 4px;">
-                            <div class="progress-bar bg-success" id="style-bar" role="progressbar" style="width: 0%"></div>
-                        </div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="text-muted">功能实现</div>
-                        <div class="metric-value" id="functionality-score">-</div>
-                        <div class="progress" style="height: 4px;">
-                            <div class="progress-bar bg-info" id="functionality-bar" role="progressbar" style="width: 0%"></div>
-                        </div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="text-muted">效率优化</div>
-                        <div class="metric-value" id="efficiency-score">-</div>
-                        <div class="progress" style="height: 4px;">
-                            <div class="progress-bar bg-warning" id="efficiency-bar" role="progressbar" style="width: 0%"></div>
-                        </div>
-                    </div>
+
+                <!-- 消息将动态添加到这里 -->
+            </div>
+
+            <div class="ai-chat-input-area">
+                <div class="ai-chat-input-wrapper">
+                    <textarea
+                        class="ai-chat-textarea"
+                        id="ai-chat-input"
+                        placeholder="输入问题或选择快捷问题..."
+                        rows="2"></textarea>
+                    <button class="ai-send-button" id="ai-send-button" title="发送消息">
+                        <i class="bi bi-send-fill"></i>
+                    </button>
                 </div>
             </div>
         </div>
@@ -741,24 +1056,310 @@ $(document).ready(function() {
         });
     }
     
-    // AI建议按钮
-    var aiAdviceButton = document.getElementById('get-ai-advice');
-    var aiPlaceholder = document.getElementById('ai-placeholder');
-    var aiLoading = document.getElementById('ai-loading');
-    var aiResponse = document.getElementById('ai-response');
-    var codeMetrics = document.getElementById('code-metrics');
-    
-    if (aiAdviceButton) {
-        aiAdviceButton.addEventListener('click', function() {
-            getAIAdvice();
+    // ==================== 新的AI聊天助手 ====================
+
+    // 聊天状态
+    const chatMessages = document.getElementById('ai-chat-messages');
+    const chatInput = document.getElementById('ai-chat-input');
+    const sendButton = document.getElementById('ai-send-button');
+    const clearChatButton = document.getElementById('clear-chat');
+    const welcomeMessage = document.getElementById('welcome-message');
+
+    // 消息历史（用于上下文）
+    let conversationHistory = [];
+
+    // 初始化事件监听
+    function initChatListeners() {
+        // 发送按钮
+        if (sendButton) {
+            sendButton.addEventListener('click', handleSendMessage);
+        }
+
+        // 回车发送（Shift+Enter换行）
+        if (chatInput) {
+            chatInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                }
+            });
+
+            // 自动调整高度
+            chatInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            });
+        }
+
+        // 清空对话
+        if (clearChatButton) {
+            clearChatButton.addEventListener('click', clearChat);
+        }
+
+        // 快捷问题按钮
+        document.querySelectorAll('.ai-quick-prompt-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const prompt = this.getAttribute('data-prompt');
+                chatInput.value = prompt;
+                handleSendMessage();
+            });
         });
     }
-    
-    // 快速开始按钮
-    var helpMeStartButton = document.getElementById('help-me-start');
-    if (helpMeStartButton) {
-        helpMeStartButton.addEventListener('click', function() {
-            getAIAdvice();
+
+    // 处理发送消息
+    function handleSendMessage() {
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        // 隐藏欢迎消息
+        if (welcomeMessage) {
+            welcomeMessage.style.display = 'none';
+        }
+
+        // 添加用户消息
+        addMessage('user', message);
+
+        // 清空输入框
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+
+        // 禁用发送按钮
+        sendButton.disabled = true;
+
+        // 显示输入中指示器
+        const typingIndicator = showTypingIndicator();
+
+        // 发送到AI
+        sendToAI(message).then(() => {
+            // 移除输入中指示器
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+            sendButton.disabled = false;
+        });
+    }
+
+    // 添加消息到聊天区
+    function addMessage(role, content) {
+        const wrapper = document.createElement('div');
+        wrapper.className = `ai-message-wrapper ${role}-message`;
+
+        const avatar = document.createElement('div');
+        avatar.className = 'ai-message-avatar';
+        avatar.innerHTML = role === 'user' ? '<i class="bi bi-person"></i>' : '<i class="bi bi-robot"></i>';
+
+        const messageContent = document.createElement('div');
+        messageContent.className = 'ai-message-content';
+
+        // 根据角色处理内容
+        if (role === 'assistant') {
+            // AI消息使用marked渲染Markdown
+            if (typeof marked !== 'undefined') {
+                messageContent.innerHTML = marked.parse(content);
+            } else {
+                messageContent.textContent = content;
+            }
+
+            // 应用代码高亮
+            if (typeof hljs !== 'undefined') {
+                messageContent.querySelectorAll('pre code').forEach(block => {
+                    hljs.highlightElement(block);
+                });
+            }
+        } else {
+            // 用户消息直接显示
+            messageContent.textContent = content;
+        }
+
+        wrapper.appendChild(avatar);
+        wrapper.appendChild(messageContent);
+
+        chatMessages.appendChild(wrapper);
+        scrollToBottom();
+
+        // 保存到历史
+        conversationHistory.push({ role, content });
+
+        return wrapper;
+    }
+
+    // 显示输入中指示器
+    function showTypingIndicator() {
+        const indicator = document.createElement('div');
+        indicator.className = 'ai-typing-indicator';
+        indicator.innerHTML = `
+            <div class="ai-typing-dots">
+                <div class="ai-typing-dot"></div>
+                <div class="ai-typing-dot"></div>
+                <div class="ai-typing-dot"></div>
+            </div>
+            <span>AI正在思考...</span>
+        `;
+        chatMessages.appendChild(indicator);
+        scrollToBottom();
+        return indicator;
+    }
+
+    // 发送到AI并处理响应（流式）
+    async function sendToAI(message) {
+        const code = getEditorContent();
+
+        try {
+            const response = await fetch('/api/code_advice', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    code: code,
+                    assignment_id: "{{ assignment.id }}",
+                    language: "cpp",
+                    question: message,
+                    conversation_history: conversationHistory.slice(-5)
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('网络响应错误');
+            }
+
+            // 检查是否是流式响应
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('text/event-stream')) {
+                // 流式处理
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let assistantMessage = '';
+                let messageElement = null;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // 保留不完整的行
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.slice(6);
+                            try {
+                                const data = JSON.parse(dataStr);
+                                if (data.content) {
+                                    // 累积内容
+                                    assistantMessage += data.content;
+
+                                    // 创建或更新消息元素
+                                    if (!messageElement) {
+                                        messageElement = createStreamingMessage();
+                                    }
+                                    updateStreamingMessage(messageElement, assistantMessage);
+                                } else if (data.done) {
+                                    // 流式完成，保存到历史
+                                    conversationHistory.push({
+                                        role: 'assistant',
+                                        content: assistantMessage
+                                    });
+                                    // 移除流式标记
+                                    if (messageElement) {
+                                        messageElement.removeAttribute('data-streaming');
+                                    }
+                                } else if (data.error) {
+                                    throw new Error(data.error);
+                                }
+                            } catch (e) {
+                                console.error('解析SSE数据失败:', e);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // 非流式响应（兼容旧版本）
+                const data = await response.json();
+                if (data.success) {
+                    addMessage('assistant', data.data.advice || '抱歉，我暂时无法回答这个问题。');
+                } else {
+                    addMessage('assistant', '抱歉，出现了错误：' + (data.message || '未知错误'));
+                }
+            }
+        } catch (error) {
+            console.error('AI请求失败:', error);
+            addMessage('assistant', '抱歉，连接AI服务失败，请稍后再试。');
+        }
+    }
+
+    // 创建流式消息元素
+    function createStreamingMessage() {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ai-message-wrapper assistant-message';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'ai-message-avatar';
+        avatar.innerHTML = '<i class="bi bi-robot"></i>';
+
+        const messageContent = document.createElement('div');
+        messageContent.className = 'ai-message-content';
+        messageContent.setAttribute('data-streaming', 'true');
+
+        wrapper.appendChild(avatar);
+        wrapper.appendChild(messageContent);
+        chatMessages.appendChild(wrapper);
+        scrollToBottom();
+
+        return messageContent;
+    }
+
+    // 更新流式消息内容
+    function updateStreamingMessage(element, content) {
+        if (typeof marked !== 'undefined') {
+            element.innerHTML = marked.parse(content);
+        } else {
+            element.textContent = content;
+        }
+
+        // 应用代码高亮
+        if (typeof hljs !== 'undefined') {
+            element.querySelectorAll('pre code').forEach(block => {
+                hljs.highlightElement(block);
+            });
+        }
+
+        scrollToBottom();
+    }
+
+    // 清空聊天
+    function clearChat() {
+        conversationHistory = [];
+
+        // 移除所有消息
+        const messages = chatMessages.querySelectorAll('.ai-message-wrapper, .ai-typing-indicator');
+        messages.forEach(msg => msg.remove());
+
+        // 显示欢迎消息
+        if (welcomeMessage) {
+            welcomeMessage.style.display = 'block';
+        }
+
+        showToast('对话已清空', 'info');
+    }
+
+    // 滚动到底部
+    function scrollToBottom() {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // 初始化聊天
+    initChatListeners();
+
+    // ==================== 保留旧的按钮功能（兼容） ====================
+
+    // AI建议按钮（现在触发聊天）
+    var aiAdviceButton = document.getElementById('get-ai-advice');
+    if (aiAdviceButton) {
+        aiAdviceButton.addEventListener('click', function() {
+            chatInput.value = '帮我分析这段代码';
+            handleSendMessage();
         });
     }
     

@@ -1,0 +1,82 @@
+{% extends "layout.html" %}
+
+{% block title %}邀请教师 - 管理后台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .invite-container {
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background-color: #fff;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .invite-url-box {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        font-family: 'JetBrains Mono', monospace;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+    }
+    .copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('users.manage_users') }}">用户管理</a></li>
+            <li class="breadcrumb-item active" aria-current="page">邀请教师</li>
+        </ol>
+    </nav>
+
+    <div class="invite-container">
+        <h2 class="mb-3"><i class="bi bi-person-plus-fill text-primary"></i> 邀请新教师</h2>
+        <p class="text-muted mb-4">请将以下链接发送给您想邀请的教师。该链接在24小时内有效，且只能使用一次。</p>
+        
+        {% if invite_url %}
+            <div class="alert alert-success">
+                <h5 class="alert-heading">邀请链接已生成！</h5>
+                <p>复制下面的链接并发送给教师。</p>
+                <div class="invite-url-box" id="inviteLink">{{ invite_url }}</div>
+                <hr>
+                <button class="btn btn-primary copy-btn" onclick="copyToClipboard()">
+                    <i class="bi bi-clipboard"></i>
+                    <span id="copyBtnText">复制链接</span>
+                </button>
+            </div>
+        {% else %}
+            <div class="alert alert-danger">
+                生成邀请链接失败，请重试。
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function copyToClipboard() {
+    const linkText = document.getElementById('inviteLink').innerText;
+    navigator.clipboard.writeText(linkText).then(() => {
+        const btnText = document.getElementById('copyBtnText');
+        const originalText = btnText.innerText;
+        btnText.innerText = '已复制!';
+        setTimeout(() => {
+            btnText.innerText = originalText;
+        }, 2000);
+    }).catch(err => {
+        console.error('无法复制链接: ', err);
+        alert('复制失败，请手动复制链接。');
+    });
+}
+</script>
+{% endblock %}

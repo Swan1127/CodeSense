@@ -2,17 +2,20 @@
 API路由模块
 提供REST API接口
 """
-from flask import Blueprint, request, jsonify, session, render_template
+from flask import Blueprint, request, jsonify, session, render_template, Response, current_app
 from sqlalchemy import desc
 from models import db, User, Assignment, Submission, AbilityTrend
-from utils.auth import login_required, admin_required
+from utils.auth import login_required, admin_required, teacher_required
 from utils.api import api_response, error_response, user_to_dict, assignment_to_dict, submission_to_dict
 from utils.code_evaluator import evaluate_cpp_code, analyze_code_quality
 from utils.guidance_generator import generate_guidance, generate_answer_to_question  # 导入指导生成函数和答案生成函数
 from utils.code_advisor import generate_code_advice, initialize_code_advisor  # 导入新的代码建议系统
+from services.ai_evaluator import AIEvaluator
+import json # Added
 import markdown
 import traceback
 import os
+import requests  # 添加requests导入
 from datetime import datetime
 
 api = Blueprint('api', __name__, url_prefix='/api')
@@ -594,26 +597,27 @@ def ask_question():
 @api.route('/code_advice', methods=['POST'])
 @login_required
 def get_code_advice():
-    """获取代码建议API - 使用新的代码建议系统"""
+    """获取代码建议API - 支持聊天式交互"""
     try:
         # 获取请求数据
         data = request.get_json()
         if not data or 'code' not in data:
             return error_response("请提供代码内容", 400)
-            
+
         # 提取参数
         code = data['code']
         assignment_id = data.get('assignment_id')
         language = data.get('language', 'cpp')
-        advanced_mode = data.get('advanced', False)
-        
+        user_question = data.get('question', '')  # 获取用户问题
+        conversation_history = data.get('conversation_history', [])  # 获取对话历史
+
         # 获取学生ID
         student_id = session.get('student_id')
         if not student_id:
             return error_response("会话已过期，请重新登录", 401)
-        
+
         # 日志记录
-        print(f"处理代码建议请求: 学生 {student_id}, 语言 {language}, 高级模式 {advanced_mode}")
+        print(f"处理代码建议请求: 学生 {student_id}, 语言 {language}, 用户问题: {user_question[:50] if user_question else '无'}")
         print(f"代码长度: {len(code)}")
 
         # 如果提供了作业ID，获取作业详情作为上下文
@@ -625,33 +629,134 @@ def get_code_advice():
                 assignment_title = assignment.title
                 assignment_description = assignment.description
                 print(f"作业标题: {assignment_title}")
-            else:
-                print(f"警告: 提供的作业ID {assignment_id} 无效")
-                
-        # 使用新的代码建议系统生成建议
-        try:
-            print(f"使用新的代码建议系统为{language}代码生成建议...")
-            analysis_result = generate_code_advice(
-                code=code,
-                language=language,
-                assignment_title=assignment_title,
-                assignment_description=assignment_description,
-                advanced_mode=advanced_mode
-            )
-            
-            # 检查分析结果
-            if not analysis_result:
-                print("代码建议系统返回空结果")
-                return error_response("无法生成代码建议，请稍后再试", 500)
-                
-            print(f"代码建议生成成功，总体评分: {(analysis_result.get('algorithm_score', 0) + analysis_result.get('style_score', 0) + analysis_result.get('functionality_score', 0) + analysis_result.get('efficiency_score', 0)) / 4:.1f}")
-            
-            # 根据模式构建不同格式的建议文本
-            if advanced_mode:
-                # 高级模式：直接返回简洁的指导内容
-                advice = analysis_result.get('overall_feedback', '无法生成指导建议')
-            else:
-                # 基础模式：构建详细的分析报告
+
+        # 判断是否为聊天式交互（有用户问题）还是代码分析
+        if user_question:
+            # 聊天模式：根据用户问题回答
+            try:
+                print(f"聊天模式：回答用户问题 - {user_question}")
+
+                # 使用AI生成针对性回答
+                api_key = current_app.config.get('ZHIPU_API_KEY') or os.environ.get('ZHIPU_API_KEY')
+                if not api_key:
+                    return error_response("AI服务未配置", 500)
+
+                # 构建对话上下文
+                messages = [
+                    {"role": "system", "content": """你是一个专业的编程教育助手，帮助学生理解和改进代码。
+
+重要原则：
+作为教育助手，你的职责是引导学生学习和思考，而不是直接提供答案。请遵循以下原则：
+
+1. 不要提供任何形式的代码实现（包括完整代码、伪代码、代码片段等）
+2. 通过讲解原理、思路、步骤来引导学生理解
+3. 可以分析学生已提交的代码，指出问题和改进方向
+4. 可以回答编程概念、语法、调试等问题
+5. 用文字描述算法步骤，而不是用代码展示
+
+回答方式：
+- 当学生请求代码或实现时，用自然语言详细讲解思路和步骤
+- 当学生询问算法时，讲解原理和执行过程，用文字描述每一步
+- 当学生提交代码求助时，分析代码问题并给出修改建议
+
+记住：你的目标是帮助学生学会独立思考和编程，而不是代替他们完成作业。"""}
+                ]
+
+                # 添加历史对话（最近3条）
+                for msg in conversation_history[-3:]:
+                    messages.append({
+                        "role": msg['role'],
+                        "content": msg['content']
+                    })
+
+                # 添加当前用户问题（附带代码）
+                user_prompt = f"""用户问题：{user_question}
+
+当前代码：
+```{language}
+{code[:1000] if len(code) > 1000 else code}
+```
+
+{f'作业要求：{assignment_description[:200]}' if assignment_description else ''}
+
+请针对用户的问题给出简洁、专业的回答。如果用户问的是代码分析，提供结构化的分析；如果是具体问题，直接回答要点。"""
+
+                messages.append({"role": "user", "content": user_prompt})
+
+                # 调用AI（流式）
+                response = requests.post(
+                    "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    },
+                    json={
+                        "model": "glm-4-flash",
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": 1000,
+                        "stream": True  # 启用流式输出
+                    },
+                    timeout=30,
+                    stream=True  # 流式接收响应
+                )
+
+                if response.status_code == 200:
+                    # 流式返回SSE格式
+                    def generate():
+                        try:
+                            for line in response.iter_lines():
+                                if line:
+                                    line_str = line.decode('utf-8')
+                                    if line_str.startswith('data:'):
+                                        data_str = line_str[5:].strip()
+                                        if data_str == '[DONE]':
+                                            break
+                                        try:
+                                            chunk = json.loads(data_str)
+                                            if 'choices' in chunk and len(chunk['choices']) > 0:
+                                                delta = chunk['choices'][0].get('delta', {})
+                                                content = delta.get('content', '')
+                                                if content:
+                                                    yield f"data: {json.dumps({'content': content})}\n\n"
+                                        except json.JSONDecodeError:
+                                            continue
+
+                            yield f"data: {json.dumps({'done': True})}\n\n"
+                        except Exception as e:
+                            print(f"流式输出错误: {e}")
+                            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+                    return Response(generate(), mimetype='text/event-stream')
+                else:
+                    print(f"AI API调用失败: {response.status_code}")
+                    return error_response("AI服务暂时不可用", 500)
+
+            except Exception as e:
+                print(f"聊天模式处理失败: {e}")
+                print(traceback.format_exc())
+                return error_response(f"处理问题失败: {str(e)}", 500)
+
+        else:
+            # 代码分析模式：生成完整的代码分析报告
+            try:
+                print(f"代码分析模式：生成完整报告")
+                analysis_result = generate_code_advice(
+                    code=code,
+                    language=language,
+                    assignment_title=assignment_title,
+                    assignment_description=assignment_description,
+                    advanced_mode=False
+                )
+
+                # 检查分析结果
+                if not analysis_result:
+                    print("代码建议系统返回空结果")
+                    return error_response("无法生成代码建议，请稍后再试", 500)
+
+                print(f"代码建议生成成功")
+
+                # 构建详细的分析报告
                 advice = f"""## 代码分析报告
 
 ### 总体评价
@@ -667,7 +772,7 @@ def get_code_advice():
 
 ### 改进建议
 """
-                
+
                 # 添加建议列表
                 suggestions = analysis_result.get('suggestions', [])
                 if suggestions:
@@ -675,62 +780,26 @@ def get_code_advice():
                         advice += f"{i}. {suggestion}\n"
                 else:
                     advice += "- 暂无具体改进建议\n"
-                
-                # 添加学习资源（仅基础模式）
-                advice += """
-### 学习资源
-"""
-                if language == 'cpp':
-                    advice += """- [C++核心指南](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines)
-- [Effective Modern C++](https://www.oreilly.com/library/view/effective-modern-c/9781491908419/)
-- [C++参考手册](https://en.cppreference.com/w/)"""
-                elif language == 'python':
-                    advice += """- [Python官方文档](https://docs.python.org/zh-cn/3/)
-- [Python编程规范(PEP 8)](https://peps.python.org/pep-0008/)
-- [Python进阶](https://eastlakeside.gitbook.io/interpy-zh/)"""
-                elif language == 'java':
-                    advice += """- [Java编程规范](https://www.oracle.com/java/technologies/javase/codeconventions-introduction.html)
-- [Effective Java](https://www.oreilly.com/library/view/effective-java-3rd/9780134686097/)
-- [Java教程](https://www.w3schools.com/java/)"""
-                
-            # 返回API响应
-            return api_response(
-                success=True,
-                message="代码建议生成成功",
-                data={
-                    'advice': advice,
-                    'metrics': {
-                        'algorithm_score': analysis_result.get('algorithm_score', 60),
-                        'style_score': analysis_result.get('style_score', 60),
-                        'functionality_score': analysis_result.get('functionality_score', 60),
-                        'efficiency_score': analysis_result.get('efficiency_score', 60)
+
+                # 返回API响应
+                return api_response(
+                    success=True,
+                    message="代码建议生成成功",
+                    data={
+                        'advice': advice,
+                        'metrics': {
+                            'algorithm_score': analysis_result.get('algorithm_score', 60),
+                            'style_score': analysis_result.get('style_score', 60),
+                            'functionality_score': analysis_result.get('functionality_score', 60),
+                            'efficiency_score': analysis_result.get('efficiency_score', 60)
+                        }
                     }
-                }
-            )
-                
-        except Exception as e:
-            print(f"生成代码建议失败: {e}")
-            print(traceback.format_exc())
-            
-            # 回退到基本分析作为应急方案
-            print("使用基本代码质量分析作为回退方案")
-            analysis_result = analyze_code_quality(code)
-            
-            # 构建简单的建议文本
-            advice = f"""## 代码分析 (基础版)
+                )
 
-### 总体评价
-我们的基本代码分析系统检测到您的代码已经完成了基本功能，但仍有一些可以改进的地方。
-
-### 代码结构
-{analysis_result.get('structure_feedback', '代码结构分析暂不可用')}
-
-### 代码风格
-{analysis_result.get('style_feedback', '代码风格分析暂不可用')}
-
-### 改进建议
-"""
-            suggestions = analysis_result.get('suggestions', [])
+            except Exception as e:
+                print(f"生成代码建议失败: {e}")
+                print(traceback.format_exc())
+                return error_response(f"生成代码建议失败: {str(e)}", 500)
             if suggestions:
                 for i, suggestion in enumerate(suggestions, 1):
                     advice += f"{i}. {suggestion}\n"
@@ -873,4 +942,119 @@ def get_trend_statistics():
     except Exception as e:
         print(f"获取趋势统计信息失败: {e}")
         print(traceback.format_exc())
-        return error_response(f"获取统计信息失败: {str(e)}", 500) 
+        return error_response(f"获取统计信息失败: {str(e)}", 500)
+
+@api.route('/format-assignment', methods=['POST'])
+@login_required
+@teacher_required
+def format_assignment():
+    """
+    Receives raw assignment text and streams a formatted JSON object using an LLM.
+    """
+    data = request.get_json()
+    if not data or 'raw_text' not in data:
+        return error_response("Request must include 'raw_text' field.", 400)
+
+    raw_text = data['raw_text']
+    if len(raw_text.strip()) < 20:
+        return error_response("Text is too short to format.", 400)
+
+    def generate():
+        try:
+            ai_evaluator = AIEvaluator()
+            for chunk in ai_evaluator.format_assignment_text(raw_text):
+                # SSE format: data: <json_string>\n\n
+                yield f"data: {json.dumps({'token': chunk})}\n\n"
+        except Exception as e:
+            error_message = json.dumps({"error": f"An unexpected error occurred on the server: {str(e)}"})
+            yield f"data: {error_message}\n\n"
+
+    return Response(generate(), mimetype='text/event-stream')
+
+
+@api.route('/stream/ability-analysis', methods=['GET'])
+@login_required
+def stream_ability_analysis():
+    """
+    流式返回学生能力分析
+    使用Server-Sent Events (SSE)实时推送分析结果
+    """
+    from flask import current_app, stream_with_context
+    from models import KnowledgePointScore
+
+    def generate():
+        try:
+            student_id = session.get('student_id')  # 修改：使用 student_id 而不是 user_id
+            if not student_id:
+                yield f"data: {json.dumps({'type': 'error', 'message': '未登录'})}\n\n"
+                return
+
+            # 1. 立即返回知识点画像数据
+            yield f"data: {json.dumps({'type': 'progress', 'percent': 10, 'message': '正在加载知识点数据...'})}\n\n"
+
+            knowledge_profile = KnowledgePointScore.get_student_profile(student_id)
+            yield f"data: {json.dumps({'type': 'knowledge_profile', 'data': knowledge_profile})}\n\n"
+
+            # 2. 获取提交记录
+            yield f"data: {json.dumps({'type': 'progress', 'percent': 30, 'message': '正在分析提交记录...'})}\n\n"
+
+            user = User.query.get(student_id)
+            if not user:
+                yield f"data: {json.dumps({'type': 'error', 'message': '用户不存在'})}\n\n"
+                return
+
+            # 获取学生的提交记录
+            submissions = Submission.query.filter_by(student_id=student_id)\
+                .order_by(Submission.submitted_at.desc())\
+                .limit(20)\
+                .all()
+
+            if not submissions:
+                yield f"data: {json.dumps({'type': 'complete', 'message': '暂无提交记录，请先完成一些作业。'})}\n\n"
+                return
+
+            # 3. 准备提交数据用于AI分析
+            yield f"data: {json.dumps({'type': 'progress', 'percent': 50, 'message': '正在准备数据...'})}\n\n"
+
+            submission_data = []
+            for sub in submissions:
+                if sub.code and sub.assignment:
+                    submission_data.append({
+                        'assignment_title': sub.assignment.title,
+                        'code': sub.code[:500],  # 只取前500字符
+                        'score': sub.score,
+                        'submitted_at': sub.submitted_at.strftime('%Y-%m-%d %H:%M')
+                    })
+
+            # 4. 流式调用AI分析
+            yield f"data: {json.dumps({'type': 'progress', 'percent': 60, 'message': 'AI正在分析您的编程能力...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'analysis_start'})}\n\n"
+
+            # 初始化AI评估器
+            api_key = current_app.config.get('ZHIPU_API_KEY') or os.environ.get('ZHIPU_API_KEY')
+            if not api_key:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'AI服务未配置'})}\n\n"
+                return
+
+            ai_evaluator = AIEvaluator(api_key)
+
+            # 流式输出AI分析结果
+            for chunk in ai_evaluator.analyze_ability_trend_stream(submission_data):
+                # 将每个文本块包装成SSE格式
+                yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': chunk})}\n\n"
+
+            # 5. 完成
+            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+
+        except Exception as e:
+            current_app.logger.error(f"流式分析出错: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'message': f'分析出错: {str(e)}'})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'
+        }
+    )

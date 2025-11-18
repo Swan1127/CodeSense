@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+
+{% block title %}教师资料 - {{ user.full_name or user.username }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body text-center">
+                    <i class="bi bi-person-workspace" style="font-size: 4rem; color: var(--primary-color);"></i>
+                    <h4 class="card-title mt-3">{{ user.full_name or user.username }}</h4>
+                    <p class="text-muted">{{ user.username }}</p>
+                    <span class="badge bg-success">教师</span>
+                </div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item"><strong>教师工号:</strong> {{ user.student_id }}</li>
+                    <li class="list-group-item"><strong>注册时间:</strong> {{ user.created_at.strftime('%Y-%m-%d') }}</li>
+                </ul>
+                <div class="card-body">
+                    <a href="{{ url_for('users.edit_profile') }}" class="btn btn-primary w-100">编辑个人资料</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">我管理的班级</h5>
+                </div>
+                <div class="card-body">
+                    {% if managed_classes %}
+                        <p>您当前管理以下 {{ managed_classes|length }} 个班级：</p>
+                        <div class="list-group">
+                            {% for class in managed_classes %}
+                                <a href="{{ url_for('classes.class_detail', class_id=class.id) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                    {{ class.name }}
+                                    <span class="badge bg-primary rounded-pill">{{ class.students.count() }} 名学生</span>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            您当前未被指派任何班级。请联系管理员进行班级分配。
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

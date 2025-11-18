@@ -1,0 +1,183 @@
+{% extends "layout.html" %}
+
+{% block title %}创建新作业 - 教师中心{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <!-- LLM Formatter Card -->
+            <div class="card mb-4 border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="bi bi-magic"></i> 智能格式化工具</h4>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">将您的作业要求、说明、样例等文本粘贴到下方，AI将自动为您提取信息并填充到表单中。</p>
+                    <div class="mb-3">
+                        <textarea id="raw-text-input" class="form-control" rows="8" placeholder="在此处粘贴您的作业原始文本..."></textarea>
+                    </div>
+                    <button id="format-button" class="btn btn-primary">
+                        <span id="format-button-spinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;"></span>
+                        <span id="format-button-text">智能格式化</span>
+                    </button>
+                    <div id="wait-message" class="form-text mt-2" style="display: none;">
+                        AI正在处理中，这可能需要长达一分半钟，请耐心等待...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Assignment Form Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">创建新作业</h3>
+                </div>
+                <div class="card-body">
+                    <form id="assignment-form" method="POST" action="{{ url_for('assignments.add_teacher_assignment') }}">
+                        {{ form.hidden_tag() }}
+
+                        <div class="mb-3">
+                            <label for="assignment_id" class="form-label">作业ID</label>
+                            {{ form.assignment_id(class="form-control", placeholder="例如：101") }}
+                            {% if form.assignment_id.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.assignment_id.errors[0] }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="title" class="form-label">作业标题</label>
+                            {{ form.title(class="form-control", placeholder="例如：A+B Problem") }}
+                            {% if form.title.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.title.errors[0] }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">作业描述</label>
+                            {{ form.description(class="form-control", rows="15", placeholder="请详细描述作业要求...") }}
+                            {% if form.description.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {{ form.description.errors[0] }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="d-flex justify-content-end">
+                            <a href="{{ url_for('assignments.teacher_assignments') }}" class="btn btn-secondary me-2">取消</a>
+                            <button type="submit" class="btn btn-success">创建作业</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const formatButton = document.getElementById('format-button');
+    const rawTextInput = document.getElementById('raw-text-input');
+    const spinner = document.getElementById('format-button-spinner');
+    const buttonText = document.getElementById('format-button-text');
+    const waitMessage = document.getElementById('wait-message');
+
+    // Form fields
+    const titleField = document.querySelector('[name="title"]');
+    const descriptionField = document.querySelector('[name="description"]');
+
+    formatButton.addEventListener('click', async () => {
+        const rawText = rawTextInput.value;
+        if (rawText.trim().length < 20) {
+            alert('请输入足够长的文本以便AI进行分析。');
+            return;
+        }
+
+        // Clear previous results and show loading state
+        titleField.value = '';
+        descriptionField.value = '';
+        spinner.style.display = 'inline-block';
+        buttonText.textContent = '正在处理...';
+        formatButton.disabled = true;
+        waitMessage.style.display = 'block';
+        console.log("开始读取数据流...");
+
+        try {
+            const response = await fetch("{{ url_for('api.format_assignment') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ raw_text: rawText }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`网络响应错误: ${response.statusText}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    break;
+                }
+                
+                const chunk = decoder.decode(value, { stream: true });
+                console.log("收到数据块:", chunk); // DEBUG: Log raw chunk
+
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                    if (line.startsWith('data:')) {
+                        const jsonStr = line.substring(5).trim();
+                        if (jsonStr) {
+                            try {
+                                const data = JSON.parse(jsonStr);
+                                if (data.token) {
+                                    descriptionField.value += data.token;
+                                } else if (data.error) {
+                                    throw new Error(data.error);
+                                }
+                            } catch (e) {
+                                console.warn("无法解析流中的JSON块:", jsonStr);
+                            }
+                        }
+                    }
+                }
+            }
+
+            console.log("数据流结束. 最终描述框内容:", descriptionField.value); // DEBUG: Log final content
+
+            // --- Post-processing after stream ends ---
+            const finalText = descriptionField.value;
+            const textLines = finalText.split('\n');
+            
+            if (textLines.length > 0 && textLines[0].toLowerCase().startsWith('title:')) {
+                const title = textLines[0].substring(6).trim();
+                titleField.value = title;
+                descriptionField.value = textLines.slice(1).join('\n').trim();
+            }
+            
+            alert('作业信息已成功填充！');
+
+        } catch (error) {
+            console.error('格式化过程中发生错误:', error);
+            descriptionField.value = `格式化失败: ${error.message}\n\n请检查网络连接或API密钥，然后重试。`;
+            alert('格式化失败: ' + error.message);
+        } finally {
+            // Hide loading state
+            spinner.style.display = 'none';
+            buttonText.textContent = '智能格式化';
+            formatButton.disabled = false;
+            waitMessage.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}

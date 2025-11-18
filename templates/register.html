@@ -6,8 +6,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="学生程序设计能力评价系统 - 基于机器学习的代码能力评估平台">
-    <title>用户注册 - 学生程序设计能力评价系统</title>
+    <meta name="description" content="CodeSense 酷森思 - 基于机器学习的代码能力评估平台">
+    <title>用户注册 - CodeSense 酷森思</title>
     
     <!-- 引入Google字体 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -244,7 +244,7 @@
         </div>
         
         <h1 class="auth-title">创建账户</h1>
-        <p class="auth-subtitle">学生程序设计能力评价系统</p>
+        <p class="auth-subtitle">CodeSense 酷森思</p>
         
         <!-- 错误消息显示 -->
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -333,26 +333,6 @@
                 {% endif %}
             </div>
             
-            <div class="user-type">
-                <label class="form-label">用户类型</label>
-                <div class="radio-group">
-                    <div class="radio-option">
-                        <input type="radio" id="student" name="usertype" value="学生" checked onchange="toggleAdminPassword()">
-                        <label for="student">学生</label>
-                    </div>
-                    <div class="radio-option">
-                        <input type="radio" id="admin" name="usertype" value="管理员" onchange="toggleAdminPassword()">
-                        <label for="admin">管理员</label>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 管理员密码 -->
-            <div class="form-group admin-password" id="adminPasswordField">
-                <label for="admin_password" class="form-label">管理员密码</label>
-                <input type="password" id="admin_password" name="admin_password" class="form-control" placeholder="请输入管理员密码">
-            </div>
-            
             <div class="form-group">
                 <button type="submit" class="btn btn-primary" style="width: 100%;">
                     <i class="bi bi-person-plus" style="margin-right: 10px;"></i> 注册
@@ -365,18 +345,6 @@
         </div>
     </div>
     
-    <script>
-        function toggleAdminPassword() {
-            const adminType = document.getElementById('admin');
-            const adminPasswordField = document.getElementById('adminPasswordField');
-            
-            if (adminType.checked) {
-                adminPasswordField.style.display = 'block';
-            } else {
-                adminPasswordField.style.display = 'none';
-            }
-        }
-    </script>
 </body>
 
 </html>

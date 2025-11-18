@@ -42,23 +42,49 @@ def home():
     session['upage'] = 1
     
     # 获取当前登录用户的个人信息
-    student_id = session['student_id']
-    user = User.query.filter_by(student_id=student_id).first_or_404()
+    user = current_user
     
     # 根据用户类型显示不同页面
     if user.is_admin:
         return redirect(url_for('main.admin_dashboard'))
+    elif user.is_teacher:
+        return redirect(url_for('main.teacher_dashboard'))
     else:
-        # 获取实际数据
-        assignments_count = Assignment.query.count()
-        submissions_count = Submission.query.filter_by(student_id=student_id).count()
+        student_id = current_user.student_id
+        class_name = current_user.class_name
+
+        # 1. 获取分配给该学生班级的作业
+        assigned_assignments_query = Assignment.query
+        if class_name:
+            assigned_assignments_query = assigned_assignments_query.filter(
+                Assignment.target_classes.like(f'%{class_name}%')
+            )
+        else:
+            # 如果没有班级，则没有作业
+            assigned_assignments_query = assigned_assignments_query.filter(db.false())
         
-        # 计算平均得分
-        average_score_query = db.session.query(func.avg(Submission.score)).filter(Submission.student_id == student_id).scalar()
+        assigned_assignments = assigned_assignments_query.all()
+        assigned_assignment_ids = [a.id for a in assigned_assignments]
+
+        # 2. 基于已分配的作业重新计算统计数据
+        assignments_count = len(assigned_assignment_ids)
+
+        # 筛选只针对已分配作业的提交
+        submissions_query = Submission.query.filter(
+            Submission.student_id == student_id,
+            Submission.assignment_id.in_(assigned_assignment_ids)
+        )
+        
+        submissions_count = submissions_query.count()
+
+        average_score_query = db.session.query(func.avg(Submission.score)).filter(
+            Submission.student_id == student_id,
+            Submission.assignment_id.in_(assigned_assignment_ids)
+        ).scalar()
         average_score = average_score_query if average_score_query else 0
-        
-        # 获取学生提交记录
-        submissions = Submission.query.filter_by(student_id=student_id).all()
+
+        # 3. 获取用于显示的提交记录（也需要筛选）
+        submissions = submissions_query.order_by(Submission.submitted_at.desc()).all()
         
         # 初始化AI评估器
         ai_evaluator = AIEvaluator(current_app.config.get('ZHIPU_API_KEY', os.environ.get('ZHIPU_API_KEY')))
@@ -85,7 +111,15 @@ def home():
         print(f"🔍 条件3 (trend_data非空): {trend_record.trend_data is not None and len(str(trend_record.trend_data)) > 0}")
         
         # 修复条件判断逻辑
-        if (trend_record.status == 'completed' and 
+        if trend_record.status == 'failed':
+            ability_analysis = {
+                "trend": "能力分析失败",
+                "improvement": "在上次分析过程中出现问题，请稍后点击重试。",
+                "suggestions": [],
+                "_status": "failed",
+                "_last_updated": trend_record.last_updated.strftime('%Y-%m-%d %H:%M:%S') if trend_record.last_updated else None
+            }
+        elif (trend_record.status == 'completed' and 
             trend_record.trend_data is not None and 
             len(str(trend_record.trend_data)) > 0):
             # 有已完成的分析结果，使用它
@@ -128,7 +162,13 @@ def home():
         print(f"   状态: {ability_analysis.get('_status', 'unknown')}")
         
         # 获取最近的作业
-        recent_assignments = Assignment.query.order_by(Assignment.created_time.desc()).limit(4).all()
+        class_name = current_user.class_name
+        if class_name:
+            recent_assignments = Assignment.query.filter(
+                Assignment.target_classes.like(f'%{class_name}%')
+            ).order_by(Assignment.created_time.desc()).limit(4).all()
+        else:
+            recent_assignments = []
         
         # 初始化能力得分变量
         # 学生能力得分（默认值为60，如果有评估结果则使用实际值）
@@ -544,6 +584,38 @@ def admin_dashboard():
                              recent_activities=[],
                              chart_data=json.dumps(demo_data, ensure_ascii=False))
 
+@main.route('/teacher_dashboard')
+@login_required
+def teacher_dashboard():
+    """教师仪表盘"""
+    if not current_user.is_teacher:
+        flash('您没有权限访问此页面', 'danger')
+        return redirect(url_for('main.home'))
+
+    teacher = current_user
+    managed_classes = teacher.managed_classes.all()
+    class_ids = [c.id for c in managed_classes]
+    
+    student_count = User.query.filter(User.class_id.in_(class_ids)).count() if class_ids else 0
+    
+    # 获取这些班级学生的ID
+    student_ids = db.session.query(User.student_id).filter(User.class_id.in_(class_ids)).scalar_subquery()
+    
+    # 获取最近的提交
+    recent_submissions = Submission.query.filter(
+        Submission.student_id.in_(student_ids)
+    ).order_by(Submission.submitted_at.desc()).limit(10).all() if class_ids else []
+
+    # 统计数据
+    total_submissions = Submission.query.filter(Submission.student_id.in_(student_ids)).count() if class_ids else 0
+
+    return render_template('teacher_home.html',
+                           teacher=teacher,
+                           managed_classes=managed_classes,
+                           student_count=student_count,
+                           total_submissions=total_submissions,
+                           recent_submissions=recent_submissions)
+
 @main.route('/profile')
 @login_required
 def profile():
@@ -551,11 +623,10 @@ def profile():
     import datetime
     from datetime import datetime as dt, timedelta
     
-    student_id = session['student_id']
-    user = User.query.filter_by(student_id=student_id).first_or_404()
+    user = current_user
     
-    # 如果是管理员，使用管理员专属模板
-    if user.usertype == '管理员':
+    # 根据用户类型分发到不同的个人资料页
+    if user.is_admin:
         # 获取系统统计数据
         total_students = User.query.filter_by(usertype='学生').count()
         total_assignments = Assignment.query.count()
@@ -651,6 +722,9 @@ def profile():
             login_counts=json.dumps(login_counts),
             submission_counts=json.dumps(submission_counts)
         )
+    elif user.is_teacher:
+        managed_classes = user.managed_classes.all()
+        return render_template('teacher_profile.html', user=user, managed_classes=managed_classes)
     else:
         # 学生用户使用原有模板
         return render_template('profile.html', user=user)
@@ -726,12 +800,26 @@ def contact():
             
     return render_template('contact.html')
 
+@main.route('/trend_monitor')
+@login_required
+@admin_required
+def trend_monitor():
+    """能力趋势分析监控页面"""
+    return render_template('admin_trend_monitor.html')
+
 @main.route('/export_data')
 @login_required
 @admin_required
 def export_data():
     """显示导出数据选项页面"""
-    return render_template('export_data.html')
+    # 获取所有班级列表用于筛选
+    classes = db.session.query(User.class_name).filter(
+        User.class_name.isnot(None),
+        User.class_name != ''
+    ).distinct().order_by(User.class_name).all()
+    class_list = [c[0] for c in classes]
+    
+    return render_template('export_data.html', class_list=class_list)
 
 @main.route('/download_data/<export_type>')
 @login_required
@@ -742,18 +830,36 @@ def download_data(export_type):
     参数:
         export_type: 导出数据类型，可选 'users', 'assignments', 'submissions', 'all'
     """
+    # 获取筛选参数
+    class_name = request.args.get('class_name', '').strip()
+    student_id = request.args.get('student_id', '').strip()
+    
     # 记录导出操作
+    filter_desc = ""
+    if class_name:
+        filter_desc += f" (班级: {class_name})"
+    if student_id:
+        filter_desc += f" (学号: {student_id})"
+    
     SystemLog.add_log(
         log_type="数据导出",
         user_id=session.get('student_id'),
-        content=f"管理员 {session.get('username')} ({session.get('full_name')}) 导出了{export_type}数据",
+        content=f"管理员 {session.get('username')} ({session.get('full_name')}) 导出了{export_type}数据{filter_desc}",
         icon="bi bi-file-earmark-text"
     )
     
     try:
         if export_type == 'users':
             # 导出用户数据
-            data = User.query.all()
+            query = User.query
+            
+            # 应用筛选条件
+            if class_name:
+                query = query.filter(User.class_name == class_name)
+            if student_id:
+                query = query.filter(User.student_id == student_id)
+            
+            data = query.all()
             
             # 创建内存文件对象
             output = io.StringIO()
@@ -804,7 +910,20 @@ def download_data(export_type):
             
         elif export_type == 'submissions':
             # 导出提交记录数据
-            data = Submission.query.all()
+            query = Submission.query
+            
+            # 应用筛选条件
+            if class_name:
+                # 通过学生的班级筛选提交记录
+                student_ids = db.session.query(User.student_id).filter(
+                    User.class_name == class_name
+                ).all()
+                student_ids = [s[0] for s in student_ids]
+                query = query.filter(Submission.student_id.in_(student_ids))
+            if student_id:
+                query = query.filter(Submission.student_id == student_id)
+            
+            data = query.all()
             
             # 创建内存文件对象
             output = io.StringIO()
@@ -837,10 +956,16 @@ def download_data(export_type):
             memory_file = BytesIO()
             with ZipFile(memory_file, 'w') as zf:
                 # 添加用户数据
+                users_query = User.query
+                if class_name:
+                    users_query = users_query.filter(User.class_name == class_name)
+                if student_id:
+                    users_query = users_query.filter(User.student_id == student_id)
+                
                 users_data = io.StringIO()
                 users_writer = csv.writer(users_data)
                 users_writer.writerow(['学号', '用户名', '姓名', '班级', '用户类型', '提交次数', '平均分'])
-                for user in User.query.all():
+                for user in users_query.all():
                     users_writer.writerow([
                         user.student_id,
                         user.username,
@@ -852,7 +977,7 @@ def download_data(export_type):
                     ])
                 zf.writestr('users.csv', users_data.getvalue())
                 
-                # 添加作业数据
+                # 添加作业数据（作业不筛选）
                 assignments_data = io.StringIO()
                 assignments_writer = csv.writer(assignments_data)
                 assignments_writer.writerow(['作业ID', '标题', '描述', '创建时间', '提交次数', '平均分'])
@@ -868,10 +993,20 @@ def download_data(export_type):
                 zf.writestr('assignments.csv', assignments_data.getvalue())
                 
                 # 添加提交记录数据
+                submissions_query = Submission.query
+                if class_name:
+                    student_ids = db.session.query(User.student_id).filter(
+                        User.class_name == class_name
+                    ).all()
+                    student_ids = [s[0] for s in student_ids]
+                    submissions_query = submissions_query.filter(Submission.student_id.in_(student_ids))
+                if student_id:
+                    submissions_query = submissions_query.filter(Submission.student_id == student_id)
+                
                 submissions_data = io.StringIO()
                 submissions_writer = csv.writer(submissions_data)
                 submissions_writer.writerow(['提交ID', '作业ID', '学号', '提交时间', '代码', '评分', '反馈'])
-                for submission in Submission.query.all():
+                for submission in submissions_query.all():
                     submissions_writer.writerow([
                         submission.id,
                         submission.assignment_id,
@@ -972,10 +1107,10 @@ def system_settings():
     
     # 从数据库获取当前设置
     settings = {
-        'site_name': SystemConfig.get_value('site_name', '学生程序设计能力评价系统'),
+        'site_name': SystemConfig.get_value('site_name', 'CodeSense 酷森思'),
         'site_description': SystemConfig.get_value('site_description', '一个用于评估学生编程能力的在线平台'),
         'enable_registration': SystemConfig.get_value('enable_registration', True),
-        'login_message': SystemConfig.get_value('login_message', '欢迎登录学生程序设计能力评价系统'),
+        'login_message': SystemConfig.get_value('login_message', '欢迎登录 CodeSense 酷森思'),
         'default_user_score': SystemConfig.get_value('default_user_score', 60),
         'submissions_per_day': SystemConfig.get_value('submissions_per_day', 10),
         'admin_email': SystemConfig.get_value('admin_email', 'daiyupeng5@gmail.com'),

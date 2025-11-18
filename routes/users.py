@@ -1,7 +1,8 @@
 """
 用户管理相关路由
 """
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app
+from itsdangerous import URLSafeTimedSerializer
 from models import db, User, Submission
 from utils.auth import login_required, admin_required
 from sqlalchemy import desc, or_
@@ -370,4 +371,19 @@ def view_student_details(student_id):
         print(f'访问学生详情页面时出错: {str(e)}')
         print(traceback.format_exc())
         flash(f'访问学生详情页面时出错: {str(e)}', 'danger')
-        return redirect(url_for('users.manage_users')) 
+        return redirect(url_for('users.manage_users'))
+
+
+@users.route('/invite-teacher')
+@login_required
+@admin_required
+def invite_teacher():
+    """生成一个用于教师注册的邀请链接"""
+    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    # The token will be valid for 24 hours.
+    token = serializer.dumps('teacher-invitation', salt='teacher-reg-salt')
+    
+    # Create the full invitation URL
+    invite_url = url_for('auth.register_teacher', token=token, _external=True)
+    
+    return render_template('invite_teacher.html', invite_url=invite_url) 

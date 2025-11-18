@@ -218,7 +218,7 @@ def show_next_steps():
 
 def main():
     """主函数"""
-    print_header("🚀 学生程序设计能力评价系统 - 快速启动")
+    print_header("🚀 CodeSense 酷森思 - 快速启动")
     
     print("\n正在配置开发环境...\n")
     

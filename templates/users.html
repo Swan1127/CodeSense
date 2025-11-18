@@ -1,6 +1,6 @@
 ﻿{% extends "layout.html" %}
 
-{% block title %}用户管理 - 学生程序设计能力评价系统{% endblock %}
+{% block title %}用户管理 - CodeSense 酷森思{% endblock %}
 
 {% block extra_css %}
 <!-- 引入Chart.js -->
@@ -634,9 +634,14 @@
             <h5 class="search-title">
                 <i class="fas fa-search me-2"></i>搜索用户
             </h5>
-            <a href="{{ url_for('users.export_users') }}" class="btn btn-primary">
-                <i class="fas fa-download me-2"></i>导出数据
-            </a>
+            <div>
+                <a href="{{ url_for('users.invite_teacher') }}" class="btn btn-success">
+                    <i class="fas fa-user-plus me-2"></i>邀请教师
+                </a>
+                <a href="{{ url_for('users.export_users') }}" class="btn btn-primary">
+                    <i class="fas fa-download me-2"></i>导出数据
+                </a>
+            </div>
         </div>
         <form method="GET" class="search-form">
             <div class="row g-3">
@@ -648,6 +653,7 @@
                     <select id="user-type-select" class="form-select" name="user_type" aria-label="选择用户类型">
                         <option value="">所有用户类型</option>
                         <option value="学生" {% if request.args.get('user_type') == '学生' %}selected{% endif %}>学生</option>
+                        <option value="教师" {% if request.args.get('user_type') == '教师' %}selected{% endif %}>教师</option>
                         <option value="管理员" {% if request.args.get('user_type') == '管理员' %}selected{% endif %}>管理员</option>
                     </select>
                 </div>
@@ -683,7 +689,7 @@
                             <td>{{ user.student_id }}</td>
                             <td>{{ user.full_name }}</td>
                             <td>
-                                <span class="badge {% if user.usertype == '管理员' %}bg-danger{% else %}bg-primary{% endif %}">
+                                <span class="badge {% if user.usertype == '管理员' %}bg-danger{% elif user.usertype == '教师' %}bg-success{% else %}bg-primary{% endif %}">
                                     {{ user.usertype }}
                                 </span>
                             </td>

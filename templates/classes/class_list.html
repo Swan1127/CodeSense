@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 
-{% block title %}班级管理 - 学生程序设计能力评价系统{% endblock %}
+{% block title %}班级管理 - CodeSense 酷森思{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -122,19 +122,19 @@
             </div>
             <div class="col-md-3">
                 <div class="meta-item">
-                    <div class="meta-value">{{ class_data|selectattr('stats.student_count', 'gt', 0)|sum(attribute='stats.student_count') }}</div>
+                    <div class="meta-value">{{ total_students }}</div>
                     <div class="meta-label">总学生数</div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="meta-item">
-                    <div class="meta-value">{{ class_data|selectattr('stats.total_submissions', 'gt', 0)|sum(attribute='stats.total_submissions') }}</div>
+                    <div class="meta-value">{{ total_submissions_overall }}</div>
                     <div class="meta-label">总提交数</div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="meta-item">
-                    <div class="meta-value">{{ "%.1f"|format((class_data|selectattr('stats.student_count', 'gt', 0)|sum(attribute='stats.avg_score'*'stats.student_count'))/(class_data|selectattr('stats.student_count', 'gt', 0)|sum(attribute='stats.student_count')) if class_data|selectattr('stats.student_count', 'gt', 0)|sum(attribute='stats.student_count') > 0 else 0) }}</div>
+                    <div class="meta-value">{{ "%.1f"|format(overall_avg_score) }}</div>
                     <div class="meta-label">整体平均分</div>
                 </div>
             </div>
@@ -181,7 +181,7 @@
                     <div class="col-md-6">
                         <p class="mb-1"><strong>年级:</strong> {{ item.class.grade or '未设置' }}</p>
                         <p class="mb-1"><strong>专业:</strong> {{ item.class.major or '未设置' }}</p>
-                        <p class="mb-1"><strong>班主任:</strong> {{ item.class.teacher_name or '未分配' }}</p>
+                        <p class="mb-1"><strong>班主任:</strong> {{ item.class.teacher.full_name or item.class.teacher.username or '未分配' }}</p>
                     </div>
                     
                     {% if item.top_students %}

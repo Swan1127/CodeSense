@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+
+{% block title %}作业管理 - 教师工作台{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">作业管理</h1>
+            <p class="text-muted">创建、查看和管理您自己创建的作业，并将其布置给您管理的班级。</p>
+        </div>
+        <div>
+            <a href="{{ url_for('assignments.add_teacher_assignment') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> 创建新作业
+            </a>
+            <a href="{{ url_for('main.teacher_dashboard') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> 返回仪表盘
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title mb-0">作业列表</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>作业标题</th>
+                            <th>已布置给我的班级</th>
+                            <th>总提交数</th>
+                            <th>平均分</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for assignment in assignments %}
+                        <tr>
+                            <td>{{ assignment.id }}</td>
+                            <td>
+                                <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}">
+                                    {{ assignment.title }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if assignment.assigned_to_my_classes %}
+                                    {% for class_name in assignment.assigned_to_my_classes %}
+                                        <span class="badge bg-success">{{ class_name }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="badge bg-secondary">未布置</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ assignment.count }}</td>
+                            <td>{{ "%.2f"|format(assignment.average_score) }}</td>
+                            <td>
+                                <a href="{{ url_for('assignments.assign_to_classes', assignment_id=assignment.id) }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-pencil-square"></i> 布置/修改
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted">系统中还没有任何作业。</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

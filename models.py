@@ -19,12 +19,15 @@ class Class(db.Model):
     name = db.Column(db.String(50), unique=True, nullable=False)  # 班级名称
     grade = db.Column(db.String(20))  # 年级
     major = db.Column(db.String(50))  # 专业
-    teacher_name = db.Column(db.String(50))  # 班主任姓名
+    teacher_id = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='SET NULL'), nullable=True)
     student_count = db.Column(db.Integer, default=0)  # 学生数量
     avg_score = db.Column(db.Float, default=0.0)  # 班级平均分
     total_submissions = db.Column(db.Integer, default=0)  # 班级总提交数
     created_at = db.Column(db.DateTime, default=dt.utcnow)
     updated_at = db.Column(db.DateTime, default=dt.utcnow, onupdate=dt.utcnow)
+    
+    # 与教师的关系 (一个班级对应一个教师)
+    teacher = db.relationship('User', backref=db.backref('managed_classes', lazy='dynamic'), foreign_keys=[teacher_id])
     
     # 与学生的一对多关系
     students = db.relationship('User', backref='class_info', lazy='dynamic',
@@ -133,7 +136,7 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
     student_id = db.Column(db.String(20), unique=True, nullable=False, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
-    usertype = db.Column(db.Enum('学生', '管理员'), nullable=False)
+    usertype = db.Column(db.Enum('学生', '教师', '管理员'), nullable=False)
     class_name = db.Column(db.String(50))
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)  # 新增班级外键
     full_name = db.Column(db.String(50))
@@ -179,6 +182,10 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
     @property 
     def is_admin(self):
         return self.usertype == '管理员'
+
+    @property
+    def is_teacher(self):
+        return self.usertype == '教师'
         
     def get_ability_scores(self):
         """获取学生的详细能力评分
@@ -292,6 +299,10 @@ class Assignment(db.Model):
     target_classes = db.Column(db.Text)  # 存储目标班级列表，用逗号分隔
     difficulty_level = db.Column(db.Integer, default=1)  # 难度级别：1-5
     
+    # 新增创建者ID，用于区分不同教师的作业
+    creator_id = db.Column(db.String(20), db.ForeignKey('users.student_id'), nullable=True)
+    creator = db.relationship('User', backref=db.backref('created_assignments', lazy='dynamic'))
+
     # 定义与submissions的关系
     submissions = db.relationship('Submission', backref='assignment', lazy='dynamic', cascade='all, delete-orphan')
     
@@ -551,7 +562,7 @@ def init_db(app):
         # 初始化系统设置
         default_settings = {
             'site_name': {
-                'value': '学生程序设计能力评价系统',
+                'value': 'CodeSense 酷森思',
                 'description': '网站名称',
                 'type': 'string'
             },
@@ -566,7 +577,7 @@ def init_db(app):
                 'type': 'bool'
             },
             'login_message': {
-                'value': '欢迎登录学生程序设计能力评价系统',
+                'value': '欢迎登录 CodeSense 酷森思',
                 'description': '登录页面欢迎消息',
                 'type': 'string'
             },
@@ -608,4 +619,189 @@ def init_db(app):
             db.session.commit()
         except Exception as e:
             print(f"初始化系统设置时出错: {str(e)}")
-            db.session.rollback() 
+            db.session.rollback()
+
+
+class KnowledgePointScore(db.Model):
+    """知识点评分模型"""
+    __tablename__ = 'knowledge_point_scores'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='CASCADE'), nullable=False)
+    knowledge_point = db.Column(db.String(50), nullable=False)  # 知识点名称
+    score = db.Column(db.Float, default=0.0)  # 得分 (0-100)
+    total_attempts = db.Column(db.Integer, default=0)  # 总尝试次数
+    correct_attempts = db.Column(db.Integer, default=0)  # 正确次数
+    average_difficulty = db.Column(db.Float, default=0.0)  # 平均题目难度
+    last_updated = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+
+    # 关系
+    student = db.relationship('User', backref='knowledge_scores')
+
+    # C语言知识点常量
+    KNOWLEDGE_POINTS = {
+        'basic_syntax': '基础语法',
+        'pointer': '指针',
+        'function': '函数',
+        'array': '数组',
+        'string': '字符串',
+        'struct': '结构体',
+        'file_io': '文件操作',
+        'dynamic_memory': '动态内存',
+        'linked_list': '链表',
+        'tree': '树',
+        'sorting': '排序算法',
+        'searching': '搜索算法',
+        'recursion': '递归'
+    }
+
+    @staticmethod
+    def get_or_create(student_id, knowledge_point):
+        """获取或创建知识点评分记录"""
+        record = KnowledgePointScore.query.filter_by(
+            student_id=student_id,
+            knowledge_point=knowledge_point
+        ).first()
+
+        if not record:
+            record = KnowledgePointScore(
+                student_id=student_id,
+                knowledge_point=knowledge_point
+            )
+            db.session.add(record)
+            db.session.flush()
+
+        return record
+
+    @staticmethod
+    def update_score(student_id, knowledge_point, assignment_score, difficulty=1.0, weight=1.0):
+        """
+        更新学生知识点评分
+
+        Args:
+            student_id: 学生ID
+            knowledge_point: 知识点名称
+            assignment_score: 本次作业得分 (0-100)
+            difficulty: 题目难度系数 (0.5-2.0)
+            weight: 知识点权重 (0.1-2.0)
+        """
+        record = KnowledgePointScore.get_or_create(student_id, knowledge_point)
+
+        # 更新尝试次数
+        record.total_attempts += 1
+        if assignment_score >= 60:
+            record.correct_attempts += 1
+
+        # 更新平均难度
+        if record.total_attempts == 1:
+            record.average_difficulty = difficulty
+        else:
+            record.average_difficulty = (record.average_difficulty * (record.total_attempts - 1) + difficulty) / record.total_attempts
+
+        # 计算新分数 - 考虑难度和权重
+        # 公式：新分数 = 0.6 * 旧分数 + 0.4 * (本次得分 * 难度系数 * 权重)
+        difficulty_bonus = min(difficulty, 2.0)  # 难度加成最高2倍
+        weighted_score = assignment_score * difficulty_bonus * weight
+
+        if record.total_attempts == 1:
+            record.score = min(weighted_score, 100.0)
+        else:
+            record.score = min(0.6 * record.score + 0.4 * weighted_score, 100.0)
+
+        record.last_updated = dt.utcnow()
+        db.session.commit()
+
+        return record
+
+    @staticmethod
+    def get_student_profile(student_id):
+        """
+        获取学生的知识点画像
+        返回所有知识点的评分字典
+        """
+        scores = KnowledgePointScore.query.filter_by(student_id=student_id).all()
+
+        profile = {}
+        for score in scores:
+            profile[score.knowledge_point] = {
+                'score': round(score.score, 1),
+                'name': KnowledgePointScore.KNOWLEDGE_POINTS.get(score.knowledge_point, score.knowledge_point),
+                'total_attempts': score.total_attempts,
+                'correct_attempts': score.correct_attempts,
+                'accuracy': round(score.correct_attempts / score.total_attempts * 100, 1) if score.total_attempts > 0 else 0,
+                'average_difficulty': round(score.average_difficulty, 2),
+                'last_updated': score.last_updated.strftime('%Y-%m-%d %H:%M') if score.last_updated else None
+            }
+
+        # 补充未测试的知识点
+        for key, name in KnowledgePointScore.KNOWLEDGE_POINTS.items():
+            if key not in profile:
+                profile[key] = {
+                    'score': 0,
+                    'name': name,
+                    'total_attempts': 0,
+                    'correct_attempts': 0,
+                    'accuracy': 0,
+                    'average_difficulty': 0,
+                    'last_updated': None
+                }
+
+        return profile
+
+
+class AssignmentKnowledgePoint(db.Model):
+    """作业知识点关联模型"""
+    __tablename__ = 'assignment_knowledge_points'
+
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignments.id', ondelete='CASCADE'), nullable=False)
+    knowledge_point = db.Column(db.String(50), nullable=False)
+    weight = db.Column(db.Float, default=1.0)  # 权重
+    difficulty = db.Column(db.Float, default=1.0)  # 难度系数
+    auto_detected = db.Column(db.Boolean, default=False)  # 是否AI自动检测
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+
+    # 关系
+    assignment = db.relationship('Assignment', backref='knowledge_points')
+
+    @staticmethod
+    def add_to_assignment(assignment_id, knowledge_point, weight=1.0, difficulty=1.0, auto_detected=False):
+        """为作业添加知识点标签"""
+        # 检查是否已存在
+        existing = AssignmentKnowledgePoint.query.filter_by(
+            assignment_id=assignment_id,
+            knowledge_point=knowledge_point
+        ).first()
+
+        if existing:
+            # 更新权重和难度
+            existing.weight = weight
+            existing.difficulty = difficulty
+            existing.auto_detected = auto_detected
+        else:
+            # 创建新记录
+            kp = AssignmentKnowledgePoint(
+                assignment_id=assignment_id,
+                knowledge_point=knowledge_point,
+                weight=weight,
+                difficulty=difficulty,
+                auto_detected=auto_detected
+            )
+            db.session.add(kp)
+
+        db.session.commit()
+
+    @staticmethod
+    def get_assignment_knowledge_points(assignment_id):
+        """获取作业的所有知识点"""
+        return AssignmentKnowledgePoint.query.filter_by(assignment_id=assignment_id).all()
+
+    @staticmethod
+    def remove_from_assignment(assignment_id, knowledge_point):
+        """从作业移除知识点"""
+        AssignmentKnowledgePoint.query.filter_by(
+            assignment_id=assignment_id,
+            knowledge_point=knowledge_point
+        ).delete()
+        db.session.commit() 
