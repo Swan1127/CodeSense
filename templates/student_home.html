@@ -131,6 +131,22 @@
         max-height: 600px;
     }
 
+    /* 打字光标动画 */
+    .typing-cursor {
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        background-color: #3498db;
+        margin-left: 2px;
+        animation: blink 0.7s infinite;
+        vertical-align: middle;
+    }
+
+    @keyframes blink {
+        0%, 49% { opacity: 1; }
+        50%, 100% { opacity: 0; }
+    }
+
     .analysis-section {
         background: #fff;
         border: 1px solid #e5e7eb;
@@ -378,9 +394,12 @@
                 <div class="mb-4" style="margin-bottom: 2rem;" id="ai-analysis-container">
                     <h5 style="margin-bottom: 1.25rem;">
                         <i class="bi bi-robot text-success"></i> AI个性化分析
-                        <span id="analysis-status-badge" class="badge badge-warning" style="margin-left: 0.5rem; font-size: 0.75rem;">
-                            <i class="bi bi-clock-fill"></i> 分析中
+                        <span id="analysis-status-badge" class="badge badge-secondary" style="margin-left: 0.5rem; font-size: 0.75rem;">
+                            <i class="bi bi-hourglass-split"></i> 加载中
                         </span>
+                        <button id="refresh-analysis-btn" class="btn btn-sm btn-outline-primary" style="margin-left: 0.5rem; display: none;" onclick="location.reload()">
+                            <i class="bi bi-arrow-clockwise"></i> 刷新
+                        </button>
                     </h5>
 
                     <!-- 进度条 -->
@@ -458,7 +477,6 @@
 <script>
 // ==================== SSE流式架构 ====================
 let knowledgeRadarChart = null;
-let eventSource = null;
 let isAnalysisComplete = false;
 let markdownBuffer = ''; // Markdown内容缓冲区
 let currentSection = null; // 当前正在渲染的章节
@@ -494,54 +512,83 @@ document.addEventListener('DOMContentLoaded', function() {
     connectSSE();
 });
 
-// 连接SSE流
-function connectSSE() {
-    if (eventSource) {
-        eventSource.close();
-    }
+// 连接SSE流（使用fetch + ReadableStream替代EventSource）
+async function connectSSE() {
+    console.log('🔌 正在连接流式API: /api/stream/ability-analysis');
 
-    console.log('🔌 正在连接SSE流: /api/stream/ability-analysis');
-    eventSource = new EventSource('/api/stream/ability-analysis');
+    try {
+        const response = await fetch('/api/stream/ability-analysis', {
+            method: 'GET'
+        });
 
-    eventSource.onopen = function() {
-        console.log('✅ SSE连接已建立');
-    };
-
-    eventSource.onmessage = function(event) {
-        try {
-            const data = JSON.parse(event.data);
-            console.log('📦 收到SSE消息:', data.type);
-
-            switch(data.type) {
-                case 'progress':
-                    handleProgress(data);
-                    break;
-                case 'knowledge_profile':
-                    handleKnowledgeProfile(data.data);
-                    break;
-                case 'analysis_start':
-                    handleAnalysisStart();
-                    break;
-                case 'analysis_chunk':
-                    handleAnalysisChunk(data.content);
-                    break;
-                case 'complete':
-                    handleComplete();
-                    break;
-                case 'error':
-                    handleError(data.message);
-                    break;
-            }
-        } catch (error) {
-            console.error('❌ 解析SSE消息失败:', error, event.data);
+        if (!response.ok) {
+            throw new Error(`HTTP错误: ${response.status}`);
         }
-    };
 
-    eventSource.onerror = function(error) {
-        console.error('❌ SSE连接错误:', error);
-        eventSource.close();
+        console.log('✅ 连接已建立，开始接收数据流');
+
+        // 获取可读流
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        // 循环读取流数据
+        while (true) {
+            const { done, value } = await reader.read();
+
+            if (done) {
+                console.log('🏁 流式传输完成');
+                break;
+            }
+
+            // 解码新数据并添加到缓冲区
+            buffer += decoder.decode(value, { stream: true });
+
+            // 按行分割处理SSE消息
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // 保留不完整的行
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const dataStr = line.slice(6);
+                    try {
+                        const data = JSON.parse(dataStr);
+                        console.log('📦 收到消息:', data.type, data.content ? `(内容长度: ${data.content.length})` : '');
+
+                        // 根据消息类型分发处理
+                        switch(data.type) {
+                            case 'progress':
+                                handleProgress(data);
+                                break;
+                            case 'knowledge_profile':
+                                handleKnowledgeProfile(data.data);
+                                break;
+                            case 'analysis_start':
+                                handleAnalysisStart();
+                                break;
+                            case 'analysis_chunk':
+                                handleAnalysisChunk(data.content);
+                                break;
+                            case 'analysis_typo_delete':
+                                handleTypoDelete(data.count);
+                                break;
+                            case 'complete':
+                                handleComplete();
+                                return; // 完成后退出
+                            case 'error':
+                                handleError(data.message);
+                                return; // 错误后退出
+                        }
+                    } catch (error) {
+                        console.error('❌ 解析消息失败:', error, dataStr);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('❌ 流式传输错误:', error);
         showError('连接中断，请刷新页面重试');
-    };
+    }
 }
 
 // 处理进度更新
@@ -704,60 +751,138 @@ function handleAnalysisStart() {
 
     const outputDiv = document.getElementById('analysis-output');
     if (outputDiv) {
-        outputDiv.innerHTML = '<div class="text-muted text-center"><i class="bi bi-robot"></i> AI正在为您生成个性化分析...</div>';
+        // 不再清空内容,而是移除旧的消息并准备接收新内容
+        outputDiv.innerHTML = '';
     }
 }
 
 // 处理AI分析流式输出
+let renderTimeout = null;
+let typingCursor = null;  // 光标元素
+
 function handleAnalysisChunk(content) {
     markdownBuffer += content;
-    renderMarkdownToSections();
+
+    // 使用防抖策略：累积一定数量的内容后再渲染，避免过于频繁的DOM操作
+    if (renderTimeout) {
+        clearTimeout(renderTimeout);
+    }
+
+    // 每50ms渲染一次，或者累积了足够的内容（如换行符）立即渲染
+    const shouldRenderNow = content.includes('\n') || markdownBuffer.length % 100 === 0;
+
+    if (shouldRenderNow) {
+        renderMarkdownIncremental();
+    } else {
+        renderTimeout = setTimeout(() => {
+            renderMarkdownIncremental();
+        }, 50);
+    }
 }
 
-// 实时渲染Markdown为卡片式布局
-function renderMarkdownToSections() {
+// 处理打错字删除
+function handleTypoDelete(count) {
+    // 从缓冲区删除最后几个字符
+    if (markdownBuffer.length >= count) {
+        markdownBuffer = markdownBuffer.slice(0, -count);
+        renderMarkdownIncremental();
+    }
+}
+
+// 增量渲染Markdown（流式更新，不清空已有内容）
+function renderMarkdownIncremental() {
     const outputDiv = document.getElementById('analysis-output');
     if (!outputDiv) return;
+
+    // 如果还没有章节标题，显示原始文本流
+    if (!markdownBuffer.includes('###')) {
+        // 直接渲染Markdown（可能还没有章节标题）
+        outputDiv.innerHTML = marked.parse(markdownBuffer);
+        addTypingCursor(outputDiv);  // 添加光标
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+        return;
+    }
 
     // 分割Markdown内容为章节（基于### 标题）
     const sections = parseMarkdownSections(markdownBuffer);
 
-    // 清空输出区域
-    outputDiv.innerHTML = '';
+    // 获取已渲染的章节元素
+    const existingSections = outputDiv.querySelectorAll('.analysis-section');
+    const existingCount = existingSections.length;
 
-    // 渲染每个章节为独立卡片
-    sections.forEach((section, index) => {
-        const sectionDiv = document.createElement('div');
-        sectionDiv.className = 'analysis-section';
+    // 1. 渲染新增的完整章节
+    for (let i = existingCount; i < sections.length; i++) {
+        const section = sections[i];
+        createSectionElement(section, outputDiv);
+    }
 
-        // 根据章节类型添加颜色标识
-        if (section.title.includes('趋势') || section.title.includes('发展')) {
-            sectionDiv.classList.add('section-trend');
-        } else if (section.title.includes('建议') || section.title.includes('改进')) {
-            sectionDiv.classList.add('section-suggestion');
-        } else if (section.title.includes('问题') || section.title.includes('不足')) {
-            sectionDiv.classList.add('section-warning');
-        }
+    // 2. 更新最后一个章节的内容（正在流式接收）
+    if (sections.length > 0 && existingCount > 0 && sections.length === existingCount) {
+        const lastSection = sections[sections.length - 1];
+        const lastSectionDiv = existingSections[existingSections.length - 1];
+        updateSectionContent(lastSectionDiv, lastSection);
+    }
 
-        // 添加图标到标题
-        let icon = 'bi-bar-chart-line';
-        if (section.title.includes('建议')) icon = 'bi-lightbulb';
-        else if (section.title.includes('问题')) icon = 'bi-exclamation-triangle';
-        else if (section.title.includes('趋势')) icon = 'bi-graph-up';
-
-        // 渲染Markdown为HTML
-        const contentHtml = marked.parse(section.content);
-
-        sectionDiv.innerHTML = `
-            <h3><i class="bi ${icon}"></i> ${escapeHtml(section.title)}</h3>
-            ${contentHtml}
-        `;
-
-        outputDiv.appendChild(sectionDiv);
-    });
+    // 3. 添加打字光标到最后
+    addTypingCursor(outputDiv);
 
     // 自动滚动到底部
     outputDiv.scrollTop = outputDiv.scrollHeight;
+}
+
+// 添加打字光标
+function addTypingCursor(container) {
+    // 移除旧光标
+    if (typingCursor && typingCursor.parentNode) {
+        typingCursor.parentNode.removeChild(typingCursor);
+    }
+
+    // 创建新光标
+    typingCursor = document.createElement('span');
+    typingCursor.className = 'typing-cursor';
+    container.appendChild(typingCursor);
+}
+
+// 创建章节元素
+function createSectionElement(section, container) {
+    const sectionDiv = document.createElement('div');
+    sectionDiv.className = 'analysis-section';
+
+    // 根据章节类型添加颜色标识
+    if (section.title.includes('趋势') || section.title.includes('发展')) {
+        sectionDiv.classList.add('section-trend');
+    } else if (section.title.includes('建议') || section.title.includes('改进')) {
+        sectionDiv.classList.add('section-suggestion');
+    } else if (section.title.includes('问题') || section.title.includes('不足')) {
+        sectionDiv.classList.add('section-warning');
+    }
+
+    // 添加图标到标题
+    let icon = 'bi-bar-chart-line';
+    if (section.title.includes('建议')) icon = 'bi-lightbulb';
+    else if (section.title.includes('问题')) icon = 'bi-exclamation-triangle';
+    else if (section.title.includes('趋势')) icon = 'bi-graph-up';
+
+    // 渲染Markdown为HTML
+    const contentHtml = marked.parse(section.content);
+
+    sectionDiv.innerHTML = `
+        <h3><i class="bi ${icon}"></i> ${escapeHtml(section.title)}</h3>
+        ${contentHtml}
+    `;
+
+    container.appendChild(sectionDiv);
+}
+
+// 更新章节内容（用于流式更新最后一个章节）
+function updateSectionContent(sectionDiv, section) {
+    const h3Element = sectionDiv.querySelector('h3');
+    if (!h3Element) return;
+
+    // 保留标题，更新内容
+    const titleHtml = h3Element.outerHTML;
+    const contentHtml = marked.parse(section.content);
+    sectionDiv.innerHTML = titleHtml + contentHtml;
 }
 
 // 解析Markdown为章节
@@ -805,11 +930,39 @@ function handleComplete() {
     console.log('🎉 分析完成');
     isAnalysisComplete = true;
 
+    // 清除待处理的渲染任务
+    if (renderTimeout) {
+        clearTimeout(renderTimeout);
+        renderTimeout = null;
+    }
+
+    // 最后一次渲染，确保所有内容都显示
+    renderMarkdownIncremental();
+
+    // 移除光标
+    if (typingCursor && typingCursor.parentNode) {
+        typingCursor.parentNode.removeChild(typingCursor);
+        typingCursor = null;
+    }
+
     // 更新状态徽章
     const statusBadge = document.getElementById('analysis-status-badge');
     if (statusBadge) {
-        statusBadge.className = 'badge badge-success';
-        statusBadge.innerHTML = '<i class="bi bi-check-circle-fill"></i> 已完成';
+        // 检查是否是"正在生成"状态（需要刷新）
+        const outputDiv = document.getElementById('analysis-output');
+        if (outputDiv && outputDiv.textContent.includes('正在生成') || outputDiv.textContent.includes('生成中')) {
+            statusBadge.className = 'badge badge-info';
+            statusBadge.innerHTML = '<i class="bi bi-arrow-clockwise"></i> 需要刷新';
+
+            // 显示刷新按钮
+            const refreshBtn = document.getElementById('refresh-analysis-btn');
+            if (refreshBtn) {
+                refreshBtn.style.display = 'inline-block';
+            }
+        } else {
+            statusBadge.className = 'badge badge-success';
+            statusBadge.innerHTML = '<i class="bi bi-check-circle-fill"></i> 已完成';
+        }
     }
 
     // 隐藏进度条
@@ -818,21 +971,13 @@ function handleComplete() {
         progressContainer.style.display = 'none';
     }
 
-    // 关闭SSE连接
-    if (eventSource) {
-        eventSource.close();
-        console.log('🔌 SSE连接已关闭');
-    }
+    console.log('✅ 流式分析已完成');
 }
 
 // 处理错误
 function handleError(message) {
     console.error('❌ 收到错误:', message);
     showError(message);
-
-    if (eventSource) {
-        eventSource.close();
-    }
 }
 
 // 显示错误提示
@@ -853,12 +998,9 @@ function showError(message) {
     }
 }
 
-// 页面卸载时关闭SSE连接
+// 页面卸载时无需手动清理，fetch会自动处理
 window.addEventListener('beforeunload', function() {
-    if (eventSource) {
-        eventSource.close();
-        console.log('🔌 页面卸载，SSE连接已关闭');
-    }
+    console.log('🔌 页面卸载');
 });
 </script>
 {% endblock %}

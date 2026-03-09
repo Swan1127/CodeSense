@@ -568,7 +568,7 @@ RAW TEXT:
                 headers=headers,
                 json=data,
                 stream=True,
-                timeout=60
+                timeout=(10, 120)  # 连接超时10秒，读取超时120秒
             )
 
             if response.status_code == 200:
@@ -590,8 +590,10 @@ RAW TEXT:
                                     content = delta.get('content', '')
                                     if content:
                                         chunk_count += 1
-                                        print(f"📤 Yielding chunk #{chunk_count}: {content[:50]}...")
-                                        # 直接yield内容文本
+                                        # 打印调试信息到控制台
+                                        if chunk_count % 10 == 1:  # 每10个块打印一次，避免刷屏
+                                            print(f"📤 Yielding chunk #{chunk_count}")
+                                        # 直接yield内容文本（不包装JSON）
                                         yield content
                             except json.JSONDecodeError:
                                 continue

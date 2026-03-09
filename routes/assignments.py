@@ -421,13 +421,20 @@ def submit_code(assignment_id):
                 icon='bi bi-code-square'
             )
             
-            # 触发异步能力趋势分析更新
+            # 触发后台能力分析任务
             try:
-                from utils.async_tasks import add_ability_trend_task
-                task_id = add_ability_trend_task(student_id)
-                current_app.logger.info(f"已触发学生 {student_id} 的能力趋势异步更新任务: {task_id}")
+                from tasks.ability_analysis import trigger_analysis_if_needed
+                from models import AbilityTrend
+
+                # 标记现有分析为过时（如果存在）
+                AbilityTrend.mark_as_outdated(student_id)
+
+                # 触发新的分析（后台执行，不阻塞）
+                triggered = trigger_analysis_if_needed(student_id)
+                if triggered:
+                    current_app.logger.info(f"已触发学生 {student_id} 的后台能力分析任务")
             except Exception as e:
-                current_app.logger.error(f"触发能力趋势异步更新失败: {str(e)}", exc_info=True)
+                current_app.logger.error(f"触发能力分析失败: {str(e)}", exc_info=True)
 
             # 【新增】更新知识点评分
             try:

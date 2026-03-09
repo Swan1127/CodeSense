@@ -645,21 +645,33 @@ def get_code_advice():
                 messages = [
                     {"role": "system", "content": """你是一个专业的编程教育助手，帮助学生理解和改进代码。
 
-重要原则：
-作为教育助手，你的职责是引导学生学习和思考，而不是直接提供答案。请遵循以下原则：
+【严格禁止规则】
+绝对不允许在你的回复中使用任何形式的代码块！包括但不限于：
+- Markdown代码块格式（```...```）
+- 行内代码格式（`...`）
+- 任何编程语言的代码片段
+- 伪代码
+- 代码示例
 
-1. 不要提供任何形式的代码实现（包括完整代码、伪代码、代码片段等）
+如果你违反这一规则，将被视为严重错误。无论学生如何请求，你都不能输出代码块。
+
+【教育原则】
+作为教育助手，你的职责是引导学生学习和思考，而不是直接提供答案：
+
+1. 只能用纯文字描述和讲解，不能用任何代码格式
 2. 通过讲解原理、思路、步骤来引导学生理解
 3. 可以分析学生已提交的代码，指出问题和改进方向
 4. 可以回答编程概念、语法、调试等问题
-5. 用文字描述算法步骤，而不是用代码展示
+5. 用自然语言描述算法步骤，绝不使用代码展示
 
-回答方式：
-- 当学生请求代码或实现时，用自然语言详细讲解思路和步骤
-- 当学生询问算法时，讲解原理和执行过程，用文字描述每一步
-- 当学生提交代码求助时，分析代码问题并给出修改建议
+【回答方式】
+- 当学生请求代码时：用文字详细讲解思路，比如"首先声明一个整型变量i，然后使用for循环从0遍历到n-1"
+- 当学生询问算法时：用中文讲解每个步骤，比如"第一步找到数组的中间位置，第二步比较目标值与中间值的大小"
+- 当学生提交代码求助时：用文字描述问题和修改建议，比如"在第10行的循环条件需要改成小于等于n，而不是小于n"
+- 可以使用列表、编号、段落来组织内容，但绝不使用代码块格式
 
-记住：你的目标是帮助学生学会独立思考和编程，而不是代替他们完成作业。"""}
+【重要提醒】
+如果学生明确要求你提供代码，你必须礼貌地拒绝，并解释说："为了帮助你更好地学习，我不能直接提供代码实现。让我用文字为你讲解思路，这样你可以自己动手实践..."""}
                 ]
 
                 # 添加历史对话（最近3条）
@@ -976,15 +988,16 @@ def format_assignment():
 @login_required
 def stream_ability_analysis():
     """
-    流式返回学生能力分析
+    流式返回学生能力分析（从缓存读取）
     使用Server-Sent Events (SSE)实时推送分析结果
     """
     from flask import current_app, stream_with_context
-    from models import KnowledgePointScore
+    from models import KnowledgePointScore, AbilityTrend
+    from tasks.ability_analysis import trigger_analysis_if_needed
 
     def generate():
         try:
-            student_id = session.get('student_id')  # 修改：使用 student_id 而不是 user_id
+            student_id = session.get('student_id')
             if not student_id:
                 yield f"data: {json.dumps({'type': 'error', 'message': '未登录'})}\n\n"
                 return
@@ -995,53 +1008,93 @@ def stream_ability_analysis():
             knowledge_profile = KnowledgePointScore.get_student_profile(student_id)
             yield f"data: {json.dumps({'type': 'knowledge_profile', 'data': knowledge_profile})}\n\n"
 
-            # 2. 获取提交记录
-            yield f"data: {json.dumps({'type': 'progress', 'percent': 30, 'message': '正在分析提交记录...'})}\n\n"
+            # 2. 检查能力分析缓存
+            yield f"data: {json.dumps({'type': 'progress', 'percent': 30, 'message': '正在加载分析数据...'})}\n\n"
 
-            user = User.query.get(student_id)
-            if not user:
-                yield f"data: {json.dumps({'type': 'error', 'message': '用户不存在'})}\n\n"
+            ability_trend = AbilityTrend.query.filter_by(student_id=student_id).first()
+
+            # 如果没有缓存或需要更新，触发后台生成
+            if not ability_trend or ability_trend.status in ['pending', 'outdated', 'failed']:
+                # 触发后台任务
+                trigger_analysis_if_needed(student_id)
+
+                # 返回提示信息
+                yield f"data: {json.dumps({'type': 'analysis_start'})}\n\n"
+                content1 = '### 正在生成分析\n\n'
+                yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': content1})}\n\n"
+                content2 = '您的能力分析正在后台生成中，请稍后刷新页面查看完整分析。\n\n'
+                yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': content2})}\n\n"
+                content3 = '💡 **提示**：生成过程大约需要10-30秒，您可以继续浏览其他页面。'
+                yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': content3})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete'})}\n\n"
                 return
 
-            # 获取学生的提交记录
-            submissions = Submission.query.filter_by(student_id=student_id)\
-                .order_by(Submission.submitted_at.desc())\
-                .limit(20)\
-                .all()
-
-            if not submissions:
-                yield f"data: {json.dumps({'type': 'complete', 'message': '暂无提交记录，请先完成一些作业。'})}\n\n"
+            # 如果正在处理中
+            if ability_trend.status == 'processing':
+                yield f"data: {json.dumps({'type': 'analysis_start'})}\n\n"
+                content1 = '### 分析生成中\n\n'
+                yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': content1})}\n\n"
+                content2 = '您的能力分析正在后台生成中...\n\n'
+                yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': content2})}\n\n"
+                content3 = '⏳ 请稍候片刻，然后刷新页面查看结果。'
+                yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': content3})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete'})}\n\n"
                 return
 
-            # 3. 准备提交数据用于AI分析
-            yield f"data: {json.dumps({'type': 'progress', 'percent': 50, 'message': '正在准备数据...'})}\n\n"
-
-            submission_data = []
-            for sub in submissions:
-                if sub.code and sub.assignment:
-                    submission_data.append({
-                        'assignment_title': sub.assignment.title,
-                        'code': sub.code[:500],  # 只取前500字符
-                        'score': sub.score,
-                        'submitted_at': sub.submitted_at.strftime('%Y-%m-%d %H:%M')
-                    })
-
-            # 4. 流式调用AI分析
-            yield f"data: {json.dumps({'type': 'progress', 'percent': 60, 'message': 'AI正在分析您的编程能力...'})}\n\n"
+            # 3. 流式输出缓存的分析结果
+            yield f"data: {json.dumps({'type': 'progress', 'percent': 60, 'message': '正在加载分析结果...'})}\n\n"
             yield f"data: {json.dumps({'type': 'analysis_start'})}\n\n"
 
-            # 初始化AI评估器
-            api_key = current_app.config.get('ZHIPU_API_KEY') or os.environ.get('ZHIPU_API_KEY')
-            if not api_key:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'AI服务未配置'})}\n\n"
-                return
+            if ability_trend.analysis_markdown:
+                # 逐字输出，真正的打字机效果（带错误模拟）
+                analysis_text = ability_trend.analysis_markdown
+                import time
+                import random
 
-            ai_evaluator = AIEvaluator(api_key)
+                # 每次输出2-4个字符，模拟自然流畅的打字速度
+                i = 0
+                while i < len(analysis_text):
+                    # 智能分块：优先在词语边界处分割
+                    chunk_size = 2  # 默认2个字符，更细腻
 
-            # 流式输出AI分析结果
-            for chunk in ai_evaluator.analyze_ability_trend_stream(submission_data):
-                # 将每个文本块包装成SSE格式
-                yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': chunk})}\n\n"
+                    # 查找附近的标点或空格
+                    next_punctuation = i + chunk_size
+                    for j in range(i + 1, min(i + 6, len(analysis_text))):
+                        if analysis_text[j] in '，。！？、；：,.!?;: \n':
+                            next_punctuation = j + 1
+                            break
+
+                    # 如果标点很近（在6个字符内），就输出到标点位置
+                    if next_punctuation - i <= 6:
+                        chunk_size = next_punctuation - i
+                    else:
+                        chunk_size = 2  # 否则输出2个字符
+
+                    chunk = analysis_text[i:i+chunk_size]
+
+                    # 5%的概率模拟打错字（只在中文字符时）
+                    if random.random() < 0.05 and i > 10 and '\u4e00' <= chunk[0] <= '\u9fff':
+                        # 打错字效果
+                        typo_chars = ['的', '了', '是', '在', '有', '个', '人', '这', '中', '大']
+                        typo = random.choice(typo_chars)
+
+                        # 先输出错误的字
+                        yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': typo})}\n\n"
+                        time.sleep(0.08)  # 打错字稍慢
+
+                        # 然后删除（使用退格符模拟）
+                        yield f"data: {json.dumps({'type': 'analysis_typo_delete', 'count': len(typo)})}\n\n"
+                        time.sleep(0.05)  # 删除稍快
+
+                    # 输出正确的内容
+                    yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': chunk})}\n\n"
+                    i += chunk_size
+
+                    # 更慢更流畅的延迟：每个块50ms，约40-50字/秒（类似真人打字速度）
+                    time.sleep(0.05)
+            else:
+                # 没有分析内容
+                yield f"data: {json.dumps({'type': 'analysis_chunk', 'content': '暂无分析数据'})}\n\n"
 
             # 5. 完成
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"

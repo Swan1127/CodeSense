@@ -399,14 +399,15 @@ class SystemLog(db.Model):
 class AbilityTrend(db.Model):
     """学生能力发展趋势缓存表"""
     __tablename__ = 'ability_trends'
-    
+
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
-    trend_data = db.Column(db.Text, nullable=True)  # JSON格式存储趋势分析结果
+    analysis_markdown = db.Column(db.Text, nullable=True)  # Markdown格式的分析结果
+    trend_data = db.Column(db.Text, nullable=True)  # 保留兼容性：JSON格式存储趋势分析结果
     last_updated = db.Column(db.DateTime, default=dt.utcnow)  # 最后更新时间
     submissions_count = db.Column(db.Integer, default=0)  # 基于多少次提交生成的分析
     status = db.Column(db.String(20), default='pending')  # pending, processing, completed, failed
-    
+
     # 关联用户
     user = db.relationship('User', backref=db.backref('ability_trend', uselist=False))
     
@@ -422,13 +423,41 @@ class AbilityTrend(db.Model):
     
     @staticmethod
     def update_trend(student_id, trend_data, submissions_count):
-        """更新学生的能力趋势数据"""
+        """更新学生的能力趋势数据（兼容旧版本JSON格式）"""
         trend = AbilityTrend.get_or_create(student_id)
         trend.trend_data = trend_data if isinstance(trend_data, str) else json.dumps(trend_data, ensure_ascii=False)
         trend.submissions_count = submissions_count
         trend.last_updated = dt.utcnow()
         trend.status = 'completed'
         db.session.commit()
+        return trend
+
+    @staticmethod
+    def update_analysis(student_id, analysis_markdown, submissions_count):
+        """更新学生的能力分析（Markdown格式）"""
+        trend = AbilityTrend.get_or_create(student_id)
+        trend.analysis_markdown = analysis_markdown
+        trend.submissions_count = submissions_count
+        trend.last_updated = dt.utcnow()
+        trend.status = 'completed'
+        db.session.commit()
+        return trend
+
+    @staticmethod
+    def mark_as_processing(student_id):
+        """标记为正在处理"""
+        trend = AbilityTrend.get_or_create(student_id)
+        trend.status = 'processing'
+        db.session.commit()
+        return trend
+
+    @staticmethod
+    def mark_as_outdated(student_id):
+        """标记为需要更新（有新提交）"""
+        trend = AbilityTrend.query.filter_by(student_id=student_id).first()
+        if trend and trend.status == 'completed':
+            trend.status = 'outdated'
+            db.session.commit()
         return trend
     
     def get_trend_dict(self):
