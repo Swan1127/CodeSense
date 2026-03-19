@@ -48,3 +48,9 @@ uploads/*
 *.xls
 .DS_Store
 Thumbs.db
+
+# 内部工作文档（不上传）
+问题汇总/
+run.py
+gunicorn_config.py
+wsgi.py
