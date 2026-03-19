@@ -3,7 +3,7 @@
 """
 import os
 from functools import wraps
-from flask import session, flash, redirect, url_for, current_app, request
+from flask import flash, redirect, url_for, request
 from flask_login import current_user, login_required as flask_login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 

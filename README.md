@@ -1,286 +1,182 @@
 # CodeSense 酷森思
-# Student Code Evaluation System
 
-![版本](https://img.shields.io/badge/版本-0.2.0-blue.svg)
+![版本](https://img.shields.io/badge/版本-0.3.0-blue.svg)
 ![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)
-![Python版本](https://img.shields.io/badge/Python-3.8%2B-brightgreen.svg)
-![Flask版本](https://img.shields.io/badge/Flask-2.0%2B-red.svg)
+![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen.svg)
+![Flask](https://img.shields.io/badge/Flask-2.0%2B-red.svg)
 
-基于深度学习的代码智能评估平台，为教育机构提供自动化的学生代码评估解决方案。
+基于深度学习与大语言模型的智能代码评估平台，为高校编程教学提供自动化、个性化的学情分析解决方案。
 
-## 项目概述
+---
 
-CodeSense 酷森思是一个基于人工智能的代码评估平台，旨在解决传统编程教学中存在的问题，包括评价主观性强、反馈不及时、教师工作量大等。系统利用人工智能技术对学生提交的代码进行自动评估，从算法能力、代码风格、功能实现和效率优化等多个维度给出评分和改进建议，提供即时反馈，帮助学生提高编程能力。
+## 系统简介
 
-## 最新更新 (2023-04-09)
+CodeSense 酷森思面向高校编程课程，支持**学生、教师、管理员**三种角色，通过 CNN 模型 + 启发式规则 + 智谱 GLM-4-Flash 大模型的混合评分机制，对学生提交的代码进行多维度自动评估，并提供个性化学习建议与 AI 编程助手。
 
-- 优化了代码评估算法
-- 修复了用户界面的若干问题
-- 提升了系统整体性能
-- 更新了依赖库版本
+---
 
 ## 主要功能
 
-- **用户管理**：学生账户与管理员账户的管理
-- **作业管理**：发布、修改、查看作业
-- **代码提交**：在线编辑、提交代码
-- **代码评估**：自动评估代码质量，多维度打分，提供反馈
-- **大模型评估**：集成大型语言模型进行智能代码分析
-- **数据分析**：学习情况分析、统计图表
-- **系统管理**：系统日志、数据导出、系统设置
+### 学生端
+- 在线代码编辑与提交（支持 C++/Python/Java）
+- 多维度自动评分与 AI 反馈（实时流式输出）
+- 编程能力分析与个性化 AI 学情报告
+- AI 编程助手（RAG 增强，关联个人学情与历史错误）
+- 代码编辑器选中内容快捷提问
+- 近期作业展示（含截止日期、Markdown 渲染）
+
+### 教师端
+- 班级管理与学情总览
+- 班级横向对比分析
+- 学生提交记录与能力详情查看
+- 作业发布（含截止日期设置、Markdown 描述）
+- 个人资料编辑
+
+### 管理员端
+- 用户管理（学生/教师/管理员分角色查看详情）
+- 教师邀请注册（24小时有效、单次使用 Token）
+- 系统仪表盘（用户统计、活跃度、系统日志）
+- 数据导出
+- 关于系统 / 使用帮助 / 联系我们页面
+
+---
 
 ## 技术栈
 
-### 前端技术
-- HTML5/CSS3/JavaScript
-- Bootstrap 5
-- Chart.js
-- CodeMirror
-- jQuery
+| 层次 | 技术 |
+|------|------|
+| 前端 | HTML5 / Bootstrap 5 / Chart.js / CodeMirror / marked.js |
+| 后端 | Python 3.8+ / Flask 2.0+ / SQLAlchemy / Flask-Login / Flask-WTF |
+| 数据库 | MySQL |
+| AI 评估 | PyTorch / TextCNN / 智谱 GLM-4-Flash |
+| 其他 | SSE 流式响应 / itsdangerous Token / DOMPurify |
 
-### 后端技术
-- Python 3.8+
-- Flask 2.0+
-- SQLAlchemy
-- Flask-Login
-- Flask-WTF
-- SQLite/MySQL
+---
 
-### AI技术
-- PyTorch
-- 深度学习模型支持
-- TextCNN
-- 大型语言模型API (智谱GLM-4/OpenAI API)
+## 快速启动
 
-## 系统截图
-
-![登录界面](screenshots/login.png)
-![管理员仪表盘](screenshots/admin_dashboard.png)
-![代码提交](screenshots/code_submission.png)
-![评估结果](screenshots/evaluation_result.png)
-
-## 安装指南
-
-> **⚠️ 重要提示：** 本项目已全面升级安全配置，所有敏感信息通过环境变量管理。  
-> 详细的安全配置和部署指南请参考：
-> - 📖 [部署指南 (DEPLOYMENT.md)](DEPLOYMENT.md)
-> - 🔒 [安全配置指南 (SECURITY.md)](SECURITY.md)
-
-### 系统要求
-
-- Python 3.8或更高版本
-- pip包管理器
-- 虚拟环境工具（推荐使用venv或conda）
-- 至少4GB RAM（推荐8GB或更多，特别是运行AI模型时）
-- 至少2GB可用磁盘空间
-
-### 快速开始（开发环境）
-
-#### 1. 配置环境变量
+### 1. 环境准备
 
 ```bash
-# 复制环境变量模板
-cp env.example .env
-
-# 生成安全密钥
-python -c "import secrets; print(secrets.token_hex(32))"
-
-# 编辑.env文件，填入生成的密钥和其他配置
-# 开发环境可以不设置DATABASE_URL（将使用SQLite）
-```
-
-#### 2. 运行安全检查
-
-```bash
-# 验证配置是否正确
-python scripts/security_check.py
-```
-
-### 安装步骤
-
-1. **获取源代码**
-
-```bash
-# 克隆代码仓库
-git clone https://github.com/yourusername/Student-Code-Evaluation-System.git
-cd Student-Code-Evaluation-System
-```
-
-2. **创建并激活虚拟环境**
-
-```bash
-# 使用venv创建虚拟环境
-python -m venv venv
-
-# Windows下激活虚拟环境
-venv\Scripts\activate
-
-# Linux/Mac下激活虚拟环境
-source venv/bin/activate
-```
-
-3. **安装依赖包**
-
-```bash
-# 安装项目依赖
+# 推荐使用 conda 虚拟环境
+conda create -n student-eval python=3.8
+conda activate student-eval
 pip install -r requirements.txt
 ```
 
-4. **初始化数据库**
+### 2. 配置环境变量
 
 ```bash
-# 初始化数据库
-flask db init
-flask db migrate -m "Initial migration"
-flask db upgrade
-
-# 创建测试数据（可选）
-python init_db.py
+cp env.example .env
+# 编辑 .env，填写数据库连接、API Key 等配置
 ```
 
-5. **下载AI模型文件**
-
-```bash
-# 下载预训练模型文件
-python download_models.py
-```
-
-6. **配置AI API密钥**
-
-在 `.env` 文件中添加API密钥：
-```bash
-# 智谱AI API密钥（推荐）
+主要配置项：
+```ini
+SECRET_KEY=your_secret_key
+DATABASE_URL=mysql+pymysql://user:password@localhost/student_code_review
 ZHIPU_API_KEY=your_zhipu_api_key
-
-# 或使用OpenAI API密钥
-# OPENAI_API_KEY=your_openai_api_key
 ```
 
-获取API密钥：
-- 智谱AI: https://open.bigmodel.cn/
-- OpenAI: https://platform.openai.com/
-
-7. **启动应用**
+### 3. 启动应用
 
 ```bash
-# 开发环境运行
-flask run
-
-# 或者使用Python直接运行
-python run.py
+python app.py
 ```
 
-应用将在默认端口5000上运行，访问http://localhost:5000即可打开系统。
+应用默认运行在 http://localhost:5000
 
-8. **数据库迁移** (升级时)
+数据库表结构会在首次启动时自动创建（含新增字段自动迁移）。
 
-如果您是从旧版本升级，请运行迁移脚本添加新字段:
-```bash
-python migrations/add_ai_feedback.py
-```
-
-## 使用指南
-
-### 管理员账户
-
-- 默认用户名：`admin`
-- 默认密码：`admin123`
-
-登录后可以管理用户、发布作业、查看统计信息、导出数据、配置系统设置等。
-
-### 学生账户
-
-新用户可通过注册页面创建学生账户。学生可以:
-- 查看作业列表
-- 提交代码
-- 获取自动评估结果和大模型智能分析
-- 查看个人学习统计
-
-## 大模型评估功能 (新增)
-
-系统现在支持使用大型语言模型(LLM)对学生代码进行更全面的评估和反馈:
-
-- **智能代码评析**: 基于先进的语言模型分析代码结构、逻辑和实现
-- **详细质量反馈**: 提供更详细、更有针对性的代码质量反馈
-- **改进建议**: 智能生成代码改进建议和优化方向
-- **自然语言解释**: 以易于理解的自然语言解释评分结果
-
-要使用此功能，您需要:
-1. 在.env文件中配置API密钥
-2. 系统将自动检测并启用大模型评估功能
-3. 学生提交代码后可在评估结果页面查看大模型反馈
+---
 
 ## 项目结构
 
 ```
-Student-Code-Evaluation-System/
-├── app.py              # 应用入口
-├── config.py           # 配置文件
-├── models/             # 数据模型
-├── routes/             # 路由控制
-├── services/           # 业务逻辑
-├── static/             # 静态资源
-├── templates/          # HTML模板
-├── utils/              # 工具函数
-│   ├── code_evaluator.py  # 代码评估逻辑
-│   └── llm_evaluator.py   # 大模型评估模块(新增)
-├── models/             # 模型相关文件（训练权重等）
-├── tests/              # 测试代码
-├── migrations/         # 数据库迁移文件
-├── requirements.txt    # 依赖包列表
-└── README.md           # 项目说明
+源代码/
+├── app.py                  # 应用入口（唯一启动入口）
+├── config.py               # 配置文件
+├── models.py               # 数据库模型（含自动迁移）
+├── forms.py                # WTForms 表单定义
+├── requirements.txt        # 依赖列表
+├── env.example             # 环境变量模板
+├── routes/                 # 路由蓝图
+│   ├── api.py              # AI 评估 / 代码建议 API
+│   ├── assignments.py      # 作业管理
+│   ├── auth.py             # 认证（登录/注册/邀请教师）
+│   ├── classes.py          # 班级管理
+│   ├── main.py             # 首页 / 仪表盘 / 通用页面
+│   └── users.py            # 用户管理
+├── templates/              # Jinja2 模板
+│   ├── layout.html         # 全局布局（含 Markdown 渲染）
+│   ├── classes/            # 班级相关模板
+│   └── components/         # 可复用组件
+├── utils/                  # 工具模块
+│   ├── code_evaluator.py   # CNN + 启发式评分
+│   ├── llm_evaluator.py    # 大模型评估
+│   ├── guidance_generator.py # 个性化学习建议生成
+│   └── code_advisor.py     # AI 编程助手
+├── static/                 # 静态资源
+├── migrations/             # 历史迁移脚本（参考用）
+├── scripts/                # 运维辅助脚本
+└── tests/                  # 单元测试
 ```
 
-## 功能亮点
+---
 
-- **多维度代码评估**：不仅关注代码的功能正确性，还评估算法设计、代码风格和效率优化
-- **大模型智能分析**：利用先进的大型语言模型提供人性化的代码评价和建议
-- **即时反馈**：学生提交代码后立即获得评估结果和改进建议
-- **个性化学习分析**：基于历史提交数据，生成个性化的学习进度和能力分析
-- **直观的数据可视化**：使用各类图表直观展示学习情况和系统运行数据
-- **完善的用户管理**：支持搜索、筛选和管理用户
-- **灵活的作业管理**：支持作业的创建、编辑、删除和排序
-- **数据导出功能**：支持导出系统数据用于备份或进一步分析
+## 默认账户
 
-## 贡献者
+| 角色 | 用户名 | 密码 |
+|------|--------|------|
+| 管理员 | admin | admin123 |
 
-- 开发者1：负责前端开发与UI设计
-- 开发者2：负责后端开发与数据库设计
-- 开发者3：负责AI模型开发与集成
-- 开发者4：负责测试与文档编写
+教师账户由管理员通过「邀请教师」功能生成一次性注册链接创建。
 
-## 许可证
+---
 
-本项目采用MIT许可证。详见 [LICENSE](LICENSE) 文件。
+## 权限说明
 
-## 联系方式
+| 功能 | 学生 | 教师 | 管理员 |
+|------|:----:|:----:|:------:|
+| 提交代码 | ✅ | — | — |
+| 查看个人学情 | ✅ | — | — |
+| AI 编程助手 | ✅ | — | — |
+| 班级管理 | — | ✅ | ✅ |
+| 作业发布 | — | ✅ | ✅ |
+| 用户管理 | — | — | ✅ |
+| 邀请教师 | — | — | ✅ |
+| 系统仪表盘 | — | — | ✅ |
 
-如有问题或建议，请联系：
-- 邮箱：support@codeeval.example.com
-- 项目Github：https://github.com/yourusername/Student-Code-Evaluation-System
+---
 
 ## 更新日志
 
-### v0.1.2 (2024-06-20)
-- 集成大型语言模型进行智能代码评估
-- 添加详细代码反馈和改进建议功能
-- 改进数据库架构，添加新的评估字段
-- 优化提交处理逻辑，提高系统稳定性
-- 更新用户界面，支持更详细的评估结果展示
-- 完善API功能，支持更多参数选项
+### v0.3.0 (2026-03-19)
+- 新增作业截止日期字段（模型、表单、模板全链路）
+- 新增教师邀请 Token 单次使用 + 24小时过期机制（`InviteToken` 模型）
+- 新增管理员/教师用户详情分角色页面（`staff_details.html`）
+- 用户类型分布图新增教师角色统计
+- 管理员仪表盘移除教学类按钮（添加作业/作业管理/能力趋势监控）
+- 全站 Markdown 渲染覆盖（学生首页近期作业、作业详情等）
+- 修复教师视图越权按钮（编辑班级信息、返回用户管理）
+- 修复教师「返回个人中心」路由错误
+- 修复作业详情页教师视图显示「开始作答」问题
+- 使用帮助页新增教师/管理员功能指南
+- 清理冗余脚本、测试模板文件
 
-### v0.1.1 (2024-06-01)
-- 修复了用户管理页面的搜索功能
-- 添加了作业管理页面的排序功能
-- 实现了系统活动日志功能
-- 用真实数据替换了示例数据
-- 优化了系统统计图表性能
-- 改进了管理员仪表盘界面
+### v0.2.0
+- 集成智谱 GLM-4-Flash 流式评估
+- 班级对比分析功能
+- AI 个性化学情分析
+- SSE 实时反馈
 
-### v0.1.0 (2024-05-15)
-- 初始版本发布
-- 实现基本用户管理功能
-- 实现基本作业管理功能
-- 实现代码提交和评估功能
-- 支持多种评估模式（大模型API + 传统算法）
-- 实现基础数据统计功能 
+### v0.1.0
+- 初始版本：用户管理、作业管理、代码提交与 CNN 评估
+
+---
+
+## 许可证
+
+MIT License © 沈阳航空航天大学分布式系统研究室
+
+联系邮箱：daiyupeng5@gmail.com

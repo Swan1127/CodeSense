@@ -3,9 +3,9 @@
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app
 from itsdangerous import URLSafeTimedSerializer
-from models import db, User, Submission
-from utils.auth import login_required, admin_required
-from sqlalchemy import desc, or_
+from models import db, User, Submission, SystemLog
+from utils.auth import login_required, admin_required, admin_or_teacher_required
+from sqlalchemy import desc
 from forms import EditProfileForm
 import pandas as pd
 import io
@@ -46,17 +46,19 @@ def manage_users():
     total_submissions = sum(user.submit_count for user in User.query.all())
     student_count = User.query.filter_by(usertype='学生').count()
     admin_count = User.query.filter_by(usertype='管理员').count()
+    teacher_count = User.query.filter_by(usertype='教师').count()
     
     print("\n=== 用户统计数据 ===")
     print(f"总用户数: {total_users}")
     print(f"学生数量: {student_count}")
+    print(f"教师数量: {teacher_count}")
     print(f"管理员数量: {admin_count}")
     print(f"总提交数: {total_submissions}")
     
     # 准备图表数据
     user_type_chart_data = {
-        'labels': ['学生', '管理员'],
-        'data': [student_count, admin_count]
+        'labels': ['学生', '教师', '管理员'],
+        'data': [student_count, teacher_count, admin_count]
     }
     
     print("\n=== 用户类型图表数据 ===")
@@ -141,8 +143,8 @@ def view_submissions():
             flash('会话已过期，请重新登录')
             return redirect(url_for('auth.login'))
             
-        # 检查权限：只允许管理员或本人查看
-        if session.get('usertype') != '管理员' and session.get('student_id') != student_id:
+        # 检查权限：允许管理员、任课教师或本人查看
+        if session.get('usertype') not in ['管理员', '教师'] and session.get('student_id') != student_id:
             flash('您无权查看此学生的提交记录', 'danger')
             return redirect(url_for('main.home'))
             
@@ -296,7 +298,7 @@ def export_users():
 
 @users.route('/view_student_details/<string:student_id>')
 @login_required
-@admin_required
+@admin_or_teacher_required
 def view_student_details(student_id):
     """管理员查看学生详情页面"""
     try:
@@ -374,16 +376,32 @@ def view_student_details(student_id):
         return redirect(url_for('users.manage_users'))
 
 
+@users.route('/view_staff_details/<string:student_id>')
+@login_required
+@admin_required
+def view_staff_details(student_id):
+    """管理员查看教师/管理员详情页面"""
+    user = User.query.get_or_404(student_id)
+    # 获取该用户管理的班级（教师）
+    managed_classes = []
+    if hasattr(user, 'managed_classes'):
+        managed_classes = user.managed_classes.all()
+    # 获取操作日志
+    recent_logs = SystemLog.query.filter_by(user_id=student_id).order_by(SystemLog.created_at.desc()).limit(10).all()
+    return render_template('staff_details.html',
+                           user=user,
+                           managed_classes=managed_classes,
+                           recent_logs=recent_logs)
+
+
 @users.route('/invite-teacher')
 @login_required
 @admin_required
 def invite_teacher():
-    """生成一个用于教师注册的邀请链接"""
+    """生成一个用于教师注册的邀请链接（24小时有效，单次使用）"""
+    from models import InviteToken
     serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
-    # The token will be valid for 24 hours.
     token = serializer.dumps('teacher-invitation', salt='teacher-reg-salt')
-    
-    # Create the full invitation URL
+    InviteToken.create(token_str=token, created_by=session.get('student_id'))
     invite_url = url_for('auth.register_teacher', token=token, _external=True)
-    
     return render_template('invite_teacher.html', invite_url=invite_url) 

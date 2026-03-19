@@ -9,7 +9,7 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from logging import FileHandler
-from datetime import datetime
+
 from flask import Flask, request
 from flask_login import LoginManager
 # Flask-Session导入优化
@@ -21,7 +21,7 @@ except ImportError:
     Session = None
     HAS_FLASK_SESSION = False
 from dotenv import load_dotenv
-from sqlalchemy import True_
+
 
 # 添加当前目录到Python路径，确保可以正确导入模块
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -227,6 +227,15 @@ def create_app(config_name='default'):
     
     # 初始化扩展
     db.init_app(app)
+
+    # 注册自定义 Jinja2 过滤器
+    import json as _json
+    @app.template_filter('from_json')
+    def from_json_filter(s):
+        try:
+            return _json.loads(s) if s else []
+        except Exception:
+            return []
     
     # 初始化Flask-Session（如果可用）
     if HAS_FLASK_SESSION and Session is not None:

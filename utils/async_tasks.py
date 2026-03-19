@@ -13,7 +13,6 @@ import time
 import json
 import traceback
 from datetime import datetime
-from flask import current_app
 import logging
 
 # 配置日志

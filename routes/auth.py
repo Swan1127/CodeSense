@@ -2,8 +2,6 @@
 身份验证相关路由
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
-import logging
-import traceback
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 from flask_login import login_user, logout_user, current_user
 from models import db, User, SystemLog, SystemConfig
@@ -130,6 +128,16 @@ def register_teacher(token):
         current_app.logger.warning(f"教师邀请token无效: {token}, 错误: {e}")
         flash('无效的邀请链接。', 'danger')
         return redirect(url_for('auth.login'))
+
+    # 数据库层单次使用校验
+    try:
+        from models import InviteToken
+        ok, err_msg = InviteToken.validate_and_use(token)
+        if not ok:
+            flash(err_msg, 'danger')
+            return redirect(url_for('auth.login'))
+    except Exception:
+        pass  # invite_tokens 表不存在时降级为仅签名校验
 
     form = RegistrationForm()
     form.class_name.render_kw = {'style': 'display: none;'}

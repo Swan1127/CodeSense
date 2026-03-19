@@ -1,13 +1,11 @@
 """
 数据库模型定义
 """
-import datetime
 import json  # 添加json导入
 from datetime import datetime as dt
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin  # 添加UserMixin导入
-from sqlalchemy import func
 
 db = SQLAlchemy()
 
@@ -196,7 +194,7 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
         try:
             from utils.ability_scorer import ability_scorer
             return ability_scorer.calculate_detailed_ability_scores(self.student_id)
-        except Exception as e:
+        except Exception:
             # 如果计算失败，返回基于现有数据的简单评分
             submissions = self.submissions.all()
             
@@ -296,6 +294,7 @@ class Assignment(db.Model):
     average_score = db.Column(db.Float, default=0.0)
     count = db.Column(db.Integer, default=0)
     created_time = db.Column(db.DateTime, default=dt.utcnow)
+    due_date = db.Column(db.DateTime, nullable=True)  # 截止日期
     target_classes = db.Column(db.Text)  # 存储目标班级列表，用逗号分隔
     difficulty_level = db.Column(db.Integer, default=1)  # 难度级别：1-5
     
@@ -346,6 +345,30 @@ class Assignment(db.Model):
         return progress
 
 
+class TestCase(db.Model):
+    """测试用例模型"""
+    __tablename__ = 'test_cases'
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignments.id', ondelete='CASCADE'), nullable=False)
+    input_data = db.Column(db.Text, nullable=False)   # 测试输入
+    expected_output = db.Column(db.Text, nullable=False)  # 期望输出
+    is_public = db.Column(db.Boolean, default=False)  # 是否对学生可见（样例）
+    order_index = db.Column(db.Integer, default=0)    # 排序序号
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+
+    assignment = db.relationship('Assignment', backref=db.backref('test_cases', lazy='dynamic', cascade='all, delete-orphan'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'assignment_id': self.assignment_id,
+            'input_data': self.input_data,
+            'expected_output': self.expected_output,
+            'is_public': self.is_public,
+            'order_index': self.order_index,
+        }
+
+
 class Submission(db.Model):
     """提交记录模型"""
     __tablename__ = 'submissions'
@@ -359,6 +382,11 @@ class Submission(db.Model):
     feedback = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), default='pending')  # 状态：pending, evaluated, failed
     ai_feedback = db.Column(db.Text, nullable=True)  # 大模型评估结果
+    # 沙箱评判结果
+    sandbox_status = db.Column(db.String(20), nullable=True)   # passed / partial / failed / error
+    sandbox_passed = db.Column(db.Integer, default=0)          # 通过测试用例数
+    sandbox_total = db.Column(db.Integer, default=0)           # 总测试用例数
+    sandbox_detail = db.Column(db.Text, nullable=True)         # JSON：每个用例的结果详情
 
 
 class SystemLog(db.Model):
@@ -587,7 +615,19 @@ def init_db(app):
     """初始化数据库"""
     with app.app_context():
         db.create_all()  # 创建数据库表
-        
+
+        # 自动迁移：添加新列（列已存在时静默忽略）
+        try:
+            with db.engine.connect() as conn:
+                try:
+                    conn.execute(db.text('ALTER TABLE assignments ADD COLUMN due_date DATETIME NULL'))
+                    conn.commit()
+                    print('已添加 assignments.due_date 列')
+                except Exception:
+                    pass  # 列已存在
+        except Exception as e:
+            print(f'自动迁移跳过: {e}')
+
         # 初始化系统设置
         default_settings = {
             'site_name': {
@@ -834,3 +874,40 @@ class AssignmentKnowledgePoint(db.Model):
             knowledge_point=knowledge_point
         ).delete()
         db.session.commit() 
+
+class InviteToken(db.Model):
+    """教师邀请Token，支持24小时过期和单次使用"""
+    __tablename__ = 'invite_tokens'
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(256), unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    is_used = db.Column(db.Boolean, default=False, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    created_by = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='SET NULL'), nullable=True)
+
+    @staticmethod
+    def create(token_str, created_by=None):
+        record = InviteToken(
+            token=token_str,
+            expires_at=dt.utcnow() + __import__("datetime").timedelta(hours=24),
+            created_by=created_by
+        )
+        db.session.add(record)
+        db.session.commit()
+        return record
+
+    @staticmethod
+    def validate_and_use(token_str):
+        """校验token是否有效，若有效则标记为已使用。返回 (ok, error_msg)"""
+        record = InviteToken.query.filter_by(token=token_str).first()
+        if not record:
+            return False, '无效的邀请链接'
+        if record.is_used:
+            return False, '该邀请链接已被使用'
+        if dt.utcnow() > record.expires_at:
+            return False, '邀请链接已过期，请联系管理员获取新链接'
+        record.is_used = True
+        record.used_at = dt.utcnow()
+        db.session.commit()
+        return True, None

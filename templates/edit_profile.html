@@ -125,8 +125,18 @@
         {{ form.submit(class="btn-submit") }}
     </form>
     
-    <a href="{{ url_for('users.view_submissions') }}" class="back-link">
+    {% if session.get('usertype') == '教师' %}
+    <a href="{{ url_for('main.teacher_dashboard') }}" class="back-link">
         <i class="bi bi-arrow-left"></i> 返回个人中心
     </a>
+    {% elif session.get('usertype') == '管理员' %}
+    <a href="{{ url_for('main.admin_dashboard') }}" class="back-link">
+        <i class="bi bi-arrow-left"></i> 返回控制台
+    </a>
+    {% else %}
+    <a href="{{ url_for('main.student_home') }}" class="back-link">
+        <i class="bi bi-arrow-left"></i> 返回个人中心
+    </a>
+    {% endif %}
 </div>
 {% endblock %} 

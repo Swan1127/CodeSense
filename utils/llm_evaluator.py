@@ -4,7 +4,6 @@
 import os
 import re
 import json
-import requests
 from dotenv import load_dotenv
 import traceback
 
@@ -853,7 +852,6 @@ class LLMEvaluator:
         in_code_block = False
         code_block_lines = []
         formatted_lines = []
-        code_indent = 0
         
         for i, line in enumerate(lines):
             # 检测代码块开始

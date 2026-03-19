@@ -100,11 +100,6 @@
                     <a href="{{ url_for('classes.class_comparison') }}" class="btn btn-info">
                         <i class="bi bi-bar-chart"></i> 班级对比
                     </a>
-                    <form method="POST" action="{{ url_for('classes.sync_classes') }}" style="display: inline;">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-arrow-repeat"></i> 同步数据
-                        </button>
-                    </form>
                 </div>
             </div>
         </div>
@@ -152,9 +147,11 @@
                         <a href="{{ url_for('classes.class_detail', class_id=item.class.id) }}" class="btn btn-sm btn-outline-primary">
                             详情
                         </a>
+                        {% if session.get('usertype') == '管理员' %}
                         <a href="{{ url_for('classes.edit_class', class_id=item.class.id) }}" class="btn btn-sm btn-outline-secondary">
                             编辑
                         </a>
+                        {% endif %}
                     </div>
                 </div>
                 

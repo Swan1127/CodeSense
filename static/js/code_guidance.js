@@ -175,7 +175,19 @@ function updateGuidanceFeedback() {
     });
 }
 
-// 格式化Markdown内容
+/**
+ * 格式化Markdown内容
+ * 
+ * 该函数负责将Markdown文本转换为HTML格式
+ * 主要功能包括：
+ * - 支持基本的Markdown语法（标题、粗体、斜体、代码块等）
+ * - 提供降级处理，当marked库不可用时使用简单格式化
+ * - 确保输出的HTML安全性
+ * - 支持代码高亮集成
+ * 
+ * @param {string} markdown - 要格式化的Markdown文本
+ * @returns {string} 格式化后的HTML字符串
+ */
 function formatMarkdown(markdown) {
     if (!markdown) return '';
     

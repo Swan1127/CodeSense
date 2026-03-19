@@ -2,7 +2,7 @@
 表单处理模块
 """
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, TextAreaField, SelectField, HiddenField, RadioField, IntegerField
+from wtforms import StringField, PasswordField, SubmitField, TextAreaField, SelectField, HiddenField, RadioField, IntegerField, DateTimeLocalField
 from wtforms.validators import DataRequired, Length, EqualTo, Email, ValidationError, Optional, NumberRange
 
 
@@ -35,6 +35,7 @@ class AssignmentForm(FlaskForm):
                                                NumberRange(min=1, message='作业ID必须为正整数')])
     title = StringField('标题', validators=[DataRequired(message='标题不能为空'), Length(1, 100)])
     description = TextAreaField('描述', validators=[DataRequired(message='描述不能为空')])
+    due_date = DateTimeLocalField('截止日期', format='%Y-%m-%dT%H:%M', validators=[Optional()])
     submit = SubmitField('提交')
 
 

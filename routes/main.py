@@ -4,14 +4,12 @@
 import datetime
 import csv
 import io
-import os
 import json  # 添加json模块导入
-from flask import Blueprint, render_template, redirect, url_for, flash, session, request, jsonify, Response, make_response, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, session, request, jsonify, Response
 from flask_login import login_required, current_user
 from sqlalchemy import func
 from models import db, User, Assignment, Submission, SystemLog, SystemConfig
 from utils.auth import admin_required
-from services.ai_evaluator import AIEvaluator
 
 main = Blueprint('main', __name__)
 
@@ -86,9 +84,7 @@ def home():
         # 3. 获取用于显示的提交记录（也需要筛选）
         submissions = submissions_query.order_by(Submission.submitted_at.desc()).all()
         
-        # 初始化AI评估器
-        ai_evaluator = AIEvaluator(current_app.config.get('ZHIPU_API_KEY', os.environ.get('ZHIPU_API_KEY')))
-        
+
         # 准备提交记录数据
         submission_data = []
         for sub in submissions:
@@ -609,12 +605,31 @@ def teacher_dashboard():
     # 统计数据
     total_submissions = Submission.query.filter(Submission.student_id.in_(student_ids)).count() if class_ids else 0
 
+    # 准备图表数据: 1) 各班级学生人数 2) 各班级平均分
+    class_names = []
+    class_sizes = []
+    class_avg_scores = []
+    
+    for c in managed_classes:
+        class_names.append(c.name)
+        class_sizes.append(c.student_count)
+        # 获取班级平均分
+        stats = c.get_statistics()
+        class_avg_scores.append(round(stats.get('avg_score', 0), 1))
+        
+    chart_data = {
+        'labels': class_names,
+        'sizes': class_sizes,
+        'scores': class_avg_scores
+    }
+
     return render_template('teacher_home.html',
                            teacher=teacher,
                            managed_classes=managed_classes,
                            student_count=student_count,
                            total_submissions=total_submissions,
-                           recent_submissions=recent_submissions)
+                           recent_submissions=recent_submissions,
+                           chart_data=chart_data)
 
 @main.route('/profile')
 @login_required

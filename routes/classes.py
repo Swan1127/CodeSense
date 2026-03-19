@@ -1,7 +1,6 @@
 """
 班级管理路由
 """
-import json
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
 from flask_login import login_required, current_user
 from sqlalchemy import func, desc
@@ -81,11 +80,14 @@ def class_detail(class_id):
 
 @classes.route('/compare')
 @login_required
-@admin_required
+@admin_or_teacher_required
 def class_comparison():
     """班级对比分析页面"""
-    # 获取主要班级（学生数量>10的班级）
-    main_classes = Class.query.filter(Class.student_count > 10).all()
+    # 教师只看自己的班级，管理员看全部
+    if current_user.usertype == '管理员':
+        main_classes = Class.query.all()
+    else:
+        main_classes = Class.query.filter_by(teacher_id=current_user.student_id).all()
     
     comparison_data = []
     for cls in main_classes:
@@ -117,7 +119,7 @@ def class_comparison():
 
 @classes.route('/api/stats')
 @login_required
-@admin_required
+@admin_or_teacher_required
 def api_class_stats():
     """获取班级统计数据API"""
     all_classes = Class.query.all()
@@ -168,9 +170,9 @@ def api_class_progress(class_id):
     
     return jsonify(data)
 
-@classes.route('/sync', methods=['POST'])
+@classes.route('/sync', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@admin_or_teacher_required
 def sync_classes():
     """同步班级数据"""
     try:

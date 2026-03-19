@@ -94,13 +94,15 @@
         <div class="row">
             <div class="col-md-8">
                 <h1>{{ cls.name }}</h1>
-                <p class="mb-0">{{ cls.major or '计算机相关专业' }} | {{ cls.grade or '2024' }}级</p>
+                <p class="mb-0">{{ cls.major or '计算机相关专业' }} | {{ cls.grade or '2024' }}</p>
                 <p class="mb-0">班主任: {{ cls.teacher.full_name or cls.teacher.username or '未分配' }}</p>
             </div>
             <div class="col-md-4 text-right">
+                {% if session.get('usertype') == '管理员' %}
                 <a href="{{ url_for('classes.edit_class', class_id=cls.id) }}" class="btn btn-light">
                     <i class="bi bi-pencil"></i> 编辑班级信息
                 </a>
+                {% endif %}
                 <a href="{{ url_for('classes.class_list') }}" class="btn btn-outline-light">
                     <i class="bi bi-arrow-left"></i> 返回列表
                 </a>

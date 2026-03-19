@@ -183,23 +183,14 @@
         <div class="card-title"><i class="bi bi-tools"></i> 管理操作</div>
     </div>
     <div class="card-body">
-        <a href="{{ url_for('assignments.add_assignment') }}" class="btn btn-primary btn-icon">
-            <i class="bi bi-plus-circle"></i> 添加作业
-        </a>
         <a href="{{ url_for('users.manage_users') }}" class="btn btn-secondary btn-icon">
             <i class="bi bi-people"></i> 用户管理
-        </a>
-        <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-info btn-icon">
-            <i class="bi bi-list-check"></i> 作业管理
         </a>
         <a href="{{ url_for('assignments.all_submissions') }}" class="btn btn-warning btn-icon">
             <i class="bi bi-journal-code"></i> 提交记录
         </a>
         <a href="{{ url_for('main.export_data') }}" class="btn btn-success btn-icon">
             <i class="bi bi-file-earmark-text"></i> 导出数据
-        </a>
-        <a href="{{ url_for('main.trend_monitor') }}" class="btn btn-danger btn-icon">
-            <i class="bi bi-cpu"></i> 能力趋势监控
         </a>
         <!-- 临时移除系统设置功能
         <a href="{{ url_for('main.system_settings') }}" class="btn btn-secondary btn-icon">

@@ -219,7 +219,6 @@ def calculate_heuristic_score(code, assignment_title=None):
     
     # 初始化评分项
     basic_score = 0
-    structure_score = 0
     quality_score = 0
     complexity_score = 0
     requirement_score = 0  # 题目要求匹配度得分

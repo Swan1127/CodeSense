@@ -4,10 +4,10 @@
 """
 import os
 import re
+import json
 import traceback
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, Optional, Any
 from .prompts import prompt_manager  # 导入提示词管理器
 
 # 设置日志
@@ -501,7 +501,6 @@ algorithm_score, style_score, functionality_score, efficiency_score, overall_fee
             has_functions = len(re.findall(r'(void|int|float|double|bool|char|string|auto)\s+\w+\s*\([^)]*\)\s*({|\n)', code)) > 0
             has_classes = "class" in code
             has_loops = "for(" in code.replace(" ", "") or "while(" in code.replace(" ", "")
-            has_conditionals = "if(" in code.replace(" ", "")
             
             # 风格分析
             has_consistent_indentation = True
@@ -670,8 +669,6 @@ algorithm_score, style_score, functionality_score, efficiency_score, overall_fee
             has_functions = "def " in code
             has_classes = "class " in code
             has_main_guard = "__name__" in code and "__main__" in code
-            has_loops = "for " in code or "while " in code
-            has_conditionals = "if " in code
             
             # 根据分析结果调整分数
             if has_imports:

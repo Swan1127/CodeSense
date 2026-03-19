@@ -1,22 +1,100 @@
 """
 作业相关路由
 """
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response, current_app, jsonify
 from flask_login import current_user
-from models import db, User, Assignment, Submission, SystemLog, AssignmentKnowledgePoint, KnowledgePointScore
+from models import db, User, Assignment, Submission, SystemLog
 from forms import AssignmentForm, SubmissionForm
-from utils.auth import login_required, admin_required, teacher_required
+from utils.auth import login_required, admin_required, teacher_required, admin_or_teacher_required
 from utils.code_evaluator import evaluate_cpp_code, initialize_models
 from io import BytesIO
 from sqlalchemy import desc
 import traceback  # 添加traceback模块
 import os
-from datetime import datetime
+import json
 
 assignments = Blueprint('assignments', __name__)
 
 # 在模块开始时初始化模型
 initialize_models()
+
+@assignments.route('/assignments/generate', methods=['POST'])
+# @login_required
+# @admin_or_teacher_required
+def generate_assignment():
+    """根据简短提示智能生成作业题目和描述"""
+    data = request.json
+    prompt = data.get('prompt', '')
+    
+    if not prompt:
+        return jsonify({'error': '提示词不能为空'}), 400
+        
+    try:
+        from openai import OpenAI
+        # 首选智谱AI
+        zhipu_key = current_app.config.get('ZHIPU_API_KEY')
+        openai_key = current_app.config.get('OPENAI_API_KEY')
+
+        if zhipu_key:
+            client = OpenAI(
+                api_key=zhipu_key,
+                base_url="https://open.bigmodel.cn/api/paas/v4/"
+            )
+            model_name = current_app.config.get('ZHIPU_MODEL', "glm-4-flash")
+        # 降级使用 OpenAI
+        elif openai_key:
+            client = OpenAI(
+                api_key=openai_key,
+                base_url=current_app.config.get('OPENAI_BASE_URL', "https://api.openai.com/v1")
+            )
+            model_name = current_app.config.get('OPENAI_MODEL', "gpt-3.5-turbo")
+        else:
+            return jsonify({'error': '系统未配置AI大模型接口，无法使用智能生成功能'}), 501
+
+        system_prompt = '''你是一个资深的计算机科学教授。你需要根据用户的简短提示，扩充并生成一道相对完整的编程或算法作业题。
+请以 JSON 格式返回，确保可以被程序解析。JSON必须包含两个字段：
+1. "title": 题目名称（字符串）
+2. "description": 题目的详细描述（支持Markdown，包含题目背景、输入限制、输出格式要求，以及示例输入和输出）。千万不要在JSON外附加任何解释文本。'''
+
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"请针对这个主题生成一道编程题：{prompt}"}
+            ],
+            temperature=0.7,
+            timeout=30
+        )
+        
+        result_content = response.choices[0].message.content
+        
+        # 尝试从内容中提取JSON数据
+        try:
+            # 处理可能的Markdown代码块
+            if "```json" in result_content:
+                json_str = result_content.split("```json")[1].split("```")[0].strip()
+            elif "```" in result_content:
+                json_str = result_content.split("```")[1].split("```")[0].strip()
+            else:
+                json_str = result_content.strip()
+            
+            result_json = json.loads(json_str)
+        except Exception as json_err:
+            current_app.logger.error(f"解析AI产生的JSON失败: {str(json_err)}, 原内容: {result_content}")
+            # 备选方案：如果不是合法JSON，尝试提取关键字段（简单正则表达式或字符串查找）
+            # 这里简单返回 500 让用户重试或查看日志
+            return jsonify({'error': "AI返回格式有误，请重试"}), 500
+        
+        return jsonify({
+            'success': True,
+            'title': result_json.get('title', ''),
+            'description': result_json.get('description', '')
+        })
+    except Exception as e:
+        current_app.logger.error(f"智能生成作业失败: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': f"生成失败: {str(e)}"}), 500
+
 
 
 @assignments.route('/assignments')
@@ -150,6 +228,7 @@ def add_assignment():
             id=assignment_id,
             title=form.title.data,
             description=form.description.data,
+            due_date=form.due_date.data,
             total_score=0,
             average_score=0.0,
             count=0
@@ -391,7 +470,35 @@ def submit_code(assignment_id):
                             print("使用传统方式保存评估建议")
                 
                 submission.feedback = feedback
-                
+
+                # ── 沙箱测试用例评判 ──────────────────────────────
+                try:
+                    from utils.sandbox_runner import run_test_cases
+                    from models import TestCase as TC
+                    test_cases = TC.query.filter_by(assignment_id=assignment_id)\
+                                        .order_by(TC.order_index).all()
+                    if test_cases:
+                        tc_list = [tc.to_dict() for tc in test_cases]
+                        sandbox_result = run_test_cases(code, tc_list)
+                        submission.sandbox_status = sandbox_result['status']
+                        submission.sandbox_passed = sandbox_result['passed']
+                        submission.sandbox_total = sandbox_result['total']
+                        import json as _json
+                        submission.sandbox_detail = _json.dumps(
+                            sandbox_result['details'], ensure_ascii=False)
+                        # 如果所有测试用例通过，分数保底 4 分
+                        if sandbox_result['status'] == 'passed' and submission.score < 4:
+                            submission.score = 4
+                        # 如果全部失败且非编译错误，分数上限 2 分
+                        elif sandbox_result['status'] == 'failed' and submission.score > 2:
+                            submission.score = 2
+                        print(f"沙箱评判完成: {sandbox_result['passed']}/{sandbox_result['total']} 通过")
+                    else:
+                        print("该作业暂无测试用例，跳过沙箱评判")
+                except Exception as sandbox_err:
+                    print(f"沙箱评判出错（不影响主流程）: {sandbox_err}")
+                # ── 沙箱评判结束 ────────────────────────────────────
+
             except Exception as e:
                 print(f"评估代码时出错: {e}")
                 print(traceback.format_exc())
@@ -949,6 +1056,10 @@ def add_teacher_assignment():
             db.session.add(new_assignment)
             db.session.commit()
             flash('作业创建成功！', 'success')
+            # AJAX 提交时返回 JSON，普通提交时重定向
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': True, 'assignment_id': new_assignment.id,
+                                'redirect': url_for('assignments.teacher_assignments')})
             return redirect(url_for('assignments.teacher_assignments'))
         except Exception as e:
             db.session.rollback()

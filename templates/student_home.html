@@ -324,9 +324,7 @@
                             无截止日期
                             {% endif %}
                         </p>
-                        <p class="card-text" style="margin-bottom: 1.25rem;">
-                            {{ assignment.description|truncate(120) }}
-                        </p>
+                        <p class="card-text markdown-body" style="margin-bottom: 1.25rem;" data-markdown="{{ assignment.description|truncate(120)|e }}"></p>
                         
                         {% set submitted = assignment.id in submitted_assignments %}
                         {% if submitted %}

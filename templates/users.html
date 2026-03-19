@@ -1,4 +1,4 @@
-﻿{% extends "layout.html" %}
+{% extends "layout.html" %}
 
 {% block title %}用户管理 - CodeSense 酷森思{% endblock %}
 
@@ -696,7 +696,7 @@
                             <td>{{ user.submit_count }}</td>
                             <td>{{ "%.2f"|format(user.user_ascore) }}</td>
                             <td>
-                                <a href="{{ url_for('users.view_student_details', student_id=user.student_id) }}" class="btn btn-sm btn-info">
+                                <a href="{% if user.usertype == '学生' %}{{ url_for('users.view_student_details', student_id=user.student_id) }}{% else %}{{ url_for('users.view_staff_details', student_id=user.student_id) }}{% endif %}" class="btn btn-sm btn-info">
                                     <i class="fas fa-eye"></i> 查看
                                 </a>
                                 <button class="btn btn-sm btn-danger delete-btn" data-user-id="{{ user.student_id }}">

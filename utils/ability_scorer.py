@@ -2,9 +2,8 @@
 基于班级整体数据的学生能力评分系统
 """
 import numpy as np
-from sqlalchemy import func
-from models import db, User, Submission, Assignment
-from typing import Dict, List, Tuple
+from models import db, User, Submission
+from typing import Dict, List
 import logging
 
 logger = logging.getLogger(__name__)

@@ -549,7 +549,19 @@ function handleAskQuestion() {
     });
 }
 
-// 格式化Markdown内容
+/**
+ * 格式化Markdown内容
+ * 
+ * 该函数负责将Markdown文本转换为HTML格式
+ * 主要功能包括：
+ * - 支持基本的Markdown语法（标题、粗体、斜体、代码块等）
+ * - 提供降级处理，当marked库不可用时使用简单格式化
+ * - 确保输出的HTML安全性
+ * - 支持代码高亮集成
+ * 
+ * @param {string} markdown - 要格式化的Markdown文本
+ * @returns {string} 格式化后的HTML字符串
+ */
 function formatMarkdown(markdown) {
     if (!markdown) return '';
     
@@ -571,14 +583,38 @@ function formatMarkdown(markdown) {
     }
 }
 
-// HTML转义函数
+/**
+ * HTML转义函数
+ * 
+ * 该函数将文本中的特殊字符转换为HTML实体，防止XSS攻击
+ * 主要功能包括：
+ * - 转义HTML特殊字符（<, >, &, ", '）
+ * - 提供安全的文本输出
+ * - 支持DOM元素的文本内容设置
+ * 
+ * @param {string} text - 需要转义的文本
+ * @returns {string} 转义后的HTML安全字符串
+ */
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-// 显示通知
+/**
+ * 显示通知
+ * 
+ * 该函数负责在页面上显示各种类型的通知消息
+ * 主要功能包括：
+ * - 支持多种通知类型（info, success, warning, danger）
+ * - 自动消失机制
+ * - 响应式设计适配
+ * - 支持Bootstrap和自定义样式
+ * - 提供全局和本地通知两种模式
+ * 
+ * @param {string} message - 通知消息内容
+ * @param {string} type - 通知类型（'info', 'success', 'warning', 'danger'）
+ */
 function showNotification(message, type = 'info') {
     if (typeof window.showNotification === 'function') {
         // 如果全局已有通知函数，使用它

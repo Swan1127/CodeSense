@@ -3,7 +3,6 @@ AI编程助手提示词管理模块
 用于管理不同模式下的提示词模板
 """
 
-from typing import Dict, Any
 
 
 class PromptManager:
@@ -61,8 +60,6 @@ class PromptManager:
 
         # 根据不同题目类型提供针对性的引导提示
         if assignment_title:
-            title_lower = assignment_title.lower()
-            
             if "冒泡排序" in assignment_title:
                 guidance_prompt += "\n🫧 **冒泡提示**: 像汽水里的气泡一样，大数字要慢慢'冒'到后面哦！"
             elif "快速排序" in assignment_title:

@@ -139,18 +139,24 @@
             <p class="page-subtitle">题目详情与代码提交</p>
         </div>
         <div>
-            {% if session.get('usertype') != '管理员' %}
+            {% if session.get('usertype') == '学生' %}
             <a href="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}" class="btn btn-primary me-2">
                 <i class="bi bi-pencil-square me-1"></i> 开始作答
             </a>
-            {% else %}
+            {% elif session.get('usertype') == '管理员' %}
             <a href="{{ url_for('assignments.all_submissions') }}?assignment_id={{ assignment.id }}" class="btn btn-primary me-2">
                 <i class="bi bi-list-ul me-1"></i> 查看所有提交
             </a>
             {% endif %}
-            <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-secondary">
-                <i class="bi bi-arrow-left me-1"></i> 返回题库
+            {% if session.get('usertype') == '学生' %}
+            <a href="{{ url_for('assignments.student_assignments') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left me-1"></i> 返回作业列表
             </a>
+            {% else %}
+            <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left me-1"></i> 返回作业管理
+            </a>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -182,9 +188,7 @@
     
     <div class="assignment-description">
         <h4 class="mb-3">题目描述</h4>
-        <div class="markdown-body">
-            {{ assignment.description|safe }}
-        </div>
+        <div class="markdown-body" id="assignment-md-body">{{ assignment.description or "" }}</div>
     </div>
 </div>
 
@@ -394,6 +398,48 @@
 {% endblock %}
 
 {% block extra_js %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.min.css">
+<style>
+.markdown-body {
+    box-sizing: border-box;
+    min-width: 200px;
+    max-width: 100%;
+    padding: 0;
+    font-size: 0.95rem;
+}
+.markdown-body pre {
+    background: #f6f8fa;
+    border-radius: 6px;
+    padding: 12px 16px;
+    overflow-x: auto;
+}
+.markdown-body code:not(pre code) {
+    background: #f0f0f0;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 0.88em;
+}
+.markdown-body h3 {
+    margin-top: 1.2rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 1.05rem;
+    color: #374151;
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<script>
+    // Markdown 渲染
+    document.addEventListener('DOMContentLoaded', function () {
+        const mdBody = document.querySelector('.markdown-body');
+        if (mdBody && typeof marked !== 'undefined') {
+            const raw = mdBody.textContent || mdBody.innerText;
+            mdBody.innerHTML = marked.parse(raw, { breaks: true, gfm: true });
+        }
+    });
+</script>
+
 <script>
     // 初始化代码编辑器
     document.addEventListener('DOMContentLoaded', function() {

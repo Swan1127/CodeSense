@@ -2,17 +2,16 @@
 API路由模块
 提供REST API接口
 """
-from flask import Blueprint, request, jsonify, session, render_template, Response, current_app
+from flask import Blueprint, request, session, render_template, Response, current_app
 from sqlalchemy import desc
-from models import db, User, Assignment, Submission, AbilityTrend
+from models import db, User, Assignment, Submission, AbilityTrend, TestCase
 from utils.auth import login_required, admin_required, teacher_required
 from utils.api import api_response, error_response, user_to_dict, assignment_to_dict, submission_to_dict
-from utils.code_evaluator import evaluate_cpp_code, analyze_code_quality
+from utils.code_evaluator import evaluate_cpp_code
 from utils.guidance_generator import generate_guidance, generate_answer_to_question  # 导入指导生成函数和答案生成函数
-from utils.code_advisor import generate_code_advice, initialize_code_advisor  # 导入新的代码建议系统
+from utils.code_advisor import generate_code_advice  # 导入新的代码建议系统
 from services.ai_evaluator import AIEvaluator
-import json # Added
-import markdown
+import json
 import traceback
 import os
 import requests  # 添加requests导入
@@ -453,7 +452,6 @@ def ask_question():
     """学生提问获取AI回答"""
     try:
         # 获取当前用户信息
-        user_id = session.get('user_id')
         student_id = session.get('student_id')
         
         # 简单的请求限制检查
@@ -963,6 +961,8 @@ def format_assignment():
     """
     Receives raw assignment text and streams a formatted JSON object using an LLM.
     """
+    from flask import stream_with_context
+
     data = request.get_json()
     if not data or 'raw_text' not in data:
         return error_response("Request must include 'raw_text' field.", 400)
@@ -971,18 +971,34 @@ def format_assignment():
     if len(raw_text.strip()) < 20:
         return error_response("Text is too short to format.", 400)
 
+    # 在请求上下文内提前获取 api_key，避免生成器脱离上下文后访问 current_app
+    api_key = current_app.config.get('ZHIPU_API_KEY') or os.environ.get('ZHIPU_API_KEY')
+
+    # 在请求上下文中查询数据库，获取一个未被占用的作业ID
+    try:
+        from sqlalchemy import func
+        max_id = db.session.query(func.max(Assignment.id)).scalar() or 100
+        next_available_id = max_id + 1
+    except Exception:
+        next_available_id = None
+
     def generate():
         try:
-            ai_evaluator = AIEvaluator()
+            if not api_key:
+                yield f"data: {json.dumps({'error': '系统未配置AI接口密钥，无法使用智能格式化功能'})}\n\n"
+                return
+            ai_evaluator = AIEvaluator(api_key=api_key)
             for chunk in ai_evaluator.format_assignment_text(raw_text):
                 # SSE format: data: <json_string>\n\n
                 yield f"data: {json.dumps({'token': chunk})}\n\n"
+            # 流结束后，发送真实可用的 ID 覆盖 AI 的建议
+            if next_available_id is not None:
+                yield f"data: {json.dumps({'override_id': next_available_id})}\n\n"
         except Exception as e:
-            error_message = json.dumps({"error": f"An unexpected error occurred on the server: {str(e)}"})
+            error_message = json.dumps({"error": f"服务器发生错误: {str(e)}"})
             yield f"data: {error_message}\n\n"
 
-    return Response(generate(), mimetype='text/event-stream')
-
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 @api.route('/stream/ability-analysis', methods=['GET'])
 @login_required
@@ -1111,3 +1127,5 @@ def stream_ability_analysis():
             'X-Accel-Buffering': 'no'
         }
     )
+
+# -- Test Case Management API --
