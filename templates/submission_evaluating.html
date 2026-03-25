@@ -1,0 +1,278 @@
+{% extends "layout.html" %}
+
+{% block title %}正在评测 - {{ submission.assignment.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .evaluating-container {
+        min-height: 70vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        background-color: #f8f9fa;
+        border-radius: 1rem;
+        padding: 2rem;
+        margin-top: 2rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    }
+
+    .loader-wrapper {
+        position: relative;
+        width: 140px;
+        height: 140px;
+        margin-bottom: 2.5rem;
+    }
+
+    .loader-circle {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border: 5px solid #e9ecef;
+        border-top: 5px solid #4b6cb7;
+        border-radius: 50%;
+        animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+    }
+
+    .loader-human {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 3rem;
+        color: #4b6cb7;
+        animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    @keyframes pulse {
+
+        0%,
+        100% {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 1;
+        }
+
+        50% {
+            transform: translate(-50%, -50%) scale(1.15);
+            opacity: 0.8;
+        }
+    }
+
+    .status-text {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #1a202c;
+        margin-bottom: 0.75rem;
+        background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .sub-text {
+        color: #4a5568;
+        max-width: 500px;
+        line-height: 1.6;
+        margin-bottom: 3rem;
+    }
+
+    .progress-steps {
+        width: 100%;
+        max-width: 550px;
+        display: flex;
+        justify-content: space-between;
+        position: relative;
+    }
+
+    .progress-line {
+        position: absolute;
+        top: 20px;
+        left: 10%;
+        right: 10%;
+        height: 3px;
+        background-color: #e2e8f0;
+        z-index: 1;
+    }
+
+    .progress-line-active {
+        position: absolute;
+        top: 20px;
+        left: 10%;
+        width: 0%;
+        height: 3px;
+        background-color: #4b6cb7;
+        z-index: 2;
+        transition: width 0.5s ease;
+    }
+
+    .step-item {
+        position: relative;
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex: 1;
+        opacity: 0.4;
+        transition: all 0.4s ease;
+    }
+
+    .step-item.active {
+        opacity: 1;
+        transform: translateY(-5px);
+    }
+
+    .step-item.completed {
+        opacity: 0.9;
+        color: #38a169;
+    }
+
+    .step-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background-color: white;
+        border: 3px solid #e2e8f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 0.75rem;
+        font-size: 1.2rem;
+        color: #a0aec0;
+        transition: all 0.3s ease;
+    }
+
+    .active .step-icon {
+        background-color: #4b6cb7;
+        color: white;
+        border-color: #4b6cb7;
+        box-shadow: 0 4px 12px rgba(75, 108, 183, 0.3);
+    }
+
+    .completed .step-icon {
+        background-color: #38a169;
+        color: white;
+        border-color: #38a169;
+    }
+
+    .step-label {
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="evaluating-container">
+        <div class="loader-wrapper">
+            <div class="loader-circle"></div>
+            <div class="loader-human">
+                <i class="bi bi-robot"></i>
+            </div>
+        </div>
+
+        <h1 class="status-text" id="status-heading">AI 编程助手正在为您打分...</h1>
+        <p class="sub-text">大语言模型正在对您的代码进行深度语义分析，并同步在云端沙箱运行测试用例。这通常需要 10-20 秒，请勿刷新页面。</p>
+
+        <div class="progress-steps">
+            <div class="progress-line"></div>
+            <div class="progress-line-active" id="progress-line"></div>
+
+            <div class="step-item active" id="step-ai">
+                <div class="step-icon"><i class="bi bi-brain"></i></div>
+                <div class="step-label">模型评估</div>
+            </div>
+            <div class="step-item" id="step-sandbox">
+                <div class="step-icon"><i class="bi bi-terminal-fill"></i></div>
+                <div class="step-label">沙箱测试</div>
+            </div>
+            <div class="step-item" id="step-result">
+                <div class="step-icon"><i class="bi bi-graph-up-arrow"></i></div>
+                <div class="step-label">分析结果</div>
+            </div>
+        </div>
+
+        <div class="mt-5" id="error-container" style="display: none;">
+            <div class="alert alert-danger shadow-sm py-3">
+                <i class="bi bi-exclamation-octagon-fill me-2"></i>
+                <span id="error-message">打分过程中遇到了一些问题，可能是 AI 服务暂时不可用。</span>
+            </div>
+            <a href="{{ url_for('assignments.submit_code', assignment_id=submission.assignment_id) }}"
+                class="btn btn-primary px-5 py-2 shadow-sm">
+                重新提交
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const submissionId = {{ submission.id }};
+    const pollInterval = 2000;
+    let secondsElapsed = 0;
+    const finalResultUrl = "{{ url_for('assignments.view_submission', submission_id=submission.id) }}";
+
+    function updateProgressBar() {
+        secondsElapsed += 2;
+        const progressBar = document.getElementById('progress-line');
+
+        if (secondsElapsed >= 5 && secondsElapsed < 12) {
+            progressBar.style.width = '40%';
+            const aiStep = document.getElementById('step-ai');
+            if (aiStep.classList.contains('active')) {
+                aiStep.classList.remove('active');
+                aiStep.classList.add('completed');
+                document.getElementById('step-sandbox').classList.add('active');
+            }
+        } else if (secondsElapsed >= 13) {
+            progressBar.style.width = '80%';
+            const sandboxStep = document.getElementById('step-sandbox');
+            if (sandboxStep.classList.contains('active')) {
+                sandboxStep.classList.remove('active');
+                sandboxStep.classList.add('completed');
+                document.getElementById('step-result').classList.add('active');
+            }
+        }
+    }
+
+    async function checkSubmissionStatus() {
+        try {
+            const response = await fetch(`/api/submissions/${submissionId}/status`);
+            if (!response.ok) throw new Error('API Error');
+
+            const data = await response.json();
+
+            if (data.status === 'evaluated') {
+                document.getElementById('progress-line').style.width = '100%';
+                setTimeout(() => {
+                    window.location.href = finalResultUrl;
+                }, 800);
+            } else if (data.status === 'failed') {
+                document.getElementById('status-heading').innerText = '任务处理失败';
+                document.getElementById('error-container').style.display = 'block';
+                document.querySelector('.loader-wrapper').style.display = 'none';
+                document.querySelector('.progress-steps').style.opacity = '0.3';
+            } else {
+                updateProgressBar();
+                setTimeout(checkSubmissionStatus, pollInterval);
+            }
+        } catch (error) {
+            console.error('Polling failed:', error);
+            setTimeout(checkSubmissionStatus, pollInterval);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', checkSubmissionStatus);
+</script>
+{% endblock %}

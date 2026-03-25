@@ -39,6 +39,12 @@ def _find_compiler() -> str:
         r'C:\Program Files\mingw-w64\x86_64-8.1.0-posix-seh-rt_v6-rev0\mingw64\bin\g++.exe',
         r'C:\msys64\mingw64\bin\g++.exe',
         r'C:\msys64\ucrt64\bin\g++.exe',
+        # Anaconda/Miniconda 路径
+        os.path.join(os.environ.get('CONDA_PREFIX', ''), 'Library', 'mingw-w64', 'bin', 'g++.exe'),
+        os.path.join(os.environ.get('CONDA_PREFIX', ''), 'Library', 'bin', 'g++.exe'),
+        # 用户可能安装在 E 盘
+        r'E:\anaconda\Library\mingw-w64\bin\g++.exe',
+        r'E:\anaconda\envs\student-eval\Library\mingw-w64\bin\g++.exe',
     ]
     if platform.system() == 'Windows':
         for path in windows_paths:
@@ -73,12 +79,18 @@ def compile_cpp(source_code: str, work_dir: str) -> Tuple[bool, str, str]:
         f.write(source_code)
 
     try:
+        # 注入编译器目录到 PATH，解决 Windows 下 DLL 缺失问题
+        env = os.environ.copy()
+        compiler_dir = os.path.dirname(compiler)
+        env['PATH'] = compiler_dir + os.pathsep + env.get('PATH', '')
+
         result = subprocess.run(
             [compiler, src_path, '-o', exe_path, '-std=c++17', '-O2', '-Wall'],
             capture_output=True,
             text=True,
             timeout=COMPILE_TIMEOUT,
-            cwd=work_dir
+            cwd=work_dir,
+            env=env
         )
         if result.returncode != 0:
             err = result.stderr[:2000] if result.stderr else '编译失败（无错误信息）'
@@ -105,13 +117,20 @@ def run_single_test(exe_path: str, input_data: str, expected_output: str, work_d
     try:
         import time
         start = time.time()
+        # 运行编译后的程序（同样注入 PATH，解决运行时 DLL 依赖问题）
+        env = os.environ.copy()
+        compiler = _find_compiler()
+        if compiler:
+            env['PATH'] = os.path.dirname(compiler) + os.pathsep + env.get('PATH', '')
+
         proc = subprocess.run(
             [exe_path],
             input=input_data,
             capture_output=True,
             text=True,
             timeout=RUN_TIMEOUT,
-            cwd=work_dir
+            cwd=work_dir,
+            env=env
         )
         elapsed = int((time.time() - start) * 1000)
         result['time_ms'] = elapsed

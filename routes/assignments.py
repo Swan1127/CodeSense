@@ -7,6 +7,7 @@ from models import db, User, Assignment, Submission, SystemLog
 from forms import AssignmentForm, SubmissionForm
 from utils.auth import login_required, admin_required, teacher_required, admin_or_teacher_required
 from utils.code_evaluator import evaluate_cpp_code, initialize_models
+from tasks.submission_tasks import evaluate_submission_async
 from io import BytesIO
 from sqlalchemy import desc
 import traceback  # 添加traceback模块
@@ -416,10 +417,7 @@ def submit_code(assignment_id):
             )
             
         try:
-            # 不再显示评估中状态
-            # flash('正在评估代码，请稍候...', 'info')
-            
-            # 创建新的提交记录，设置状态为pending
+            # 1. 保存提交记录，设置状态为pending
             submission = Submission(
                 student_id=student_id,
                 assignment_id=assignment_id,
@@ -427,195 +425,32 @@ def submit_code(assignment_id):
                 language=language,
                 status='pending'
             )
-            
-            # 先保存到数据库获取ID
             db.session.add(submission)
             db.session.commit()
             
-            # 调用评估函数
+            # 2. 触发后台异步评测
             try:
-                # 提供assignment_title作为上下文
-                assignment_title = assignment.title
-                print(f"开始评估代码，题目: {assignment_title}，语言: cpp")
+                from flask import current_app
+                evaluate_submission_async(
+                    current_app._get_current_object(), 
+                    submission.id, 
+                    assignment.title
+                )
+                print(f"已为提交 {submission.id} 启动后台评测")
                 
-                # 使用C++评估器评估代码
-                print(f"使用C++评估器评估代码")
-                score, feedback = evaluate_cpp_code(code, assignment_title=assignment_title)
-                
-                # 更新提交记录
-                submission.score = score
-                submission.status = 'evaluated'
-                
-                # 确保feedback是字符串
-                if feedback is None:
-                    feedback = ""
-                elif isinstance(feedback, bytes):
-                    feedback = feedback.decode('utf-8', errors='replace')
-                
-                # 获取结构化评估数据
-                from utils.code_evaluator import llm_evaluator
-                if hasattr(llm_evaluator, '_last_structured_data'):
-                    structured_data = llm_evaluator._last_structured_data
-                    import json
-                    # 保存结构化数据为JSON格式
-                    submission.ai_feedback = json.dumps(structured_data, ensure_ascii=False)
-                    print("成功保存结构化AI评估数据")
-                else:
-                    # 如果没有结构化数据，使用传统方式
-                    if isinstance(feedback, str) and len(feedback) > 0:
-                        # 检查是否包含评估建议
-                        if "【" in feedback and "】" in feedback or "改进建议" in feedback:
-                            # 将评估建议保存到ai_feedback字段中
-                            submission.ai_feedback = feedback
-                            print("使用传统方式保存评估建议")
-                
-                submission.feedback = feedback
+                # 跳转到等待评测页面
+                return redirect(url_for('assignments.evaluating_submission', submission_id=submission.id))
+            except Exception as async_err:
+                print(f"启动异步评测失败: {async_err}")
+                flash(f'后台评测系统启动失败，请稍后重试: {str(async_err)}', 'danger')
+                return redirect(url_for('assignments.submit_code', assignment_id=assignment_id))
 
-                # ── 沙箱测试用例评判 ──────────────────────────────
-                try:
-                    from utils.sandbox_runner import run_test_cases
-                    from models import TestCase as TC
-                    test_cases = TC.query.filter_by(assignment_id=assignment_id)\
-                                        .order_by(TC.order_index).all()
-                    if test_cases:
-                        tc_list = [tc.to_dict() for tc in test_cases]
-                        sandbox_result = run_test_cases(code, tc_list)
-                        submission.sandbox_status = sandbox_result['status']
-                        submission.sandbox_passed = sandbox_result['passed']
-                        submission.sandbox_total = sandbox_result['total']
-                        import json as _json
-                        submission.sandbox_detail = _json.dumps(
-                            sandbox_result['details'], ensure_ascii=False)
-                        # 如果所有测试用例通过，分数保底 4 分
-                        if sandbox_result['status'] == 'passed' and submission.score < 4:
-                            submission.score = 4
-                        # 如果全部失败且非编译错误，分数上限 2 分
-                        elif sandbox_result['status'] == 'failed' and submission.score > 2:
-                            submission.score = 2
-                        print(f"沙箱评判完成: {sandbox_result['passed']}/{sandbox_result['total']} 通过")
-                    else:
-                        print("该作业暂无测试用例，跳过沙箱评判")
-                except Exception as sandbox_err:
-                    print(f"沙箱评判出错（不影响主流程）: {sandbox_err}")
-                # ── 沙箱评判结束 ────────────────────────────────────
-
-            except Exception as e:
-                print(f"评估代码时出错: {e}")
-                print(traceback.format_exc())
-                submission.status = 'failed'
-                submission.score = 1  # 出错时给1分
-                submission.feedback = f"评估过程中出错: {str(e)}"
-                
-            # 更新作业统计信息
-            assignment.total_score += submission.score
-            assignment.count += 1
-            assignment.average_score = assignment.total_score / assignment.count
-            
-            # 更新用户统计信息
-            user = User.query.get(student_id)
-            user.submit_count += 1
-            user.user_tscore += submission.score
-            user.user_ascore = user.user_tscore / user.submit_count
-            
-            # 保存到数据库
-            db.session.commit()
-            
-            # 添加系统日志
-            SystemLog.add_log(
-                log_type='提交代码',
-                content=f'用户 {user.username} ({user.full_name}) 提交了作业 {assignment.title} 的代码，得分：{submission.score}/5',
-                user_id=student_id,
-                icon='bi bi-code-square'
-            )
-            
-            # 触发后台能力分析任务
-            try:
-                from tasks.ability_analysis import trigger_analysis_if_needed
-                from models import AbilityTrend
-
-                # 标记现有分析为过时（如果存在）
-                AbilityTrend.mark_as_outdated(student_id)
-
-                # 触发新的分析（后台执行，不阻塞）
-                triggered = trigger_analysis_if_needed(student_id)
-                if triggered:
-                    current_app.logger.info(f"已触发学生 {student_id} 的后台能力分析任务")
-            except Exception as e:
-                current_app.logger.error(f"触发能力分析失败: {str(e)}", exc_info=True)
-
-            # 【新增】更新知识点评分
-            try:
-                from models import AssignmentKnowledgePoint, KnowledgePointScore
-                from services.ai_evaluator import AIEvaluator
-
-                # 获取作业的知识点标签
-                assignment_kps = AssignmentKnowledgePoint.query.filter_by(
-                    assignment_id=assignment_id
-                ).all()
-
-                if assignment_kps:
-                    # 如果教师已标注知识点，直接使用
-                    current_app.logger.info(f"作业 {assignment_id} 已有 {len(assignment_kps)} 个知识点标签")
-                    for kp in assignment_kps:
-                        KnowledgePointScore.update_score(
-                            student_id=student_id,
-                            knowledge_point=kp.knowledge_point,
-                            assignment_score=submission.score * 20,  # 转换为0-100分
-                            difficulty=kp.difficulty,
-                            weight=kp.weight
-                        )
-                else:
-                    # 如果没有标注，使用AI自动检测
-                    current_app.logger.info(f"作业 {assignment_id} 无知识点标签，使用AI自动检测")
-                    api_key = current_app.config.get('ZHIPU_API_KEY') or os.environ.get('ZHIPU_API_KEY')
-                    if api_key:
-                        ai_evaluator = AIEvaluator(api_key)
-                        detected_kps = ai_evaluator.detect_code_knowledge_points(code, assignment.title)
-
-                        # 保存AI检测的知识点
-                        for kp_data in detected_kps:
-                            # 添加到作业知识点表（标记为AI检测）
-                            AssignmentKnowledgePoint.add_to_assignment(
-                                assignment_id=assignment_id,
-                                knowledge_point=kp_data['knowledge_point'],
-                                weight=kp_data.get('weight', 1.0),
-                                difficulty=kp_data.get('difficulty', 1.0),
-                                auto_detected=True
-                            )
-
-                            # 更新学生知识点评分
-                            KnowledgePointScore.update_score(
-                                student_id=student_id,
-                                knowledge_point=kp_data['knowledge_point'],
-                                assignment_score=submission.score * 20,
-                                difficulty=kp_data.get('difficulty', 1.0),
-                                weight=kp_data.get('weight', 1.0)
-                            )
-
-                        current_app.logger.info(f"AI检测到 {len(detected_kps)} 个知识点并已更新评分")
-                    else:
-                        current_app.logger.warning("AI服务未配置，无法自动检测知识点")
-
-            except Exception as e:
-                current_app.logger.error(f"更新知识点评分失败: {str(e)}", exc_info=True)
-                # 知识点更新失败不影响主流程
-            
-            if submission.status == 'evaluated':
-                flash(f'代码评估完成！您的得分：{submission.score}/5分', 'success')
-                # 不再添加JavaScript脚本
-                # flash('<script>setTimeout(function() { const loader = document.getElementById("loading-container"); if (loader) loader.style.display = "none"; }, 500);</script>', 'info')
-            else:
-                flash(f'代码已提交，但评估过程中出现错误，请联系管理员。', 'warning')
-                # 不再添加JavaScript脚本
-                # flash('<script>setTimeout(function() { const loader = document.getElementById("loading-container"); if (loader) loader.style.display = "none"; }, 500);</script>', 'info')
-                
-            return redirect(url_for('assignments.view_submission', submission_id=submission.id))
-            
         except Exception as e:
             db.session.rollback()
             print(f"处理提交时出错: {e}")
-            print(traceback.format_exc())
+            traceback.print_exc()
             flash(f'提交代码时出错: {str(e)}', 'danger')
+            return redirect(url_for('assignments.submit_code', assignment_id=assignment_id))
     
     return render_template(
         'submit_code.html',
@@ -625,6 +460,23 @@ def submit_code(assignment_id):
         submissions=submissions,
         submission_count=submission_count
     )
+
+@assignments.route('/submission/<int:submission_id>/evaluating')
+@login_required
+def evaluating_submission(submission_id):
+    """等待评测完成的过渡页面"""
+    submission = Submission.query.get_or_404(submission_id)
+    
+    # 安全检查
+    if current_user.usertype == '学生' and submission.student_id != current_user.student_id:
+        flash('您无权访问此提交。', 'danger')
+        return redirect(url_for('main.home'))
+        
+    # 如果已经评测完成，直接跳转到详情页
+    if submission.status == 'evaluated' or submission.status == 'failed':
+        return redirect(url_for('assignments.view_submission', submission_id=submission_id))
+        
+    return render_template('submission_evaluating.html', submission=submission)
 
 
 @assignments.route('/download_code/<int:submission_id>')
@@ -1059,10 +911,51 @@ def add_teacher_assignment():
             # AJAX 提交时返回 JSON，普通提交时重定向
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'success': True, 'assignment_id': new_assignment.id,
-                                'redirect': url_for('assignments.teacher_assignments')})
+                                 'redirect': url_for('assignments.teacher_assignments')})
             return redirect(url_for('assignments.teacher_assignments'))
         except Exception as e:
             db.session.rollback()
             flash(f'创建作业失败: {str(e)}', 'danger')
             
     return render_template('teacher_add_assignment.html', form=form)
+
+
+@assignments.route('/teacher/edit/<int:assignment_id>', methods=['GET', 'POST'])
+@login_required
+@teacher_required
+def edit_assignment(assignment_id):
+    """编辑作业详情"""
+    assignment = Assignment.query.get_or_404(assignment_id)
+    
+    # 鉴权：只有管理员或该作业的创建者可以修改
+    if current_user.usertype != '管理员' and assignment.creator_id != current_user.student_id:
+        flash('您没有权限修改此作业', 'danger')
+        return redirect(url_for('assignments.teacher_assignments'))
+    
+    form = AssignmentForm()
+    
+    if request.method == 'GET':
+        form.assignment_id.data = assignment.id
+        form.title.data = assignment.title
+        form.description.data = assignment.description
+        form.due_date.data = assignment.due_date
+    
+    if form.validate_on_submit():
+        assignment.title = form.title.data
+        assignment.description = form.description.data
+        assignment.due_date = form.due_date.data
+        
+        try:
+            db.session.commit()
+            flash('作业更新成功！', 'success')
+            
+            # AJAX 提交时返回 JSON，支持测试用例同步保存
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': True, 'assignment_id': assignment.id,
+                                 'redirect': url_for('assignments.teacher_assignments')})
+            return redirect(url_for('assignments.teacher_assignments'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'更新作业失败: {str(e)}', 'danger')
+            
+    return render_template('edit_assignment.html', form=form, assignment=assignment)

@@ -8,18 +8,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="CodeSense 酷森思 - 基于机器学习的代码能力评估平台">
     <title>登录 - CodeSense 酷森思</title>
-    
+
     <!-- 引入Google字体 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+
     <!-- 引入图标库 -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-    
+
     <!-- 引入自定义CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='modern.css') }}">
-    
+
     <!-- 登录页面特定样式 -->
     <style>
         body {
@@ -31,13 +31,13 @@
             min-height: 100vh;
             padding: 2rem 0;
         }
-        
+
         .auth-form-container {
             position: relative;
             overflow: hidden;
             animation: fadeIn 0.6s ease-out;
         }
-        
+
         .auth-decoration {
             position: absolute;
             top: -100px;
@@ -48,7 +48,7 @@
             border-radius: 50%;
             z-index: 0;
         }
-        
+
         .auth-decoration:before {
             content: '';
             position: absolute;
@@ -59,12 +59,12 @@
             background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
             border-radius: 50%;
         }
-        
+
         .auth-logo {
             position: relative;
             z-index: 1;
         }
-        
+
         .auth-logo i {
             font-size: 2.5rem;
             background: linear-gradient(135deg, #2563eb, #4f46e5);
@@ -72,15 +72,42 @@
             background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        
+
         .auth-form {
             position: relative;
             z-index: 1;
         }
-        
+
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .password-container {
+            position: relative;
+        }
+
+        #togglePassword {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-5%);
+            cursor: pointer;
+            color: #6b7280;
+            z-index: 10;
+            font-size: 1.2rem;
+            transition: color 0.2s;
+        }
+
+        #togglePassword:hover {
+            color: #2563eb;
         }
     </style>
 </head>
@@ -88,14 +115,14 @@
 <body>
     <div class="auth-form-container">
         <div class="auth-decoration"></div>
-        
+
         <div class="auth-logo">
             <i class="bi bi-code-square"></i>
         </div>
-        
+
         <h1 class="auth-title">{{ login_message }}</h1>
         <p class="auth-subtitle">{{ site_name }}</p>
-        
+
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
         {% for category, message in messages %}
@@ -105,13 +132,15 @@
         {% endfor %}
         {% endif %}
         {% endwith %}
-        
+
         <form class="auth-form" action="{{ url_for('auth.login') }}" method="post">
             {{ form.hidden_tag() }}
-            
+
             <div class="form-group">
                 <label for="username" class="form-label">用户名</label>
-                <input type="text" id="username" name="username" class="form-control {% if form.username.errors %}is-invalid{% endif %}" placeholder="请输入您的用户名" required autofocus>
+                <input type="text" id="username" name="username"
+                    class="form-control {% if form.username.errors %}is-invalid{% endif %}" placeholder="请输入您的用户名"
+                    required autofocus>
                 {% if form.username.errors %}
                 <div class="form-error">
                     {% for error in form.username.errors %}
@@ -120,10 +149,15 @@
                 </div>
                 {% endif %}
             </div>
-            
+
             <div class="form-group">
                 <label for="password" class="form-label">密码</label>
-                <input type="password" id="password" name="password" class="form-control {% if form.password.errors %}is-invalid{% endif %}" placeholder="请输入您的密码" required>
+                <div class="password-container">
+                    <input type="password" id="password" name="password"
+                        class="form-control {% if form.password.errors %}is-invalid{% endif %}" placeholder="请输入您的密码"
+                        required>
+                    <i class="bi bi-eye-slash" id="togglePassword"></i>
+                </div>
                 {% if form.password.errors %}
                 <div class="form-error">
                     {% for error in form.password.errors %}
@@ -132,18 +166,31 @@
                 </div>
                 {% endif %}
             </div>
-            
+
             <div class="form-group">
                 <button type="submit" class="btn btn-primary" style="width: 100%;">
                     <i class="bi bi-box-arrow-in-right" style="margin-right: 10px;"></i> 登录
                 </button>
             </div>
         </form>
-        
+
         <div class="auth-footer">
             还没有账户？ <a href="{{ url_for('auth.register') }}">注册账号</a>
         </div>
     </div>
+    <script>
+        const togglePassword = document.querySelector('#togglePassword');
+        const password = document.querySelector('#password');
+
+        togglePassword.addEventListener('click', function (e) {
+            // toggle the type attribute
+            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+            password.setAttribute('type', type);
+            // toggle the eye slash icon
+            this.classList.toggle('bi-eye');
+            this.classList.toggle('bi-eye-slash');
+        });
+    </script>
 </body>
 
 </html>

@@ -1,0 +1,74 @@
+2026-03-22 17:08:50,962 - code_advisor - INFO - 代码建议系统日志初始化完成
+INFO: ==================================================
+INFO: Flask应用日志系统初始化完成
+INFO: 日志目录: E:\CodeSense\源代码\logs
+INFO: 日志级别: DEBUG
+INFO: 应用模式: 开发模式
+INFO: ==================================================
+INFO: 应用启动 - 配置: development
+INFO: 开始初始化数据库...
+INFO: 数据库初始化完成
+INFO: 开始初始化评估模型...
+INFO: 评估模型初始化成功
+INFO: 开始初始化编程指导系统...
+INFO: 编程指导系统初始化成功
+INFO: 开始初始化代码建议系统...
+2026-03-22 17:08:52,610 - code_advisor - INFO - 开始初始化代码建议系统...
+2026-03-22 17:08:52,611 - code_advisor - INFO - 智谱AI SDK已安装
+2026-03-22 17:08:52,611 - code_advisor - INFO - 将尝试使用大模型评估
+2026-03-22 17:08:52,844 - code_advisor - INFO - 大语言模型初始化成功
+2026-03-22 17:08:52,847 - code_advisor - INFO - [OK] 代码建议系统(使用大模型)初始化成功
+2026-03-22 17:08:52,847 - code_advisor - INFO - 代码建议系统初始化完成
+INFO: 代码建议系统初始化成功
+INFO: 启动异步任务处理器，工作线程数: 2
+INFO: 工作线程 worker-1 已启动
+INFO: 异步任务系统已启动
+INFO: 工作线程 worker-2 已启动
+INFO: 异步任务系统初始化成功
+INFO: Flask应用完全初始化完成，准备接受请求
+INFO: --------------------------------------------------
+INFO: 应用实例创建成功
+INFO: Flask版本: Unknown
+INFO: Python版本: 3.10.18 | packaged by Anaconda, Inc. | (main, Jun  5 2025, 13:08:55) [MSC v.1929 64 bit (AMD64)]
+INFO: 开始启动Flask开发服务器
+INFO: 访问地址: http://127.0.0.1:5000/
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+ * Restarting with stat
+2026-03-22 17:08:57,926 - code_advisor - INFO - 代码建议系统日志初始化完成
+INFO: ==================================================
+INFO: Flask应用日志系统初始化完成
+INFO: 日志目录: E:\CodeSense\源代码\logs
+INFO: 日志级别: DEBUG
+INFO: 应用模式: 开发模式
+INFO: ==================================================
+INFO: 应用启动 - 配置: development
+INFO: 开始初始化数据库...
+INFO: 数据库初始化完成
+INFO: 开始初始化评估模型...
+INFO: 评估模型初始化成功
+INFO: 开始初始化编程指导系统...
+INFO: 编程指导系统初始化成功
+INFO: 开始初始化代码建议系统...
+2026-03-22 17:08:59,679 - code_advisor - INFO - 开始初始化代码建议系统...
+2026-03-22 17:08:59,679 - code_advisor - INFO - 智谱AI SDK已安装
+2026-03-22 17:08:59,680 - code_advisor - INFO - 将尝试使用大模型评估
+2026-03-22 17:08:59,912 - code_advisor - INFO - 大语言模型初始化成功
+2026-03-22 17:08:59,914 - code_advisor - INFO - [OK] 代码建议系统(使用大模型)初始化成功
+2026-03-22 17:08:59,914 - code_advisor - INFO - 代码建议系统初始化完成
+INFO: 代码建议系统初始化成功
+INFO: 启动异步任务处理器，工作线程数: 2
+INFO: 工作线程 worker-1 已启动
+INFO: 工作线程 worker-2 已启动
+INFO: 异步任务系统已启动
+INFO: 异步任务系统初始化成功
+INFO: Flask应用完全初始化完成，准备接受请求
+INFO: --------------------------------------------------
+INFO: 应用实例创建成功
+INFO: Flask版本: Unknown
+INFO: Python版本: 3.10.18 | packaged by Anaconda, Inc. | (main, Jun  5 2025, 13:08:55) [MSC v.1929 64 bit (AMD64)]
+INFO: 开始启动Flask开发服务器
+INFO: 访问地址: http://127.0.0.1:5000/
+ * Debugger is active!
+ * Debugger PIN: 979-288-933

@@ -2,7 +2,8 @@
 API路由模块
 提供REST API接口
 """
-from flask import Blueprint, request, session, render_template, Response, current_app
+from flask import Blueprint, request, session, render_template, Response, current_app, jsonify
+from flask_login import current_user
 from sqlalchemy import desc
 from models import db, User, Assignment, Submission, AbilityTrend, TestCase
 from utils.auth import login_required, admin_required, teacher_required
@@ -1129,3 +1130,48 @@ def stream_ability_analysis():
     )
 
 # -- Test Case Management API --
+
+@api.route('/assignments/<int:assignment_id>/testcases/batch', methods=['POST'])
+def batch_save_testcases(assignment_id):
+    """批量保存测试用例"""
+    # 鉴权可以在这里添加，目前简单实现
+    data = request.get_json()
+    if not data or 'cases' not in data:
+        return jsonify({'success': False, 'message': '数据格式不正确'}), 400
+    
+    try:
+        # 先删除旧的测试用例
+        TestCase.query.filter_by(assignment_id=assignment_id).delete()
+        
+        # 批量添加新的测试用例
+        for idx, case_data in enumerate(data['cases']):
+            new_case = TestCase(
+                assignment_id=assignment_id,
+                input_data=case_data.get('input_data', ''),
+                expected_output=case_data.get('expected_output', ''),
+                is_public=case_data.get('is_public', False),
+                order_index=idx
+            )
+            db.session.add(new_case)
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'成功保存 {len(data["cases"])} 个测试用例'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api.route('/submissions/<int:submission_id>/status')
+@login_required
+def get_submission_status(submission_id):
+    """获取提交评测状态"""
+    submission = Submission.query.get_or_404(submission_id)
+    
+    # 安全检查：学生只能查看自己的提交状态
+    if current_user.usertype == '学生' and submission.student_id != current_user.student_id:
+        return jsonify({'error': '无权访问此提交状态'}), 403
+        
+    return jsonify({
+        'status': submission.status,
+        'score': submission.score,
+        'id': submission.id
+    })

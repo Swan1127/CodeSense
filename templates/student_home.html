@@ -504,9 +504,16 @@ marked.setOptions({
     mangle: false
 });
 
-// 页面加载完成后初始化SSE连接
+// 页面加载完成后初始化SSE连接并渲染Markdown
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 SSE流式架构已加载，开始连接...');
+    // 渲染所有 data-markdown 元素
+    document.querySelectorAll('[data-markdown]').forEach(function(el) {
+        var raw = el.getAttribute('data-markdown');
+        if (raw && typeof marked !== 'undefined') {
+            el.innerHTML = marked.parse(raw, { breaks: true, gfm: true });
+        }
+    });
     connectSSE();
 });
 

@@ -1,0 +1,212 @@
+{% extends "layout.html" %}
+
+{% block title %}编辑作业 - 教师中心{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <!-- Main Assignment Form Card -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">编辑作业: #{{ assignment.id }}</h3>
+                    <span class="badge bg-secondary">创建于: {{ assignment.created_time.strftime('%Y-%m-%d %H:%M')
+                        }}</span>
+                </div>
+                <div class="card-body">
+                    <form id="assignment-form" method="POST"
+                        action="{{ url_for('assignments.edit_assignment', assignment_id=assignment.id) }}">
+                        {{ form.hidden_tag() }}
+
+                        <div class="mb-3">
+                            <label for="assignment_id" class="form-label">作业ID (不可修改)</label>
+                            {{ form.assignment_id(class="form-control", readonly=True) }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="title" class="form-label">作业标题</label>
+                            {{ form.title(class="form-control", placeholder="例如：A+B Problem") }}
+                            {% if form.title.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ form.title.errors[0] }}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">作业描述</label>
+                            {{ form.description(class="form-control", id="assignment-description", rows="15",
+                            placeholder="请详细描述作业要求...") }}
+                            {% if form.description.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ form.description.errors[0] }}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- 测试用例管理区块 -->
+                        <div class="card mb-4 border-0 bg-light">
+                            <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0"><i class="bi bi-list-check"></i> 测试用例</h5>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-case">
+                                    <i class="bi bi-plus-circle"></i> 添加用例
+                                </button>
+                            </div>
+                            <div class="card-body p-2">
+                                <p class="text-muted small mb-2">管理输入/输出对。学生提交后将自动对比。「样例」对学生可见。</p>
+                                <div id="testcase-list">
+                                    <!-- 动态插入用例行 -->
+                                    {% for tc in assignment.test_cases.order_by('order_index').all() %}
+                                    <div class="testcase-row border rounded p-2 mb-2 bg-white"
+                                        data-idx="{{ loop.index0 }}">
+                                        <div class="d-flex align-items-center mb-1">
+                                            <span class="badge bg-secondary me-2">#{{ loop.index }}</span>
+                                            <div class="form-check form-check-inline ms-auto">
+                                                <input class="form-check-input" type="checkbox"
+                                                    id="pub-{{ loop.index0 }}" name="is_public_{{ loop.index0 }}" {% if
+                                                    tc.is_public %}checked{% endif %}>
+                                                <label class="form-check-label small"
+                                                    for="pub-{{ loop.index0 }}">样例（对学生可见）</label>
+                                            </div>
+                                            <button type="button"
+                                                class="btn btn-sm btn-outline-danger ms-2 btn-del-case"
+                                                data-idx="{{ loop.index0 }}"><i class="bi bi-trash"></i></button>
+                                        </div>
+                                        <div class="row g-2">
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-bold">输入</label>
+                                                <textarea class="form-control form-control-sm font-monospace case-input"
+                                                    rows="3">{{ tc.input_data }}</textarea>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-bold">期望输出</label>
+                                                <textarea
+                                                    class="form-control form-control-sm font-monospace case-output"
+                                                    rows="3">{{ tc.expected_output }}</textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end">
+                            <a href="{{ url_for('assignments.teacher_assignments') }}"
+                                class="btn btn-secondary me-2">取消</a>
+                            <button type="submit" class="btn btn-primary">保存修改</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let caseCount = {{ assignment.test_cases.count() }};
+
+    function createCaseRow(idx) {
+        const row = document.createElement('div');
+        row.className = 'testcase-row border rounded p-2 mb-2 bg-white';
+        row.dataset.idx = idx;
+        row.innerHTML = `
+        <div class="d-flex align-items-center mb-1">
+            <span class="badge bg-secondary me-2">#${idx + 1}</span>
+            <div class="form-check form-check-inline ms-auto">
+                <input class="form-check-input" type="checkbox" id="pub-${idx}" name="is_public_${idx}">
+                <label class="form-check-label small" for="pub-${idx}">样例（对学生可见）</label>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger ms-2 btn-del-case"
+                    data-idx="${idx}"><i class="bi bi-trash"></i></button>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-6">
+                <label class="form-label small fw-bold">输入</label>
+                <textarea class="form-control form-control-sm font-monospace case-input" rows="3"
+                          placeholder="程序的标准输入"></textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small fw-bold">期望输出</label>
+                <textarea class="form-control form-control-sm font-monospace case-output" rows="3"
+                          placeholder="期望的标准输出"></textarea>
+            </div>
+        </div>`;
+        return row;
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('btn-add-case').addEventListener('click', function () {
+            const list = document.getElementById('testcase-list');
+            const row = createCaseRow(caseCount++);
+            list.appendChild(row);
+        });
+
+        document.getElementById('testcase-list').addEventListener('click', function (e) {
+            const btn = e.target.closest('.btn-del-case');
+            if (btn) {
+                btn.closest('.testcase-row').remove();
+            }
+        });
+
+        document.getElementById('assignment-form').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            // 先提交表单（AJAX）
+            const formData = new FormData(this);
+            const submitBtn = this.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> 正在保存...';
+
+            try {
+                const resp = await fetch(this.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const json = await resp.json();
+
+                if (!json.success) {
+                    alert('保存作业基本信息失败: ' + (json.message || '未知错误'));
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '保存修改';
+                    return;
+                }
+
+                // 收集测试用例数据
+                const rows = document.querySelectorAll('.testcase-row');
+                const cases = [];
+                rows.forEach(function (row) {
+                    cases.push({
+                        input_data: row.querySelector('.case-input').value,
+                        expected_output: row.querySelector('.case-output').value,
+                        is_public: row.querySelector('.form-check-input').checked,
+                    });
+                });
+
+                // 批量保存测试用例
+                const tcResp = await fetch(`/api/assignments/{{ assignment.id }}/testcases/batch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cases })
+                });
+                const tcJson = await tcResp.json();
+
+                if (tcJson.success) {
+                    window.location.href = json.redirect || '/teacher/assignments';
+                } else {
+                    alert('作业信息已更新，但测试用例保存失败: ' + tcJson.message);
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '保存修改';
+                }
+            } catch (err) {
+                alert('发生错误: ' + err.message);
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '保存修改';
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -209,7 +209,31 @@ function bindToolbarActions(editor, editorElement) {
         });
     }
     
-    // 全屏按钮
+    // 切换主题按钮
+    const themeBtn = editorElement.querySelector('[data-action="theme"]');
+    if (themeBtn) {
+        themeBtn.addEventListener('click', () => {
+            const currentTheme = editorConfig.theme;
+            const newTheme = currentTheme === 'vs-dark' ? 'vs' : 'vs-dark';
+            
+            // 更新配置
+            editorConfig.theme = newTheme;
+            
+            // 应用主题
+            monaco.editor.setTheme(newTheme);
+            
+            // 更新图标
+            if (newTheme === 'vs-dark') {
+                themeBtn.innerHTML = '<i class="bi bi-moon-stars"></i>';
+                themeBtn.title = "切换到浅色模式";
+            } else {
+                themeBtn.innerHTML = '<i class="bi bi-sun"></i>';
+                themeBtn.title = "切换到深色模式";
+            }
+            
+            console.log('编辑器主题已切换为:', newTheme);
+        });
+    }
     const fullscreenBtn = editorElement.querySelector('[data-action="fullscreen"]');
     if (fullscreenBtn) {
         fullscreenBtn.addEventListener('click', () => {

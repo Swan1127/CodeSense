@@ -27,13 +27,18 @@ class AIEvaluator:
 代码：
 {code}
 
-请以JSON格式返回评估结果，包含以下字段：
+请以 JSON 格式返回评估结果，包含以下字段：
 - algorithm_score: 算法能力得分(0-100)
 - style_score: 代码风格得分(0-100)
 - functionality_score: 功能实现得分(0-100)
 - efficiency_score: 效率优化得分(0-100)
 - readability_score: 代码可读性得分(0-100)
-- feedback: 详细的评估反馈和建议
+- feedback: 详细的评估反馈和建议。具体要求：
+    1. 使用标准的 **Markdown** 格式。
+    2. 使用 `###` 标题进行分段（例如：### 算法逻辑、### 改进建议）。
+    3. 使用有序列表 `1. 2. 3.` 或无序列表 `-`。
+    4. 适当使用 **加粗** 强调关键点。
+    5. 确保内容分段清晰，易于阅读。
 """
 
         try:

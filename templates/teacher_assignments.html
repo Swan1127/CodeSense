@@ -47,19 +47,26 @@
                             </td>
                             <td>
                                 {% if assignment.assigned_to_my_classes %}
-                                    {% for class_name in assignment.assigned_to_my_classes %}
-                                        <span class="badge bg-success">{{ class_name }}</span>
-                                    {% endfor %}
+                                {% for class_name in assignment.assigned_to_my_classes %}
+                                <span class="badge bg-success">{{ class_name }}</span>
+                                {% endfor %}
                                 {% else %}
-                                    <span class="badge bg-secondary">未布置</span>
+                                <span class="badge bg-secondary">未布置</span>
                                 {% endif %}
                             </td>
                             <td>{{ assignment.count }}</td>
                             <td>{{ "%.2f"|format(assignment.average_score) }}</td>
                             <td>
-                                <a href="{{ url_for('assignments.assign_to_classes', assignment_id=assignment.id) }}" class="btn btn-sm btn-primary">
-                                    <i class="bi bi-pencil-square"></i> 布置/修改
-                                </a>
+                                <div class="btn-group">
+                                    <a href="{{ url_for('assignments.edit_assignment', assignment_id=assignment.id) }}"
+                                        class="btn btn-sm btn-warning">
+                                        <i class="bi bi-pencil"></i> 编辑
+                                    </a>
+                                    <a href="{{ url_for('assignments.assign_to_classes', assignment_id=assignment.id) }}"
+                                        class="btn btn-sm btn-primary">
+                                        <i class="bi bi-pencil-square"></i> 布置
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                         {% else %}

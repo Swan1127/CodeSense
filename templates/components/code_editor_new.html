@@ -10,33 +10,36 @@
             <button type="button" class="editor-btn" data-action="format" title="格式化代码">
                 <i class="bi bi-text-indent-left"></i>
             </button>
+            <button type="button" class="editor-btn" data-action="theme" title="切换主题 (深色/浅色)">
+                <i class="bi bi-moon-stars"></i>
+            </button>
             <button type="button" class="editor-btn" data-action="fullscreen" title="全屏编辑">
                 <i class="bi bi-fullscreen"></i>
             </button>
         </div>
     </div>
-    
+
     <div class="editor-container" data-height="{{ height }}">
-        <textarea id="{{ name }}" name="{{ name }}" class="form-control editor-textarea" 
-                  placeholder="在此输入C++代码..." 
-                  autocomplete="off" spellcheck="false">{{ value }}</textarea>
+        <textarea id="{{ name }}" name="{{ name }}" class="form-control editor-textarea" placeholder="在此输入C++代码..."
+            autocomplete="off" spellcheck="false">{{ value }}</textarea>
         <div id="monaco-{{ name }}" class="monaco-container"></div>
         <div class="editor-loading">
             <div class="spinner"></div>
             <div class="loading-text">加载编辑器中...</div>
         </div>
     </div>
-    
+
     <div class="editor-statusbar">
         <div class="editor-stats">
-            <span class="cursor-position">行 <span class="line-number">1</span>, 列 <span class="column-number">1</span></span>
+            <span class="cursor-position">行 <span class="line-number">1</span>, 列 <span
+                    class="column-number">1</span></span>
             <span class="char-stats">总计: <span class="char-count">0</span> 字符</span>
         </div>
     </div>
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         // 设置编辑器高度
         const editorElement = document.getElementById('editor-{{ name }}');
         if (editorElement) {
@@ -46,19 +49,19 @@
                 container.style.height = height + 'px';
             }
         }
-        
+
         if (typeof initEditor === 'function') {
             initEditor('{{ name }}');
         } else {
             console.warn('编辑器初始化函数未找到，设置延迟加载');
-            const checkInterval = setInterval(function() {
+            const checkInterval = setInterval(function () {
                 if (typeof initEditor === 'function') {
                     initEditor('{{ name }}');
                     clearInterval(checkInterval);
                 }
             }, 500);
-            
-            setTimeout(function() {
+
+            setTimeout(function () {
                 clearInterval(checkInterval);
                 if (document.querySelector('.editor-loading')) {
                     document.querySelector('.editor-loading').style.display = 'none';
@@ -68,4 +71,4 @@
         }
     });
 </script>
-{% endmacro %} 
+{% endmacro %}

@@ -787,11 +787,11 @@ def predict_with_model(code):
             except Exception as e:
                 print(f"× 模型预测处理出错: {e}")
                 print(traceback.format_exc())
-                return 3  # 出错时给一个中等分数
+                return 1  # 出错时给1分
     except Exception as e:
         print(f"× 模型预测失败: {e}")
         print(traceback.format_exc())
-        return 3  # 出错时给一个中等分数
+        return 1  # 出错时给1分
 
 
 def get_code_embedding(code):
@@ -933,29 +933,29 @@ def generate_feedback(code, score, assignment_title=None):
                 requirement_match = "👍 代码很好地实现了计算器的基本功能，包含输入、计算和输出！"
     
     # 根据分数决定总体评价
-    if score >= 4.5:
+    if score >= 90:
         overall = f"代码质量优秀，完全符合期望要求！{requirement_match}"
-    elif score >= 4:
+    elif score >= 80:
         overall = f"代码质量良好，实现了主要功能。{requirement_match}"
-    elif score >= 3:
+    elif score >= 60:
         overall = f"代码基本可用，有少量问题需要改进。{requirement_match}"
-    elif score >= 2:
+    elif score >= 40:
         overall = f"代码结构已具备，但存在多处需要改进的地方。{requirement_match}"
-    elif score >= 1:
+    elif score >= 20:
         overall = f"代码有一定的基础，但需要全面改进。{requirement_match}"
     else:
         overall = f"代码存在严重问题，需要重新设计。{requirement_match}"
     
     # 根据评分生成总体评价
-    if score == 0:
+    if score < 20:
         feedback += "【严重不合格】代码存在严重缺陷，完全不符合基本要求。\n\n"
-    elif score >= 5:
+    elif score >= 90:
         feedback += f"【优秀代码】代码质量非常高，结构清晰，功能完整。\n\n{overall}\n\n"
-    elif score >= 4:
+    elif score >= 80:
         feedback += f"【良好代码】代码质量良好，基本结构完整，实现了主要功能。\n\n{overall}\n\n"
-    elif score >= 3:
+    elif score >= 60:
         feedback += f"【合格代码】代码基本可用，但存在一些结构或实现上的问题。\n\n{overall}\n\n"
-    elif score >= 2:
+    elif score >= 40:
         feedback += f"【不足代码】代码存在较多问题，需要进行改进。\n\n{overall}\n\n"
     else:
         feedback += f"【不合格代码】代码存在严重问题，无法正常工作。\n\n{overall}\n\n"
@@ -1067,7 +1067,7 @@ def generate_feedback(code, score, assignment_title=None):
     
     # 根据分数给出改进建议
     feedback += "\n改进建议：\n"
-    if score <= 3:
+    if score <= 60:
         if "#include" not in code:
             feedback += "- 添加必要的头文件引用。\n"
         if "using namespace std" not in code and "std::" not in code:
@@ -1076,12 +1076,12 @@ def generate_feedback(code, score, assignment_title=None):
             feedback += "- 扩展代码实现，确保完成所有功能要求。\n"
         feedback += "- 添加注释说明代码功能和实现逻辑。\n"
     
-    if score <= 4:
+    if score <= 85:
         feedback += "- 考虑优化代码结构，提高可读性和维护性。\n"
         feedback += "- 确保代码风格一致，使用合理的缩进和命名。\n"
     
-    # 对于分数为1的情况，添加更严厉的建议
-    if score == 1:
+    # 对于分数为低分的情况，添加更严厉的建议
+    if score <= 20:
         feedback += "- 代码质量很差，需要全面改进。\n"
         feedback += "- 建议重新学习C++基础知识，尤其是语法和基本结构。\n"
         feedback += "- 确保理解题目要求，按要求实现代码。\n"
@@ -1101,7 +1101,7 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
         guidance_mode: 是否是指导模式，如果为True则生成更鼓励和指导性的内容
         
     返回:
-        (score, feedback): 分数（0-5）和反馈信息的元组
+        (score, feedback): 分数（0-100）和反馈信息的元组
     """
     global use_llm, llm_evaluator
     
@@ -1126,11 +1126,13 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
             else:
                 # 评分模式：正常评估
                 score, feedback = llm_evaluator.evaluate_code(code_str, assignment_title)
-                # 修改：不允许大模型给出0分，最低给1分，更利于教学
+                # 修改：不允许大模型给出0分，最低给1分
                 if score <= 0:
-                    score = 1
+                    score = 20
                     feedback = "【基础级】" + feedback
-            return score, feedback
+                elif score <= 5: # 兼容 5 分制输入
+                    score = score * 20
+                return score, feedback
         except Exception as e:
             print(f"大模型{'指导' if guidance_mode else '预览'}评估失败: {e}")
             print(traceback.format_exc())
@@ -1150,7 +1152,7 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
         if guidance_mode:
             return 3, "您的代码太少，无法提供具体的编程指导。建议您先尝试编写更多代码，或者在问答区详细描述您的思路和遇到的问题。"
         else:
-            return 1, "代码太短，无法进行有效评估。请提供更完整的代码。"  # 修改：将最低分改为1分而非0分，更友好
+            return 20, "代码太短，无法进行有效评估。请提供更完整的代码。"  # 修改：将最低分改为20分而非0分，更友好
     
     # 如果大模型评估可用，先进行大模型评估
     if use_llm_local and llm_evaluator:
@@ -1171,12 +1173,14 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
                 else:
                     setattr(llm_evaluator, '_last_structured_data', structured_data)
                 
-                # 修改：不允许大模型给出0分，最低给1分，更利于教学
-                if llm_score <= 0:
-                    llm_score = 1
-                    llm_feedback = "【基础级】" + llm_feedback
+            if llm_score <= 5: # 兼容 5 分制
+                llm_score = llm_score * 20
+
+            if llm_score <= 0:
+                llm_score = 20
+                llm_feedback = "【基础级】" + llm_feedback
             
-            print(f"✓ 大模型{'指导' if guidance_mode else '评分'}结果: {llm_score}/5")
+            print(f"✓ 大模型{'指导' if guidance_mode else '评分'}结果: {llm_score}/100")
             
             # 如果是预览模式、指导模式或大模型权重极高，直接返回大模型结果
             if preview_only or guidance_mode or llm_weight >= 0.9:
@@ -1376,10 +1380,9 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
             feedback = "无法使用任何评估模型，请尝试重新提交或联系管理员。"
             print("警告: 所有评估模型都失败，使用默认分数")
     
-    # 确保最终分数在1-5之间并四舍五入到0.5的倍数
-    final_score = max(1, min(5, final_score))
-    final_score = round(final_score * 2) / 2
-
+    # 确保最终分数在0-5之间
+    final_score = max(0, min(5, final_score))
+    
     # 生成反馈
     if 'feedback' not in locals() or feedback is None:
         feedback = generate_feedback(code_str, final_score, assignment_title)

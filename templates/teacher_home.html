@@ -170,7 +170,7 @@
                                 <td>
                                     <span
                                         class="badge {% if sub.score >= 4 %}bg-success{% elif sub.score == 3 %}bg-warning{% else %}bg-danger{% endif %}">
-                                        {{ sub.score or '待评分' }}
+                                        {{ sub.score if sub.score is not none else '待评分' }}
                                     </span>
                                 </td>
                             </tr>
@@ -189,6 +189,7 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const chartData = {{ chart_data| tojson | safe
@@ -217,12 +218,31 @@
                     hoverBorderColor: "rgba(234, 236, 244, 1)",
                 }],
             },
+            plugins: [ChartDataLabels],
             options: {
                 maintainAspectRatio: false,
                 cutout: '70%',
                 plugins: {
                     legend: {
                         position: 'bottom'
+                    },
+                    datalabels: {
+                        formatter: (value, ctx) => {
+                            let sum = 0;
+                            let dataArr = ctx.chart.data.datasets[0].data;
+                            dataArr.map(data => {
+                                sum += data;
+                            });
+                            let percentage = (value * 100 / sum).toFixed(1) + "%";
+                            return value > 0 ? `${value}人\n(${percentage})` : '';
+                        },
+                        color: '#444',
+                        font: {
+                            weight: 'bold',
+                            size: 11
+                        },
+                        align: 'center',
+                        anchor: 'center'
                     }
                 }
             }

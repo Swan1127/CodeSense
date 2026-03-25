@@ -21,76 +21,78 @@
         <div class="d-flex justify-content-between align-items-center flex-wrap">
             <!-- 搜索表单 -->
             <form action="{{ url_for('assignments.manage_assignments') }}" method="get" class="d-flex me-2 flex-grow-1">
-                <input type="text" class="form-control me-2" placeholder="搜索作业标题或描述..." 
-                      name="search" value="{{ search_term if search_term else '' }}">
+                <input type="text" class="form-control me-2" placeholder="搜索作业标题或描述..." name="search"
+                    value="{{ search_term if search_term else '' }}">
                 <input type="hidden" name="sort_by" value="{{ sort_by if sort_by else '' }}">
                 <input type="hidden" name="sort_order" value="{{ sort_order if sort_order else '' }}">
                 <button type="submit" class="btn btn-primary">
                     <i class="bi bi-search"></i> 搜索
                 </button>
                 {% if search_term %}
-                <a href="{{ url_for('assignments.manage_assignments', sort_by=sort_by, sort_order=sort_order) }}" class="btn btn-secondary ms-2">
+                <a href="{{ url_for('assignments.manage_assignments', sort_by=sort_by, sort_order=sort_order) }}"
+                    class="btn btn-secondary ms-2">
                     <i class="bi bi-x-circle"></i> 清除
                 </a>
                 {% endif %}
             </form>
-            
+
             <!-- 排序下拉菜单 -->
             <div class="dropdown sort-dropdown mt-2 mt-sm-0">
-                <button class="btn btn-outline-primary dropdown-toggle" type="button" id="sortDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-sort-alpha-down"></i> 
+                <button class="btn btn-outline-primary dropdown-toggle" type="button" id="sortDropdown"
+                    data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-sort-alpha-down"></i>
                     {% if sort_by %}
-                        {% if sort_by == 'id' %}按ID排序
-                        {% elif sort_by == 'title' %}按标题排序
-                        {% elif sort_by == 'count' %}按提交次数排序
-                        {% elif sort_by == 'average_score' %}按平均分排序
-                        {% endif %}
-                        ({% if sort_order == 'asc' %}升序{% else %}降序{% endif %})
+                    {% if sort_by == 'id' %}按ID排序
+                    {% elif sort_by == 'title' %}按标题排序
+                    {% elif sort_by == 'count' %}按提交次数排序
+                    {% elif sort_by == 'average_score' %}按平均分排序
+                    {% endif %}
+                    ({% if sort_order == 'asc' %}升序{% else %}降序{% endif %})
                     {% else %}
-                        排序
+                    排序
                     {% endif %}
                 </button>
                 <div class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="sortDropdown">
                     <div class="dropdown-header">按ID</div>
-                    <a class="dropdown-item {% if sort_by == 'id' and sort_order == 'asc' %}active{% endif %}" 
-                          href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='id', sort_order='asc') }}">
+                    <a class="dropdown-item {% if sort_by == 'id' and sort_order == 'asc' %}active{% endif %}"
+                        href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='id', sort_order='asc') }}">
                         <i class="bi bi-sort-numeric-down me-2"></i> ID (升序)
                     </a>
-                    <a class="dropdown-item {% if sort_by == 'id' and sort_order == 'desc' %}active{% endif %}" 
-                          href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='id', sort_order='desc') }}">
+                    <a class="dropdown-item {% if sort_by == 'id' and sort_order == 'desc' %}active{% endif %}"
+                        href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='id', sort_order='desc') }}">
                         <i class="bi bi-sort-numeric-down-alt me-2"></i> ID (降序)
                     </a>
-                    
+
                     <div class="dropdown-divider"></div>
                     <div class="dropdown-header">按标题</div>
-                    <a class="dropdown-item {% if sort_by == 'title' and sort_order == 'asc' %}active{% endif %}" 
-                          href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='title', sort_order='asc') }}">
+                    <a class="dropdown-item {% if sort_by == 'title' and sort_order == 'asc' %}active{% endif %}"
+                        href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='title', sort_order='asc') }}">
                         <i class="bi bi-sort-alpha-down me-2"></i> 标题 (升序)
                     </a>
-                    <a class="dropdown-item {% if sort_by == 'title' and sort_order == 'desc' %}active{% endif %}" 
-                          href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='title', sort_order='desc') }}">
+                    <a class="dropdown-item {% if sort_by == 'title' and sort_order == 'desc' %}active{% endif %}"
+                        href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='title', sort_order='desc') }}">
                         <i class="bi bi-sort-alpha-down-alt me-2"></i> 标题 (降序)
                     </a>
-                    
+
                     <div class="dropdown-divider"></div>
                     <div class="dropdown-header">按提交次数</div>
-                    <a class="dropdown-item {% if sort_by == 'count' and sort_order == 'desc' %}active{% endif %}" 
-                          href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='count', sort_order='desc') }}">
+                    <a class="dropdown-item {% if sort_by == 'count' and sort_order == 'desc' %}active{% endif %}"
+                        href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='count', sort_order='desc') }}">
                         <i class="bi bi-sort-numeric-down-alt me-2"></i> 提交次数 (降序)
                     </a>
-                    <a class="dropdown-item {% if sort_by == 'count' and sort_order == 'asc' %}active{% endif %}" 
-                          href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='count', sort_order='asc') }}">
+                    <a class="dropdown-item {% if sort_by == 'count' and sort_order == 'asc' %}active{% endif %}"
+                        href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='count', sort_order='asc') }}">
                         <i class="bi bi-sort-numeric-down me-2"></i> 提交次数 (升序)
                     </a>
-                    
+
                     <div class="dropdown-divider"></div>
                     <div class="dropdown-header">按平均分</div>
-                    <a class="dropdown-item {% if sort_by == 'average_score' and sort_order == 'desc' %}active{% endif %}" 
-                          href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='average_score', sort_order='desc') }}">
+                    <a class="dropdown-item {% if sort_by == 'average_score' and sort_order == 'desc' %}active{% endif %}"
+                        href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='average_score', sort_order='desc') }}">
                         <i class="bi bi-sort-numeric-down-alt me-2"></i> 平均分 (降序)
                     </a>
-                    <a class="dropdown-item {% if sort_by == 'average_score' and sort_order == 'asc' %}active{% endif %}" 
-                          href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='average_score', sort_order='asc') }}">
+                    <a class="dropdown-item {% if sort_by == 'average_score' and sort_order == 'asc' %}active{% endif %}"
+                        href="{{ url_for('assignments.manage_assignments', search=search_term, sort_by='average_score', sort_order='asc') }}">
                         <i class="bi bi-sort-numeric-down me-2"></i> 平均分 (升序)
                     </a>
                 </div>
@@ -108,7 +110,7 @@
             {% endif %}
             {% if sort_by %}
             <span class="text-muted ms-2">
-                排序: 
+                排序:
                 {% if sort_by == 'id' %}ID
                 {% elif sort_by == 'title' %}标题
                 {% elif sort_by == 'count' %}提交次数
@@ -146,10 +148,17 @@
                         <td>{{ '%.2f' % assignment.average_score if assignment.average_score else '暂无' }}</td>
                         <td>
                             <div class="d-flex gap-2">
-                                <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}" class="btn btn-secondary btn-sm">
+                                <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}"
+                                    class="btn btn-secondary btn-sm">
                                     <i class="bi bi-eye"></i> 查看
                                 </a>
-                                <form action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}" method="post" onsubmit="return confirm('确定要删除此作业吗？此操作不可撤销。');">
+                                <a href="{{ url_for('assignments.edit_assignment', assignment_id=assignment.id) }}"
+                                    class="btn btn-warning btn-sm">
+                                    <i class="bi bi-pencil"></i> 编辑
+                                </a>
+                                <form
+                                    action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}"
+                                    method="post" onsubmit="return confirm('确定要删除此作业吗？此操作不可撤销。');">
                                     <button type="submit" class="btn btn-danger btn-sm">
                                         <i class="bi bi-trash"></i> 删除
                                     </button>
@@ -168,31 +177,34 @@
             <nav>
                 <ul class="pagination">
                     <li class="page-item {% if not assignments.has_prev %}disabled{% endif %}">
-                        <a class="page-link" href="{{ url_for('assignments.manage_assignments', page=assignments.prev_num, search=search_term, sort_by=sort_by, sort_order=sort_order) if assignments.has_prev else '#' }}">
+                        <a class="page-link"
+                            href="{{ url_for('assignments.manage_assignments', page=assignments.prev_num, search=search_term, sort_by=sort_by, sort_order=sort_order) if assignments.has_prev else '#' }}">
                             <i class="bi bi-chevron-left"></i> 上一页
                         </a>
                     </li>
-                    
+
                     {# 计算显示页码的范围 #}
                     {% set start_page = assignments.page - 2 if assignments.page - 2 > 0 else 1 %}
-                    {% set end_page = assignments.page + 2 if assignments.page + 2 < assignments.pages else assignments.pages %}
-                    
-                    {% for page_num in range(start_page, end_page + 1) %}
-                    <li class="page-item {% if page_num == assignments.page %}active{% endif %}">
-                        <a class="page-link" href="{{ url_for('assignments.manage_assignments', page=page_num, search=search_term, sort_by=sort_by, sort_order=sort_order) }}">{{ page_num }}</a>
-                    </li>
-                    {% endfor %}
-                    
-                    <li class="page-item {% if not assignments.has_next %}disabled{% endif %}">
-                        <a class="page-link" href="{{ url_for('assignments.manage_assignments', page=assignments.next_num, search=search_term, sort_by=sort_by, sort_order=sort_order) if assignments.has_next else '#' }}">
-                            下一页 <i class="bi bi-chevron-right"></i>
-                        </a>
-                    </li>
+                    {% set end_page = assignments.page + 2 if assignments.page + 2 < assignments.pages else
+                        assignments.pages %} {% for page_num in range(start_page, end_page + 1) %} <li
+                        class="page-item {% if page_num == assignments.page %}active{% endif %}">
+                        <a class="page-link"
+                            href="{{ url_for('assignments.manage_assignments', page=page_num, search=search_term, sort_by=sort_by, sort_order=sort_order) }}">{{
+                            page_num }}</a>
+                        </li>
+                        {% endfor %}
+
+                        <li class="page-item {% if not assignments.has_next %}disabled{% endif %}">
+                            <a class="page-link"
+                                href="{{ url_for('assignments.manage_assignments', page=assignments.next_num, search=search_term, sort_by=sort_by, sort_order=sort_order) if assignments.has_next else '#' }}">
+                                下一页 <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </li>
                 </ul>
             </nav>
         </div>
         {% endif %}
-        
+
         {% else %}
         <div class="alert alert-info">
             {% if search_term %}
@@ -223,7 +235,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-4">
         <div class="card">
             <div class="card-body">
@@ -240,7 +252,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-4">
         <div class="card">
             <div class="card-body">
@@ -269,7 +281,7 @@
         align-items: center;
         justify-content: space-between;
     }
-    
+
     .sort-dropdown .dropdown-menu {
         width: 250px;
         padding: 8px 0;
@@ -277,7 +289,7 @@
         border: none;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
     }
-    
+
     .dropdown-header {
         font-weight: 600;
         color: #4b5563;
@@ -286,14 +298,14 @@
         text-transform: uppercase;
         margin-bottom: 0;
     }
-    
+
     .dropdown-divider {
         margin: 4px 0;
         height: 1px;
         background-color: #e5e7eb;
         border: none;
     }
-    
+
     .dropdown-item {
         padding: 8px 16px;
         color: #374151;
@@ -303,21 +315,21 @@
         cursor: pointer;
         transition: background-color 0.15s ease;
     }
-    
+
     .dropdown-item:hover {
         background-color: #f3f4f6;
         text-decoration: none;
     }
-    
+
     .dropdown-item.active {
         background-color: var(--primary-color);
         color: white;
     }
-    
+
     .dropdown-item.active i {
         color: white;
     }
-    
+
     /* 页面链接样式 */
     .page-link {
         color: var(--primary-color);
@@ -325,34 +337,34 @@
         border: 1px solid #e5e7eb;
         padding: 0.375rem 0.75rem;
     }
-    
+
     .page-link:hover {
         z-index: 2;
         color: var(--primary-hover);
         background-color: #f3f4f6;
         border-color: #e5e7eb;
     }
-    
+
     .page-item.active .page-link {
         z-index: 3;
         color: #fff;
         background-color: var(--primary-color);
         border-color: var(--primary-color);
     }
-    
+
     .page-item.disabled .page-link {
         color: #9ca3af;
         pointer-events: none;
         background-color: #fff;
         border-color: #e5e7eb;
     }
-    
+
     /* 提高搜索栏和下拉菜单区域的优先级 */
     .card.mb-4 {
         position: relative;
         z-index: 5000;
     }
-    
+
     /* 创建用于将菜单传送到Body最上层的样式 */
     .portal-dropdown-menu {
         display: none;
@@ -366,18 +378,18 @@
         max-height: 80vh;
         overflow-y: auto;
     }
-    
+
     /* 响应式调整 */
     @media (max-width: 576px) {
         .sort-dropdown {
             width: 100%;
             margin-top: 0.5rem;
         }
-        
+
         .sort-dropdown .dropdown-toggle {
             width: 100%;
         }
-        
+
         .portal-dropdown-menu {
             width: calc(100% - 30px);
             left: 15px !important;
@@ -389,34 +401,34 @@
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         // 防止Bootstrap默认行为
-        document.querySelectorAll('.dropdown-toggle').forEach(function(dropdown) {
-            dropdown.addEventListener('click', function(e) {
+        document.querySelectorAll('.dropdown-toggle').forEach(function (dropdown) {
+            dropdown.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
                 return false;
             }, true);
         });
-        
+
         // 创建菜单容器，添加到body末尾
         var portalMenu = document.createElement('div');
         portalMenu.className = 'portal-dropdown-menu';
         document.body.appendChild(portalMenu);
-        
+
         var activeButton = null;
         var closeHandlerAdded = false;
-        
+
         // 自定义下拉菜单实现
-        document.querySelector('.sort-dropdown .dropdown-toggle').addEventListener('click', function(e) {
+        document.querySelector('.sort-dropdown .dropdown-toggle').addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
-            
+
             // 如果已经打开则关闭菜单
             if (portalMenu.style.display === 'block' && activeButton === this) {
                 portalMenu.style.display = 'none';
                 activeButton = null;
-                
+
                 // 移除事件监听器
                 if (closeHandlerAdded) {
                     document.removeEventListener('click', closeMenuHandler);
@@ -424,48 +436,48 @@
                 }
                 return;
             }
-            
+
             // 获取原始菜单内容
             var originalMenu = this.parentElement.querySelector('.dropdown-menu');
             if (!originalMenu) return;
-            
+
             // 克隆原始菜单内容
             var menuContent = originalMenu.cloneNode(true);
-            
+
             // 清空并填充portal菜单
             portalMenu.innerHTML = '';
             while (menuContent.firstChild) {
                 portalMenu.appendChild(menuContent.firstChild);
             }
-            
+
             // 获取按钮位置
             var buttonRect = this.getBoundingClientRect();
-            
+
             // 设置菜单位置
             portalMenu.style.left = (window.innerWidth <= 576) ? '15px' : (buttonRect.right - 250) + 'px';
             portalMenu.style.top = (buttonRect.bottom + 5) + 'px';
-            
+
             // 检查是否超出底部
             var menuHeight = 350; // 估计高度
             if (buttonRect.bottom + 5 + menuHeight > window.innerHeight) {
                 portalMenu.style.top = (buttonRect.top - menuHeight - 5) + 'px';
             }
-            
+
             // 显示菜单
             portalMenu.style.display = 'block';
             activeButton = this;
-            
+
             // 处理点击事件（确保a标签的点击行为正常）
-            portalMenu.querySelectorAll('a').forEach(function(link) {
-                link.addEventListener('click', function(e) {
+            portalMenu.querySelectorAll('a').forEach(function (link) {
+                link.addEventListener('click', function (e) {
                     // 不阻止冒泡，让链接能够正常工作
-                    setTimeout(function() {
+                    setTimeout(function () {
                         portalMenu.style.display = 'none';
                         activeButton = null;
                     }, 100);
                 });
             });
-            
+
             // 点击其他地方关闭菜单的处理函数
             function closeMenuHandler(evt) {
                 // 确保不是点击菜单本身或按钮
@@ -476,25 +488,25 @@
                     closeHandlerAdded = false;
                 }
             }
-            
+
             // 添加关闭事件处理
             if (!closeHandlerAdded) {
                 // 延迟添加点击事件，避免触发立即关闭
-                setTimeout(function() {
+                setTimeout(function () {
                     document.addEventListener('click', closeMenuHandler);
                     closeHandlerAdded = true;
                 }, 100);
             }
-            
+
             // 防止菜单中的点击事件冒泡到document
-            portalMenu.addEventListener('click', function(e) {
+            portalMenu.addEventListener('click', function (e) {
                 if (e.target.tagName !== 'A') { // 如果不是链接，阻止冒泡
                     e.stopPropagation();
                 }
             });
-            
+
             // 防止鼠标滑出菜单时消失
-            portalMenu.addEventListener('mouseleave', function(e) {
+            portalMenu.addEventListener('mouseleave', function (e) {
                 // 当鼠标离开菜单时，检查是否进入了按钮区域
                 var relatedTarget = e.relatedTarget;
                 if (relatedTarget && !activeButton.contains(relatedTarget) && !portalMenu.contains(relatedTarget)) {
@@ -502,10 +514,10 @@
                 }
             });
         });
-        
+
         // 为删除按钮添加确认对话框
         document.querySelectorAll('form[action*="delete_assignment"]').forEach(form => {
-            form.addEventListener('submit', function(e) {
+            form.addEventListener('submit', function (e) {
                 if (!confirm('确定要删除这个作业吗？此操作不可撤销。')) {
                     e.preventDefault();
                     return false;
