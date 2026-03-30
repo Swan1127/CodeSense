@@ -191,13 +191,7 @@ def create_app(config_name='default'):
     # 从配置对象中加载配置
     app.config.from_object(config[config_name])
     
-    # 直接设置关键配置
-    app.secret_key = os.environ.get('SECRET_KEY') or 'dev-key-for-testing-only'
-    # 设置MySQL数据库URI
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'mysql+pymysql://root:root@localhost/student_code_review'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    # 设置大模型API密钥
-    app.config['ZHIPU_API_KEY'] = os.environ.get('ZHIPU_API_KEY', '')
+    # 动态会话配置
     app.config['SESSION_TYPE'] = 'filesystem'
     app.config['SESSION_PERMANENT'] = False
     app.config['SESSION_USE_SIGNER'] = True
@@ -360,7 +354,10 @@ if __name__ == '__main__':
     app.logger.info("开始启动Flask开发服务器")
     app.logger.info("访问地址: http://127.0.0.1:5000/")
     try:
-        app.run(debug=True, host='127.0.0.1', port=5000)
+        host = os.environ.get('HOST', '0.0.0.0')
+        port = int(os.environ.get('PORT', 5000))
+        debug = os.environ.get('FLASK_DEBUG', 'True').lower() in ('true', '1', 't')
+        app.run(debug=debug, host=host, port=port)
     except KeyboardInterrupt:
         app.logger.info("接收到中断信号，正在关闭服务器...")
     except Exception as e:
