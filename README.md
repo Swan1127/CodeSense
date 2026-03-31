@@ -2,319 +2,117 @@
 
 # CodeSense 酷森思
 
-**基于深度学习与大语言模型的智能代码评估平台**
+**基于因果隔离沙箱与启发式大模型的智能编程教育平台**
 
-[![Version](https://img.shields.io/badge/版本-0.3.0-4361ee?style=flat-square)](https://github.com/XiaoCow666/CodeSense)
+[![Version](https://img.shields.io/badge/版本-0.4.0-4361ee?style=flat-square)](https://github.com/XiaoCow666/CodeSense)
 [![Python](https://img.shields.io/badge/Python-3.8+-3776ab?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-2.0+-000000?style=flat-square&logo=flask)](https://flask.palletsprojects.com)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0+-4479a1?style=flat-square&logo=mysql&logoColor=white)](https://mysql.com)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/XiaoCow666/CodeSense?style=flat-square&logo=github)](https://github.com/XiaoCow666/CodeSense/stargazers)
-[![Last Commit](https://img.shields.io/github/last-commit/XiaoCow666/CodeSense?style=flat-square)](https://github.com/XiaoCow666/CodeSense/commits)
-[![Issues](https://img.shields.io/github/issues/XiaoCow666/CodeSense?style=flat-square)](https://github.com/XiaoCow666/CodeSense/issues)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)](https://github.com/XiaoCow666/CodeSense/pulls)
+[![Stars](https://img.shields.io/github/stars/XiaoCow666/CodeSense?style=flat-square&logo=github&color=gold)](https://github.com/XiaoCow666/CodeSense/stargazers)
+[![Activity](https://img.shields.io/github/last-commit/XiaoCow666/CodeSense?style=flat-square&color=orange)](https://github.com/XiaoCow666/CodeSense/commits)
 
 </div>
 
 ---
 
-## 项目简介
+## 🚀 项目简介
 
-CodeSense 酷森思是面向高校编程课程的**智能代码评估平台**，支持学生、教师、管理员三种角色。系统采用 **TextCNN + 启发式规则 + 智谱 GLM-4-Flash** 混合评分机制，对学生代码进行多维度自动评估，并通过 SSE 实时流式推送结果，同时提供 RAG 增强的 AI 编程助手与个性化学情分析。
+CodeSense 酷森思是专为高校编程教育设计的**第二代智能评测平台**。我们摒弃了传统 OJ 仅反馈 `Wrong Answer` 的冰冷体验，也告别了初阶 AI 直接给出答案的“投喂式”教育。
 
-**核心亮点**
+通过**因果隔离沙箱 (Causal Sandbox)** 捕捉程序运行细节，配合**启发式大模型 (Heuristic LLM)** 生成由浅入深的逻辑引导，CodeSense 将每一次 Bug 报错转化为学生的成长契机。
 
-- 双引擎混合评分：TextCNN x GLM-4-Flash，准确且可解释
-- SSE 实时流式反馈：评估结果逐字推送，秒级响应
-- RAG 个性化 AI 助手：关联历史错误与能力画像
-- 完整三角色 RBAC：学生 / 教师 / 管理员严格权限隔离
-- 作业截止日期全链路：设置、展示、标识一体化
-- 安全邀请机制：教师注册链接 24h 过期 + 单次使用
+### 🌟 核心技术亮点
+
+- **因果隔离沙箱 (Causal Sandbox)**：轻量级进程隔离，毫秒级捕获堆栈异常、内存溢出与死循环，支持多语言动态编译。
+- **启发式 AI 导师 (Heuristic AI)**：基于 AST 状态感知的四层分级提示词矩阵。只给思路，不给代码，强制诱导学生自主思考。
+- **异步高并发引擎 (Async Core)**：任务调度与 Web 后端解耦，支持数百名学生同时提交请求，评测过程动态进度实时可见。
+- **数理能力画像 (Scoring Model)**：基于贝叶斯思想的权重评估模型，从稳定性、密度、进步梯度等多维量化编程素养。
 
 ---
 
-## 系统截图
+## 📸 系统亮点展示
 
-> 将截图放于 `docs/screenshots/` 目录后图片将在此显示。
-
-| 学生首页 | 代码提交与评估 |
+| 动态异步评测 | 启发式 AI 反馈 |
 |----------|----------------|
-| ![学生首页](docs/screenshots/student_home.png) | ![代码提交](docs/screenshots/submit_code.png) |
+| ![异步评测](docs/screenshots/evaluating_ui.png) | ![AI反馈](docs/screenshots/ai_feedback.png) |
+| *实时反馈编译、静态分析、用例执行进度* | *Markdown 渲染的诱导性逻辑提示* |
 
-| 编程能力分析 | AI 编程助手 |
+| 多维能力雷达 | 班级全局监控 |
 |--------------|-------------|
-| ![能力分析](docs/screenshots/ability_analysis.png) | ![AI助手](docs/screenshots/ai_assistant.png) |
-
-| 教师班级管理 | 管理员仪表盘 |
-|--------------|---------------|
-| ![班级管理](docs/screenshots/class_management.png) | ![仪表盘](docs/screenshots/admin_dashboard.png) |
+| ![能力分析](docs/screenshots/ability_chart.png) | ![班级监控](docs/screenshots/admin_trend.png) |
+| *基于历史提交的量化成长轨迹* | *教师/管理员端的学情大数据驾驶舱* |
 
 ---
 
-## 主要功能
+## 🛠️ 技术架构
 
-### 学生端
-
-| 功能 | 描述 |
-|------|------|
-| 在线代码编辑与提交 | Monaco Editor，支持 C++ / Python / Java |
-| 多维度自动评分 | CNN + 启发式 + GLM-4-Flash 混合评分，SSE 实时输出 |
-| 编程能力分析 | 知识点掌握度、得分趋势、提交统计图表 |
-| AI 个性化学情报告 | 新提交后异步更新，Markdown 渲染展示 |
-| AI 编程助手（RAG） | 关联个人学情与历史错误，个性化回答 |
-| 选中代码快捷提问 | 编辑器选中内容自动注入 AI 上下文 |
-| 近期作业展示 | 含截止日期、Markdown 渲染、提交状态标识 |
-
-### 教师端
-
-| 功能 | 描述 |
-|------|------|
-| 班级管理 | 查看所负责班级、学生名单、整体学情 |
-| 班级横向对比 | 多班平均分、提交量、知识点掌握度对比 |
-| 学生详情查看 | 提交记录、得分趋势、AI 评估建议 |
-| 作业发布 | 支持截止日期、Markdown 描述、知识点标注 |
-
-### 管理员端
-
-| 功能 | 描述 |
-|------|------|
-| 用户管理 | 分角色详情页，支持搜索、筛选、删除 |
-| 教师邀请注册 | 24h 有效、单次使用的安全 Token 链接 |
-| 系统仪表盘 | 用户角色分布、活跃度趋势、系统日志 |
-| 数据导出 | 系统数据批量导出 |
-
----
-
-## 技术架构
-
-```
-┌──────────────────────────────────────────────────┐
-│                    前端层                         │
-│  Bootstrap 5 · Chart.js · Monaco Editor         │
-│  marked.js · DOMPurify · SSE 流式接收            │
-└─────────────────┬────────────────────────────────┘
-                  │ HTTP / SSE
-┌─────────────────▼────────────────────────────────┐
-│                  Flask 应用层                     │
-│  routes/ · utils/ · models.py · forms.py        │
-│  Flask-Login · SQLAlchemy · itsdangerous         │
-└────────┬─────────────────────┬───────────────────┘
-         │                     │
-┌────────▼────────┐  ┌─────────▼──────────────────┐
-│   MySQL 数据库   │  │       AI 评估引擎            │
-│  users          │  │  TextCNN (PyTorch)          │
-│  assignments    │  │  启发式规则评分              │
-│  submissions    │  │  智谱 GLM-4-Flash API       │
-│  invite_tokens  │  │  RAG 个性化上下文            │
-│  system_logs    │  └────────────────────────────┘
-└─────────────────┘
-` + "``"
+```mermaid
+graph TD
+    User((学生/教师)) -->|HTTP/SSE| Web[Flask Web Server]
+    Web -->|调度| Queue[Async Task Queue]
+    Queue -->|挂载| Sandbox[Causal Sandbox]
+    Sandbox -->|堆栈特征| AI[Heuristic AI Engine]
+    AI -->|分层 Prompt| LLM[GLM-4 / LLM Cluster]
+    LLM -->|实时推流| Web
+    Web -->|持久化| DB[(MySQL 8.0)]
 ```
 
-| 类别 | 技术 | 说明 |
+| 类别 | 技术方案 | 创新说明 |
 |------|------|------|
-| Web 框架 | Flask 2.0+ | 蓝图模块化，轻量可扩展 |
-| ORM | SQLAlchemy | 模型定义 + 启动自动迁移 |
-| 认证 | Flask-Login + itsdangerous | 会话管理 + 安全 Token |
-| AI 评估 | PyTorch TextCNN | 代码结构质量评分 |
-| 大模型 | 智谱 GLM-4-Flash | 语义理解与自然语言反馈 |
-| 流式输出 | Server-Sent Events | 实时评估结果推送 |
-| Markdown | marked.js + DOMPurify | 安全渲染富文本内容 |
-| 代码编辑器 | Monaco Editor | VS Code 同款编辑器 |
+| **评测安全** | Subprocess Sandbox | 多层隔离防御（时间/空间/行为拦截/权限隔离） |
+| **异步处理** | ThreadPool + Queue | 彻底解决 AI 调用延迟导致的页面阻塞 |
+| **交互增强** | SSE (Server-Sent Events) | 类似 ChatGPT 的流式反馈体验 |
+| **代码编辑器** | Monaco Editor | 工业级 IDE 编辑体验，支持语法高亮与折叠 |
+| **工程化** | Dotenv + Decoupling | 代码与配置彻底分离，支持生产级一键部署 |
 
 ---
 
-## 快速启动
+## 📦 快速启动
 
-### 系统要求
-
-- Python 3.8+
-- MySQL 8.0+
-- 4GB+ RAM（推荐 8GB）
-
-### 1. 克隆仓库
-
+### 1. 环境准备
 ```bash
+# 克隆仓库
 git clone https://github.com/XiaoCow666/CodeSense.git
 cd CodeSense
-```
 
-### 2. 创建虚拟环境
-
-```bash
-# conda（推荐）
-conda create -n student-eval python=3.8
-conda activate student-eval
-
-# 或 venv
-python -m venv venv
-venv\Scripts\activate     # Windows
-source venv/bin/activate  # Linux/Mac
-```
-
-### 3. 安装依赖
-
-```bash
+# 安装依赖
 pip install -r requirements.txt
 ```
 
-### 4. 配置环境变量
-
+### 2. 配置部署
 ```bash
 cp env.example .env
+# 编辑 .env 设置您的 DATABASE_URL, ZHIPU_API_KEY, SECURE_COOKIES=false
 ```
 
-编辑 `.env`：
-
-```ini
-SECRET_KEY=your_secret_key
-DATABASE_URL=mysql+pymysql://user:password@localhost/student_code_review
-ZHIPU_API_KEY=your_zhipu_api_key
+### 3. 安装沙箱依赖 (Linux/ECS)
+```bash
+sudo apt update && sudo apt install g++ -y
 ```
 
-> 智谱 API Key 申请：https://open.bigmodel.cn/
-
-### 5. 启动
-
+### 4. 运行
 ```bash
 python app.py
 ```
 
-首次启动自动建表并执行字段迁移，访问 http://localhost:5000
+---
 
-### 6. 导入示例作业（可选）
+## 📈 更新日志
 
-```bash
-python scripts/add_assignments.py
-```
-
-导入 20 道算法题目（排序、数据结构、动态规划、图算法等）。
-
+### [v0.4.0] - 2026-03 - 工业级重构
+- **[重大革新]** 上线“因果隔离沙箱”，支持真实用例执行与异常截获。
+- **[重大革新]** 引入“启发式引导提示词”，AI 从“工具人”升级为“导师”。
+- **[优化]** 实现异步评测系统，前端新增实时进度条显示。
+- **[安全]** 实现代码与配置彻底分离，支持 `.env` 敏感信息隐藏。
+- **[修复]** 解决云服务器 HTTP 环境下的登录重定向循环问题。
+- **[移除]** 舍弃了旧版的 TextCNN 评分模型，全面拥抱可解释的语义评估。
 
 ---
 
-## 快速启动
+## 🤝 许可证与贡献
 
-### 系统要求
+CodeSense 采用 [MIT License](LICENSE)。
 
-- Python 3.8+
-- MySQL 8.0+
-- 4GB+ RAM（推荐 8GB）
-
-### 1. 克隆仓库
-
-    git clone https://github.com/XiaoCow666/CodeSense.git
-    cd CodeSense
-
-### 2. 创建虚拟环境
-
-    # conda（推荐）
-    conda create -n student-eval python=3.8
-    conda activate student-eval
-
-### 3. 安装依赖
-
-    pip install -r requirements.txt
-
-### 4. 配置环境变量
-
-    cp env.example .env
-
-编辑 .env：
-
-    SECRET_KEY=your_secret_key
-    DATABASE_URL=mysql+pymysql://user:password@localhost/student_code_review
-    ZHIPU_API_KEY=your_zhipu_api_key
-
-智谱 API Key 申请：https://open.bigmodel.cn/
-
-### 5. 启动
-
-    python app.py
-
-首次启动自动建表并执行字段迁移，访问 http://localhost:5000
-
-### 6. 导入示例作业（可选）
-
-    python scripts/add_assignments.py
-
-导入 20 道算法题目（排序、数据结构、动态规划、图算法等）。
-
----
-
-## 项目结构
-
-    CodeSense/
-    ├── app.py                    # 唯一启动入口
-    ├── config.py                 # 环境配置
-    ├── models.py                 # 数据库模型（含自动迁移）
-    ├── forms.py                  # 表单定义
-    ├── requirements.txt          # 依赖清单
-    ├── env.example               # 环境变量模板
-    ├── routes/                   # 路由蓝图
-    │   ├── api.py                #   AI评估/SSE/代码助手
-    │   ├── assignments.py        #   作业管理
-    │   ├── auth.py               #   认证/邀请教师
-    │   ├── classes.py            #   班级管理
-    │   ├── main.py               #   首页/仪表盘
-    │   └── users.py              #   用户管理
-    ├── utils/                    # 工具模块
-    │   ├── code_evaluator.py     #   CNN+启发式评分
-    │   ├── llm_evaluator.py      #   GLM-4-Flash评估
-    │   ├── guidance_generator.py #   个性化建议生成
-    │   ├── code_advisor.py       #   AI编程助手（RAG）
-    │   └── auth.py               #   权限装饰器
-    ├── templates/                # Jinja2模板
-    ├── static/                   # 静态资源
-    ├── scripts/                  # 运维脚本
-    └── tasks/                    # 后台异步任务
-
----
-
-## 角色与权限
-
-| 功能 | 学生 | 教师 | 管理员 |
-|------|:----:|:----:|:------:|
-| 提交代码/查看评分 | ✓ | | |
-| 编程能力分析 | ✓ | | |
-| AI编程助手 | ✓ | | |
-| 班级管理/学情查看 | | ✓ | ✓ |
-| 作业发布/管理 | | ✓ | ✓ |
-| 用户管理 | | | ✓ |
-| 邀请教师注册 | | | ✓ |
-| 系统仪表盘 | | | ✓ |
-
-默认账户：用户名 admin / 密码 admin123
-教师账户由管理员通过「邀请教师」功能生成一次性链接创建。
-
----
-
-## 更新日志
-
-### v0.3.0 (2026-03-19)
-- 新增作业截止日期字段（模型/表单/模板全链路）
-- 新增教师邀请 Token 单次使用 + 24h 过期（InviteToken 模型）
-- 新增管理员/教师用户详情分角色页面
-- 管理员仪表盘用户类型分布图新增教师角色统计
-- 全站 Markdown 渲染覆盖（学生首页近期作业、作业详情等）
-- 修复教师视图越权按钮（编辑班级、返回用户管理）
-- 修复教师「返回个人中心」路由错误
-- 修复作业详情页教师视图显示「开始作答」问题
-- 清理冗余迁移脚本、测试模板、历史 py 文件
-
-### v0.2.0
-- 集成智谱 GLM-4-Flash 流式评估
-- 班级对比分析功能
-- AI 个性化学情分析
-- SSE 实时反馈
-
-### v0.1.0
-- 初始版本：用户管理、作业管理、代码提交与 CNN 评估
-
----
-
-## 许可证
-
-MIT License © 沈阳航空航天大学
-
-联系邮箱：daiyupeng5@gmail.com
+感谢沈阳航空航天大学网络工程专业的试点支持。
+如有任何问题，欢迎提交 Issue 或访问 [saucodesense.com](http://saucodesense.com)。
