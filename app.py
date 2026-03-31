@@ -201,12 +201,16 @@ def create_app(config_name='default'):
     
     # 设置Cookie安全选项
     # 通过环境变量SECURE_COOKIES控制Cookie安全设置
-    secure_cookies = os.environ.get('SECURE_COOKIES', '').lower()
+    secure_cookies_env = os.environ.get('SECURE_COOKIES', '').lower()
     
-    if config_name == 'production' or secure_cookies == 'true':
-        app.config['SESSION_COOKIE_SECURE'] = True  # 生产环境或明确设置时启用HTTPS
+    if secure_cookies_env == 'true':
+        app.config['SESSION_COOKIE_SECURE'] = True
+    elif secure_cookies_env == 'false':
+        app.config['SESSION_COOKIE_SECURE'] = False
+    elif config_name == 'production':
+        app.config['SESSION_COOKIE_SECURE'] = True  # 生产环境默认启用HTTPS安全Cookie
     else:
-        app.config['SESSION_COOKIE_SECURE'] = False  # 开发环境默认使用HTTP
+        app.config['SESSION_COOKIE_SECURE'] = False  # 开发环境默认不启用
     
     # 确保session目录存在
     os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)

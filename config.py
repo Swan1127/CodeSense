@@ -124,10 +124,10 @@ class ProductionConfig(Config):
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     
     # 生产环境安全配置
-    SESSION_COOKIE_SECURE = True  # 仅通过HTTPS传输Cookie
+    # 注意：这些设置在 app.py 的 create_app 中可能会被环境变量进一步覆盖
     SESSION_COOKIE_HTTPONLY = True  # 防止JavaScript访问Cookie
     SESSION_COOKIE_SAMESITE = 'Lax'  # 防止CSRF攻击
-    PERMANENT_SESSION_LIFETIME = 3600  # Session有效期1小时
+    PERMANENT_SESSION_LIFETIME = 86400  # Session有效期1天 (24小时)
     
     @staticmethod
     def init_app(app):
