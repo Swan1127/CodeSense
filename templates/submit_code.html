@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/code_submit.css') }}">
 <!-- 使用国内CDN -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.min.css">
 <style>
     /* 全新页面样式 */
     .code-studio-container {
@@ -20,18 +21,18 @@
         gap: 1.5rem;
         min-height: calc(100vh - 200px);
     }
-    
+
     @media (min-width: 992px) {
         .code-studio-container {
             grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
             grid-template-rows: auto 1fr;
         }
-        
+
         .code-workspace {
             grid-row: span 2;
         }
     }
-    
+
     .assignment-header {
         background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
         color: white;
@@ -40,12 +41,12 @@
         margin-bottom: 1.5rem;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
-    
+
     .assignment-header h1 {
         font-size: 1.75rem;
         margin-bottom: 0.75rem;
     }
-    
+
     .difficulty-badge {
         display: inline-block;
         padding: 0.25rem 0.75rem;
@@ -54,12 +55,27 @@
         font-weight: 600;
         margin-right: 1rem;
     }
-    
-    .difficulty-beginner { background-color: #8bc34a; color: #fff; }
-    .difficulty-intermediate { background-color: #ffc107; color: #212529; }
-    .difficulty-advanced { background-color: #ff9800; color: #fff; }
-    .difficulty-expert { background-color: #f44336; color: #fff; }
-    
+
+    .difficulty-beginner {
+        background-color: #8bc34a;
+        color: #fff;
+    }
+
+    .difficulty-intermediate {
+        background-color: #ffc107;
+        color: #212529;
+    }
+
+    .difficulty-advanced {
+        background-color: #ff9800;
+        color: #fff;
+    }
+
+    .difficulty-expert {
+        background-color: #f44336;
+        color: #fff;
+    }
+
     .code-workspace {
         display: flex;
         flex-direction: column;
@@ -68,13 +84,13 @@
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
         overflow: hidden;
     }
-    
+
     .editor-container {
         flex: 1;
         min-height: 550px;
         position: relative;
     }
-    
+
     /* AI助手聊天样式 - 优化版 */
     .ai-assistant-panel {
         background: #ffffff;
@@ -140,6 +156,7 @@
             opacity: 0;
             transform: translateY(12px);
         }
+
         to {
             opacity: 1;
             transform: translateY(0);
@@ -305,10 +322,14 @@
     }
 
     @keyframes typingDot {
-        0%, 60%, 100% {
+
+        0%,
+        60%,
+        100% {
             transform: translateY(0);
             opacity: 0.6;
         }
+
         30% {
             transform: translateY(-10px);
             opacity: 1;
@@ -451,21 +472,25 @@
     }
 
     @keyframes blink {
-        0%, 50% {
+
+        0%,
+        50% {
             opacity: 1;
         }
-        51%, 100% {
+
+        51%,
+        100% {
             opacity: 0;
         }
     }
-    
+
     .feedback-metrics {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 1rem;
         margin: 1.5rem 0;
     }
-    
+
     .metric-card {
         background-color: #ffffff;
         border-radius: 0.5rem;
@@ -473,28 +498,28 @@
         text-align: center;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     }
-    
+
     .metric-value {
         font-size: 1.75rem;
         font-weight: 700;
         margin: 0.5rem 0;
         color: #4b6cb7;
     }
-    
+
     .submission-history-panel {
         background-color: #ffffff;
         border-radius: 0.75rem;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
         margin-top: 1.5rem;
     }
-    
+
     .submission-history-header {
         padding: 1rem;
         background-color: #f8f9fa;
         border-bottom: 1px solid #e9ecef;
         border-radius: 0.75rem 0.75rem 0 0;
     }
-    
+
     .submission-item {
         display: flex;
         justify-content: space-between;
@@ -502,20 +527,20 @@
         padding: 1rem;
         border-bottom: 1px solid #e9ecef;
     }
-    
+
     .submission-item:last-child {
         border-bottom: none;
     }
-    
+
     .submission-time {
         color: #6c757d;
         font-size: 0.875rem;
     }
-    
+
     .submission-score {
         font-weight: 600;
     }
-    
+
     .loading-overlay {
         position: absolute;
         top: 0;
@@ -529,83 +554,97 @@
         align-items: center;
         z-index: 1000;
     }
-    
+
     .progress-message {
         margin-top: 1rem;
         text-align: center;
         max-width: 80%;
     }
-    
+
     .pulse-animation {
         animation: pulse 1.5s infinite;
     }
-    
+
     @keyframes pulse {
-        0% { opacity: 0.6; }
-        50% { opacity: 1; }
-        100% { opacity: 0.6; }
+        0% {
+            opacity: 0.6;
+        }
+
+        50% {
+            opacity: 1;
+        }
+
+        100% {
+            opacity: 0.6;
+        }
     }
-    
+
     /* Markdown样式 - AI建议内容美化 */
     #ai-response {
         line-height: 1.6;
         color: #333;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
-    
-    #ai-response h1, #ai-response h2, #ai-response h3, #ai-response h4, #ai-response h5, #ai-response h6 {
+
+    #ai-response h1,
+    #ai-response h2,
+    #ai-response h3,
+    #ai-response h4,
+    #ai-response h5,
+    #ai-response h6 {
         color: #2c3e50;
         margin-top: 1.5em;
         margin-bottom: 0.5em;
         font-weight: 600;
         line-height: 1.3;
     }
-    
+
     #ai-response h1 {
         font-size: 1.8em;
         border-bottom: 2px solid #e9ecef;
         padding-bottom: 0.3em;
     }
-    
+
     #ai-response h2 {
         font-size: 1.5em;
         color: #3498db;
     }
-    
+
     #ai-response h3 {
         font-size: 1.3em;
         color: #e74c3c;
     }
-    
+
     #ai-response h4 {
         font-size: 1.1em;
         color: #f39c12;
     }
-    
+
     #ai-response p {
         margin-bottom: 1em;
         text-align: justify;
     }
-    
-    #ai-response ul, #ai-response ol {
+
+    #ai-response ul,
+    #ai-response ol {
         margin-bottom: 1em;
         padding-left: 2em;
     }
-    
+
     #ai-response li {
         margin-bottom: 0.3em;
     }
-    
+
     #ai-response strong {
         color: #2c3e50;
         font-weight: 600;
     }
-    
+
     #ai-response em {
         font-style: italic;
         color: #7f8c8d;
     }
-    
+
     #ai-response code {
         background-color: #f8f9fa;
         color: #e83e8c;
@@ -614,7 +653,7 @@
         font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
         font-size: 0.9em;
     }
-    
+
     #ai-response pre {
         background-color: #f8f9fa;
         border: 1px solid #e9ecef;
@@ -623,7 +662,7 @@
         margin: 1em 0;
         overflow-x: auto;
     }
-    
+
     #ai-response pre code {
         background-color: transparent;
         color: inherit;
@@ -631,7 +670,7 @@
         border-radius: 0;
         font-size: 0.95em;
     }
-    
+
     #ai-response blockquote {
         border-left: 4px solid #3498db;
         margin: 1em 0;
@@ -640,7 +679,7 @@
         font-style: italic;
         color: #6c757d;
     }
-    
+
     /* 特殊的评分和建议样式 */
     #ai-response .score-highlight {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -651,7 +690,7 @@
         font-weight: bold;
         margin: 0.2em;
     }
-    
+
     #ai-response .suggestion-box {
         background-color: #e8f5e8;
         border-left: 4px solid #28a745;
@@ -659,7 +698,7 @@
         margin: 1em 0;
         border-radius: 4px;
     }
-    
+
     #ai-response .warning-box {
         background-color: #fff3cd;
         border-left: 4px solid #ffc107;
@@ -667,7 +706,7 @@
         margin: 1em 0;
         border-radius: 4px;
     }
-    
+
     #ai-response .error-box {
         background-color: #f8d7da;
         border-left: 4px solid #dc3545;
@@ -675,31 +714,39 @@
         margin: 1em 0;
         border-radius: 4px;
     }
-    
+
     /* 内联代码高亮样式 */
     #ai-response .hljs-inline {
         background-color: #f1f3f4;
         border: 1px solid #e1e4e8;
         font-size: 0.9em;
     }
-    
+
     /* 代码块高亮增强 */
     #ai-response pre.hljs {
         border: 1px solid #e1e4e8;
         border-radius: 6px;
     }
-    
+
     /* 响应式设计 */
     @media (max-width: 768px) {
         #ai-response {
             font-size: 14px;
             line-height: 1.5;
         }
-        
-        #ai-response h1 { font-size: 1.5em; }
-        #ai-response h2 { font-size: 1.3em; }
-        #ai-response h3 { font-size: 1.1em; }
-        
+
+        #ai-response h1 {
+            font-size: 1.5em;
+        }
+
+        #ai-response h2 {
+            font-size: 1.3em;
+        }
+
+        #ai-response h3 {
+            font-size: 1.1em;
+        }
+
         #ai-response pre {
             padding: 0.8em;
             font-size: 13px;
@@ -714,18 +761,19 @@
     <div class="assignment-header">
         <div class="d-flex justify-content-between align-items-center">
             <h1>{{ assignment.title }}</h1>
-            <span class="difficulty-badge difficulty-{% if assignment.difficulty == '初级' %}beginner{% elif assignment.difficulty == '中级' %}intermediate{% elif assignment.difficulty == '高级' %}advanced{% else %}expert{% endif %}">
+            <span
+                class="difficulty-badge difficulty-{% if assignment.difficulty == '初级' %}beginner{% elif assignment.difficulty == '中级' %}intermediate{% elif assignment.difficulty == '高级' %}advanced{% else %}expert{% endif %}">
                 <i class="bi bi-speedometer"></i> {{ assignment.difficulty }}
             </span>
         </div>
         <div class="d-flex flex-wrap align-items-center text-white-50 mb-3">
             <div class="me-4">
                 <i class="bi bi-calendar-event"></i>
-                截止日期: 
+                截止日期:
                 {% if assignment.due_date %}
-                    {{ assignment.due_date.strftime('%Y-%m-%d %H:%M') }}
+                {{ assignment.due_date.strftime('%Y-%m-%d %H:%M') }}
                 {% else %}
-                    无截止日期
+                无截止日期
                 {% endif %}
             </div>
             <div class="me-4">
@@ -737,32 +785,33 @@
                 提交人数: {{ submission_count|default(0) }}
             </div>
         </div>
-        
+
         <button class="btn btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#assignmentDescription">
             <i class="bi bi-info-circle"></i> 查看作业详情
         </button>
     </div>
-    
+
     <!-- 作业详情折叠区域 -->
     <div class="collapse mb-4" id="assignmentDescription">
         <div class="card card-body">
             {% if assignment.description %}
-                {{ format_markdown_content(assignment.description) | safe }}
+            <div class="markdown-body" id="description-md-body">{{ assignment.description }}</div>
             {% else %}
-                <p class="text-muted">该作业没有详细描述。</p>
+            <p class="text-muted">该作业没有详细描述。</p>
             {% endif %}
         </div>
     </div>
-    
+
     <!-- 主体开发区域 -->
     <div class="code-studio-container">
         <!-- 代码工作区 -->
         <div class="code-workspace">
-            <form method="post" action="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}" id="code-form">
+            <form method="post" action="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}"
+                id="code-form">
                 {{ form.hidden_tag() }}
-                
+
                 <input type="hidden" name="language" id="hidden-language" value="cpp">
-                
+
                 {% if form.code.errors %}
                 <div class="alert alert-danger mb-4">
                     {% for error in form.code.errors %}
@@ -770,9 +819,9 @@
                     {% endfor %}
                 </div>
                 {% endif %}
-                
+
                 {{ code_editor(name='code', value=form.code.data or '', height=550) }}
-                
+
                 <div id="loading-container" class="loading-overlay" style="display: none;">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">提交中...</span>
@@ -780,12 +829,13 @@
                     <div class="progress-message mt-3">
                         <p class="pulse-animation">正在评估您的代码，请稍候...</p>
                         <div class="progress mt-2" style="height: 5px; width: 200px;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                                style="width: 100%"></div>
                         </div>
                     </div>
                     <script>
                         // 自动关闭加载提示，防止长时间显示
-                        setTimeout(function() {
+                        setTimeout(function () {
                             const loadingContainer = document.getElementById('loading-container');
                             if (loadingContainer && loadingContainer.style.display === 'flex') {
                                 loadingContainer.style.display = 'none';
@@ -796,7 +846,7 @@
                                     toastContainer.style.zIndex = '1080';
                                     document.body.appendChild(toastContainer);
                                 }
-                                
+
                                 const toastEl = document.createElement('div');
                                 toastEl.className = 'toast align-items-center text-white bg-info border-0';
                                 toastEl.setAttribute('role', 'alert');
@@ -810,7 +860,7 @@
                                         <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="关闭"></button>
                                     </div>
                                 `;
-                                
+
                                 toastContainer.appendChild(toastEl);
                                 const toast = new bootstrap.Toast(toastEl, {
                                     autohide: true,
@@ -821,7 +871,7 @@
                         }, 30000); // 30秒后自动关闭
                     </script>
                 </div>
-            
+
                 <div class="p-3 d-flex justify-content-between bg-light">
                     <a href="{{ url_for('assignments.student_assignments') }}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> 返回作业列表
@@ -834,7 +884,7 @@
                 </div>
             </form>
         </div>
-        
+
         <!-- AI助手聊天界面 -->
         <div class="ai-assistant-panel">
             <div class="ai-assistant-header">
@@ -865,10 +915,7 @@
 
             <div class="ai-chat-input-area">
                 <div class="ai-chat-input-wrapper">
-                    <textarea
-                        class="ai-chat-textarea"
-                        id="ai-chat-input"
-                        placeholder="输入问题或选择快捷问题..."
+                    <textarea class="ai-chat-textarea" id="ai-chat-input" placeholder="输入问题或选择快捷问题..."
                         rows="2"></textarea>
                     <button class="ai-send-button" id="ai-send-button" title="发送消息">
                         <i class="bi bi-send-fill"></i>
@@ -876,7 +923,7 @@
                 </div>
             </div>
         </div>
-        
+
         <!-- 提交历史面板 -->
         {% if submissions %}
         <div class="submission-history-panel">
@@ -890,38 +937,41 @@
                         <div class="submission-time">{{ submission.submitted_at.strftime('%m-%d %H:%M') }}</div>
                         <div class="submission-status">
                             {% if submission.status == 'pending' %}
-                                <span class="badge bg-warning text-dark">评估中</span>
+                            <span class="badge bg-warning text-dark">评估中</span>
                             {% elif submission.status == 'evaluated' %}
-                                <span class="badge bg-success">已评估</span>
+                            <span class="badge bg-success">已评估</span>
                             {% elif submission.status == 'failed' %}
-                                <span class="badge bg-danger">评估失败</span>
+                            <span class="badge bg-danger">评估失败</span>
                             {% else %}
-                                <span class="badge bg-secondary">未知</span>
+                            <span class="badge bg-secondary">未知</span>
                             {% endif %}
                         </div>
                     </div>
                     <div class="text-center">
                         <div class="submission-score fs-4">
                             {% if submission.score %}
-                                <span class="{{ 'text-success' if submission.score >= 4 else 'text-warning' if submission.score >= 3 else 'text-danger' }}">
-                                    {{ submission.score }}<small class="text-muted">/5</small>
-                                </span>
+                            <span
+                                class="{{ 'text-success' if submission.score >= 4 else 'text-warning' if submission.score >= 3 else 'text-danger' }}">
+                                {{ submission.score }}<small class="text-muted">/5</small>
+                            </span>
                             {% else %}
-                                <span class="text-muted">-</span>
+                            <span class="text-muted">-</span>
                             {% endif %}
                         </div>
                     </div>
                     <div>
-                        <a href="{{ url_for('assignments.view_submission', submission_id=submission.id) }}" class="btn btn-sm btn-outline-primary">
+                        <a href="{{ url_for('assignments.view_submission', submission_id=submission.id) }}"
+                            class="btn btn-sm btn-outline-primary">
                             查看详情
                         </a>
                     </div>
                 </div>
                 {% endfor %}
-                
+
                 {% if submissions|length > 5 %}
                 <div class="p-3 text-center">
-                    <a href="{{ url_for('assignments.submission_history', assignment_id=assignment.id) }}" class="btn btn-sm btn-outline-secondary">
+                    <a href="{{ url_for('assignments.submission_history', assignment_id=assignment.id) }}"
+                        class="btn btn-sm btn-outline-secondary">
                         查看全部 {{ submissions|length }} 条提交记录
                     </a>
                 </div>
@@ -947,112 +997,130 @@
 
 <!-- 立即隐藏评估消息的脚本 -->
 <script>
-// 立即隐藏评估消息函数
-function hideEvaluationMessages() {
-    // 隐藏所有含有"正在评估代码"、"请稍候"或包含script标签的闪现消息
-    var alerts = document.querySelectorAll('.alert');
-    if (alerts && alerts.length > 0) {
-        for (var i = 0; i < alerts.length; i++) {
-            var alert = alerts[i];
-            if (alert.textContent.includes('正在评估代码') || 
-                alert.textContent.includes('请稍候') || 
-                alert.innerHTML.includes('<script>')) {
-                alert.style.display = 'none';
+    // 立即隐藏评估消息函数
+    function hideEvaluationMessages() {
+        // 隐藏所有含有"正在评估代码"、"请稍候"或包含script标签的闪现消息
+        var alerts = document.querySelectorAll('.alert');
+        if (alerts && alerts.length > 0) {
+            for (var i = 0; i < alerts.length; i++) {
+                var alert = alerts[i];
+                if (alert.textContent.includes('正在评估代码') ||
+                    alert.textContent.includes('请稍候') ||
+                    alert.innerHTML.includes('<script>')) {
+                    alert.style.display = 'none';
+                }
             }
         }
-    }
-    
-    // 隐藏评估相关的toast消息
-    var toasts = document.querySelectorAll('.toast');
-    if (toasts && toasts.length > 0) {
-        for (var i = 0; i < toasts.length; i++) {
-            var toast = toasts[i];
-            var toastBody = toast.querySelector('.toast-body');
-            if (toastBody && toastBody.textContent.includes('正在评估代码')) {
-                toast.style.display = 'none';
+
+        // 隐藏评估相关的toast消息
+        var toasts = document.querySelectorAll('.toast');
+        if (toasts && toasts.length > 0) {
+            for (var i = 0; i < toasts.length; i++) {
+                var toast = toasts[i];
+                var toastBody = toast.querySelector('.toast-body');
+                if (toastBody && toastBody.textContent.includes('正在评估代码')) {
+                    toast.style.display = 'none';
+                }
             }
         }
+
+        // 确保加载遮罩不显示
+        var loadingOverlay = document.getElementById('loading-container');
+        if (loadingOverlay) {
+            loadingOverlay.style.display = 'none';
+        }
     }
-    
-    // 确保加载遮罩不显示
-    var loadingOverlay = document.getElementById('loading-container');
-    if (loadingOverlay) {
-        loadingOverlay.style.display = 'none';
-    }
-}
 
-// 立即执行一次
-hideEvaluationMessages();
+    // 立即执行一次
+    hideEvaluationMessages();
 
-// 在DOM加载完成后再执行一次
-document.addEventListener('DOMContentLoaded', hideEvaluationMessages);
+    // 在DOM加载完成后再执行一次
+    document.addEventListener('DOMContentLoaded', hideEvaluationMessages);
 
-// 使用MutationObserver监听新添加的元素
-var observer = new MutationObserver(function(mutations) {
-    mutations.forEach(function(mutation) {
-        if (mutation.addedNodes && mutation.addedNodes.length > 0) {
-            // 检查新添加的元素是否需要隐藏
-            for (var i = 0; i < mutation.addedNodes.length; i++) {
-                var node = mutation.addedNodes[i];
-                if (node.nodeType === 1) { // 元素节点
-                    if (node.classList && node.classList.contains('alert')) {
-                        if (node.textContent.includes('正在评估代码') || 
-                            node.textContent.includes('请稍候') ||
-                            node.innerHTML.includes('<script>')) {
-                            node.style.display = 'none';
+    // 使用MutationObserver监听新添加的元素
+    var observer = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+            if (mutation.addedNodes && mutation.addedNodes.length > 0) {
+                // 检查新添加的元素是否需要隐藏
+                for (var i = 0; i < mutation.addedNodes.length; i++) {
+                    var node = mutation.addedNodes[i];
+                    if (node.nodeType === 1) { // 元素节点
+                        if (node.classList && node.classList.contains('alert')) {
+                            if (node.textContent.includes('正在评估代码') ||
+                                node.textContent.includes('请稍候') ||
+                                node.innerHTML.includes('<script>')) {
+                                node.style.display = 'none';
+                            }
                         }
                     }
                 }
             }
+        });
+    });
+
+    // 开始观察body元素的变化
+    observer.observe(document.body, { childList: true, subtree: true });
+</script>
+
+<!-- 渲染作业描述中的Markdown -->
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var mdBody = document.getElementById('description-md-body');
+        if (mdBody && typeof marked !== 'undefined') {
+            var raw = mdBody.textContent || mdBody.innerText;
+            mdBody.innerHTML = marked.parse(raw, { breaks: true, gfm: true });
+            // 高亮代码块
+            mdBody.querySelectorAll('pre code').forEach(function (block) {
+                if (typeof hljs !== 'undefined') {
+                    hljs.highlightElement(block);
+                }
+            });
         }
     });
-});
-
-// 开始观察body元素的变化
-observer.observe(document.body, { childList: true, subtree: true });
 </script>
 
 <!-- 代码提交页面交互脚本 -->
 <script>
-// 在页面加载完成后初始化编辑器
-$(document).ready(function() {
-    // 设置变量
-    var assignmentId = "{{ assignment.id }}";
-    var submissionCount = {{ submission_count }};
-    
+    // 在页面加载完成后初始化编辑器
+    $(document).ready(function () {
+        // 设置变量
+        var assignmentId = "{{ assignment.id }}";
+        var submissionCount = {{ submission_count }};
+    });
+
     // 提交代码按钮
     var submitButton = document.getElementById('submit-code-btn');
     var codeForm = document.getElementById('code-form');
     var loadingOverlay = document.getElementById('loading-container');
-    
+
     if (submitButton && codeForm) {
-        submitButton.addEventListener('click', function() {
+        submitButton.addEventListener('click', function () {
             // 获取代码内容
             var code = getEditorContent();
-            
+
             if (!code || code.trim().length < 10) {
                 showToast('代码太短，请编写更完整的代码', 'warning');
                 return;
             }
-            
+
             // 显示加载动画
             if (loadingOverlay) {
                 loadingOverlay.style.display = 'flex';
-                
+
                 // 添加自动超时处理，30秒后自动隐藏加载动画
-                setTimeout(function() {
+                setTimeout(function () {
                     if (loadingOverlay.style.display === 'flex') {
                         loadingOverlay.style.display = 'none';
                         showToast('评估已在后台继续，请在提交历史中查看结果', 'info');
                     }
                 }, 30000);
             }
-            
+
             // 提交表单
             codeForm.submit();
         });
     }
-    
+
     // ==================== 新的AI聊天助手 ====================
 
     // 聊天状态
@@ -1074,7 +1142,7 @@ $(document).ready(function() {
 
         // 回车发送（Shift+Enter换行）
         if (chatInput) {
-            chatInput.addEventListener('keydown', function(e) {
+            chatInput.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     handleSendMessage();
@@ -1082,7 +1150,7 @@ $(document).ready(function() {
             });
 
             // 自动调整高度
-            chatInput.addEventListener('input', function() {
+            chatInput.addEventListener('input', function () {
                 this.style.height = 'auto';
                 this.style.height = Math.min(this.scrollHeight, 120) + 'px';
             });
@@ -1095,7 +1163,7 @@ $(document).ready(function() {
 
         // 快捷问题按钮
         document.querySelectorAll('.ai-quick-prompt-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
+            btn.addEventListener('click', function () {
                 const prompt = this.getAttribute('data-prompt');
                 chatInput.value = prompt;
                 handleSendMessage();
@@ -1354,50 +1422,50 @@ $(document).ready(function() {
     // AI建议按钮（现在触发聊天）
     var aiAdviceButton = document.getElementById('get-ai-advice');
     if (aiAdviceButton) {
-        aiAdviceButton.addEventListener('click', function() {
+        aiAdviceButton.addEventListener('click', function () {
             chatInput.value = '帮我分析这段代码';
             handleSendMessage();
         });
     }
-    
+
     // 获取编辑器内容
     function getEditorContent() {
         return window.getEditorContent ? window.getEditorContent() : '';
     }
-    
+
     // 获取AI建议
     function getAIAdvice() {
         // 获取代码内容
         var code = getEditorContent();
-        
+
         if (!code || code.trim().length < 10) {
             showToast('代码太短，请编写更多代码以获取建议', 'warning');
             return;
         }
-        
+
         // 显示加载状态
         if (aiPlaceholder) aiPlaceholder.style.display = 'none';
         if (aiLoading) aiLoading.style.display = 'block';
         if (aiResponse) aiResponse.style.display = 'none';
         if (codeMetrics) codeMetrics.style.display = 'none';
-        
+
         // 获取当前作业ID和语言
         var assignmentId = "{{ assignment.id }}";
         var language = "cpp"; // 现在默认使用C++
-        
+
         // 构建请求数据
         var requestData = {
             code: code,
             assignment_id: assignmentId,
             language: language
         };
-        
+
         // 是否为高级模式
         var isAdvancedMode = document.getElementById('aiAdvancedMode').checked;
         if (isAdvancedMode) {
             requestData.advanced = true;
         }
-        
+
         // 发送API请求
         fetch('/api/code_advice', {
             method: 'POST',
@@ -1407,42 +1475,42 @@ $(document).ready(function() {
             },
             body: JSON.stringify(requestData)
         })
-        .then(function(response) {
-            if (!response.ok) {
-                throw new Error("服务器响应错误: " + response.status);
-            }
-            return response.json();
-        })
-        .then(function(data) {
-            if (data.success) {
-                displayAIAdvice(data.data);
-            } else {
-                showAIError(data.message || '获取建议失败');
-            }
-        })
-        .catch(function(error) {
-            console.error('获取AI建议时出错:', error);
-            showAIError("获取建议失败: " + error.message);
-        });
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error("服务器响应错误: " + response.status);
+                }
+                return response.json();
+            })
+            .then(function (data) {
+                if (data.success) {
+                    displayAIAdvice(data.data);
+                } else {
+                    showAIError(data.message || '获取建议失败');
+                }
+            })
+            .catch(function (error) {
+                console.error('获取AI建议时出错:', error);
+                showAIError("获取建议失败: " + error.message);
+            });
     }
-    
+
     // 显示AI建议
     function displayAIAdvice(data) {
         if (aiLoading) aiLoading.style.display = 'none';
         if (aiResponse) {
             aiResponse.style.display = 'block';
-            
+
             // 渲染AI反馈
             var feedback = data.advice || '';
-            
+
             // 判断是否为简洁建议（不包含markdown标记且较短）
-            var isSimpleAdvice = !feedback.includes('#') && !feedback.includes('**') && 
-                                !feedback.includes('###') && feedback.length < 200;
-            
+            var isSimpleAdvice = !feedback.includes('#') && !feedback.includes('**') &&
+                !feedback.includes('###') && feedback.length < 200;
+
             if (isSimpleAdvice) {
                 // 简洁建议直接显示，保持表情符号和换行
-                aiResponse.innerHTML = '<div style="font-size: 16px; line-height: 1.6; padding: 15px;">' + 
-                                     feedback.replace(/\n/g, '<br>') + '</div>';
+                aiResponse.innerHTML = '<div style="font-size: 16px; line-height: 1.6; padding: 15px;">' +
+                    feedback.replace(/\n/g, '<br>') + '</div>';
             } else {
                 // 复杂内容使用Markdown处理
                 if (typeof marked !== 'undefined') {
@@ -1452,7 +1520,7 @@ $(document).ready(function() {
                     aiResponse.innerHTML = formatAdvancedMarkdown(feedback);
                 }
             }
-            
+
             // 应用代码高亮
             if (typeof hljs !== 'undefined') {
                 // 先初始化hljs（如果还没初始化的话）
@@ -1462,48 +1530,48 @@ $(document).ready(function() {
                     });
                     hljs.initialized = true;
                 }
-                
+
                 // 高亮所有代码块
-                aiResponse.querySelectorAll('pre code').forEach(function(block) {
+                aiResponse.querySelectorAll('pre code').forEach(function (block) {
                     // 清除之前的高亮
                     block.className = block.className.replace(/hljs[^\s]*/g, '');
-                    
+
                     // 应用新的高亮
                     hljs.highlightElement(block);
                 });
-                
+
                 // 高亮内联代码（可选，通常不需要语法高亮）
-                aiResponse.querySelectorAll('code:not(pre code)').forEach(function(block) {
+                aiResponse.querySelectorAll('code:not(pre code)').forEach(function (block) {
                     block.classList.add('hljs-inline');
                 });
             }
         }
-        
+
         // 显示评分指标
         if (codeMetrics && data.metrics) {
             codeMetrics.style.display = 'grid';
-            
+
             var metrics = data.metrics;
             updateMetric('algorithm', metrics.algorithm_score);
             updateMetric('style', metrics.style_score);
             updateMetric('functionality', metrics.functionality_score);
             updateMetric('efficiency', metrics.efficiency_score);
         }
-        
+
         showToast('AI代码建议已生成', 'success');
     }
-    
+
     // 更新指标显示
     function updateMetric(name, value) {
         var scoreElement = document.getElementById(name + '-score');
         var barElement = document.getElementById(name + '-bar');
-        
+
         if (scoreElement && barElement) {
             scoreElement.textContent = value;
             barElement.style.width = value + '%';
         }
     }
-    
+
     // 显示AI错误
     function showAIError(message) {
         if (aiLoading) aiLoading.style.display = 'none';
@@ -1511,14 +1579,14 @@ $(document).ready(function() {
             aiResponse.style.display = 'block';
             aiResponse.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>' + message + '</div>';
         }
-        
+
         showToast(message, 'danger');
     }
-    
+
     // 改进的Markdown格式化函数 - 后备方案
     function formatAdvancedMarkdown(text) {
         if (!text) return '';
-        
+
         // 先转义HTML字符
         text = text
             .replace(/&/g, '&amp;')
@@ -1526,41 +1594,41 @@ $(document).ready(function() {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
-        
+
         // 处理代码块（三个反引号）
-        text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
+        text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, function (match, lang, code) {
             return '<pre><code class="' + (lang || '') + '">' + code.trim() + '</code></pre>';
         });
-        
+
         // 处理内联代码（单个反引号）
         text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-        
+
         // 处理标题
         text = text.replace(/^### (.*$)/gm, '<h3>$1</h3>');
         text = text.replace(/^## (.*$)/gm, '<h2>$1</h2>');
         text = text.replace(/^# (.*$)/gm, '<h1>$1</h1>');
-        
+
         // 处理粗体和斜体
         text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-        
+
         // 处理无序列表
         text = text.replace(/^[-*+] (.*)$/gm, '<li>$1</li>');
         text = text.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-        
+
         // 处理有序列表
         text = text.replace(/^\d+\. (.*)$/gm, '<li>$1</li>');
         // 注意：这个正则表达式会匹配所有的<li>，包括无序列表的，所以需要更精确的处理
-        
+
         // 处理评分高亮（特殊格式）
         text = text.replace(/评分[：:]\s*(\d+(?:\.\d+)?)/g, '<span class="score-highlight">评分: $1</span>');
         text = text.replace(/得分[：:]\s*(\d+(?:\.\d+)?)/g, '<span class="score-highlight">得分: $1</span>');
-        
+
         // 处理建议框（以特定词开头的段落）
         text = text.replace(/^(建议|推荐|优化)[:：]\s*(.*)$/gm, '<div class="suggestion-box"><strong>$1:</strong> $2</div>');
         text = text.replace(/^(注意|警告)[:：]\s*(.*)$/gm, '<div class="warning-box"><strong>$1:</strong> $2</div>');
         text = text.replace(/^(错误|问题)[:：]\s*(.*)$/gm, '<div class="error-box"><strong>$1:</strong> $2</div>');
-        
+
         // 处理段落
         // 先将连续的换行符替换为段落分隔符
         text = text.replace(/\n\s*\n/g, '\n\n__PARAGRAPH_BREAK__\n\n');
@@ -1568,21 +1636,21 @@ $(document).ready(function() {
         text = text.replace(/\n/g, '<br>');
         // 最后处理段落
         var paragraphs = text.split('__PARAGRAPH_BREAK__');
-        text = paragraphs.map(function(p) {
+        text = paragraphs.map(function (p) {
             p = p.trim();
             if (p && !p.match(/^<[uh][1-6l]>|<div|<pre>/)) {
                 return '<p>' + p + '</p>';
             }
             return p;
         }).join('\n');
-        
+
         // 清理多余的标签
         text = text.replace(/<\/?(br|p)>\s*<(ul|ol|div|pre|h[1-6])>/g, '<$2>');
         text = text.replace(/<\/(ul|ol|div|pre|h[1-6])>\s*<(br|p)>/g, '</$1>');
-        
+
         return text;
     }
-    
+
     // 显示Toast通知
     function showToast(message, type) {
         type = type || 'info';
@@ -1592,10 +1660,10 @@ $(document).ready(function() {
         toastEl.setAttribute('role', 'alert');
         toastEl.setAttribute('aria-live', 'assertive');
         toastEl.setAttribute('aria-atomic', 'true');
-        
-        toastEl.innerHTML = '<div class="d-flex"><div class="toast-body">' + message + 
-                            '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="关闭"></button></div>';
-        
+
+        toastEl.innerHTML = '<div class="d-flex"><div class="toast-body">' + message +
+            '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="关闭"></button></div>';
+
         // 查找或创建Toast容器
         var toastContainer = document.querySelector('.toast-container');
         if (!toastContainer) {
@@ -1604,21 +1672,21 @@ $(document).ready(function() {
             toastContainer.style.zIndex = '1080';
             document.body.appendChild(toastContainer);
         }
-        
+
         // 添加到容器
         toastContainer.appendChild(toastEl);
-        
+
         // 创建Bootstrap Toast实例
         var toast = new bootstrap.Toast(toastEl, {
             autohide: true,
             delay: 5000
         });
-        
+
         // 显示Toast
         toast.show();
-        
+
         // 自动移除
-        toastEl.addEventListener('hidden.bs.toast', function() {
+        toastEl.addEventListener('hidden.bs.toast', function () {
             toastEl.remove();
         });
     }
@@ -1627,96 +1695,96 @@ $(document).ready(function() {
 
 <!-- 添加自动处理评估提示的脚本 -->
 <script>
-// 页面加载完成后执行
-document.addEventListener('DOMContentLoaded', function() {
-    // 处理加载遮罩
-    var loadingOverlay = document.getElementById('loading-container');
-    
-    // 自动关闭"正在评估代码"的提示
-    var closeEvaluationMessages = function() {
-        // 检查Toast提示
-        var toasts = document.querySelectorAll('.toast');
-        toasts.forEach(function(toast) {
-            var toastBody = toast.querySelector('.toast-body');
-            if (toastBody && toastBody.textContent.includes('正在评估代码')) {
-                // 使用Bootstrap API关闭toast
-                try {
-                    var bsToast = new bootstrap.Toast(toast);
-                    bsToast.hide();
-                } catch(e) {
-                    // 如果API调用失败，直接隐藏元素
-                    toast.style.display = 'none';
-                }
-            }
-        });
-        
-        // 检查Flash消息
-        var alerts = document.querySelectorAll('.alert');
-        alerts.forEach(function(alert) {
-            if (alert.textContent.includes('正在评估代码') || 
-                alert.textContent.includes('请稍候') ||
-                alert.innerHTML.includes('<script>')) {
-                alert.style.display = 'none';
-            }
-        });
-        
-        // 隐藏加载遮罩
-        if (loadingOverlay) {
-            loadingOverlay.style.display = 'none';
-        }
-    };
-    
-    // 立即关闭评估提示
-    closeEvaluationMessages();
-    
-    // 检测评估完成消息并处理
-    var processFlashMessages = function() {
-        var flashMessages = document.querySelectorAll('.alert');
-        flashMessages.forEach(function(flash) {
-            // 检查是否包含评估完成的消息
-            if (flash.textContent.includes('代码评估完成') || 
-                flash.textContent.includes('评估过程中出现错误')) {
-                // 如果是评估结果消息，立即关闭加载遮罩
-                if (loadingOverlay) {
-                    loadingOverlay.style.display = 'none';
-                }
-            }
-            
-            // 隐藏包含脚本的消息
-            if (flash.innerHTML.includes('<script>')) {
-                flash.style.display = 'none';
-            }
-        });
-    };
-    
-    // 页面加载后立即处理Flash消息
-    processFlashMessages();
-    
-    // 观察DOM变化，在Flash消息添加到DOM时处理它们
-    var observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.addedNodes && mutation.addedNodes.length > 0) {
-                // 检查是否有新的Flash消息添加
-                for (var i = 0; i < mutation.addedNodes.length; i++) {
-                    var node = mutation.addedNodes[i];
-                    if (node.classList && node.classList.contains('alert')) {
-                        // 如果是评估消息或包含脚本的消息，立即隐藏
-                        if (node.textContent.includes('正在评估代码') || 
-                            node.textContent.includes('请稍候') ||
-                            node.innerHTML.includes('<script>')) {
-                            node.style.display = 'none';
-                        } else {
-                            processFlashMessages();
-                        }
-                        break;
+    // 页面加载完成后执行
+    document.addEventListener('DOMContentLoaded', function () {
+        // 处理加载遮罩
+        var loadingOverlay = document.getElementById('loading-container');
+
+        // 自动关闭"正在评估代码"的提示
+        var closeEvaluationMessages = function () {
+            // 检查Toast提示
+            var toasts = document.querySelectorAll('.toast');
+            toasts.forEach(function (toast) {
+                var toastBody = toast.querySelector('.toast-body');
+                if (toastBody && toastBody.textContent.includes('正在评估代码')) {
+                    // 使用Bootstrap API关闭toast
+                    try {
+                        var bsToast = new bootstrap.Toast(toast);
+                        bsToast.hide();
+                    } catch (e) {
+                        // 如果API调用失败，直接隐藏元素
+                        toast.style.display = 'none';
                     }
                 }
+            });
+
+            // 检查Flash消息
+            var alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function (alert) {
+                if (alert.textContent.includes('正在评估代码') ||
+                    alert.textContent.includes('请稍候') ||
+                    alert.innerHTML.includes('<script>')) {
+                    alert.style.display = 'none';
+                }
+            });
+
+            // 隐藏加载遮罩
+            if (loadingOverlay) {
+                loadingOverlay.style.display = 'none';
             }
+        };
+
+        // 立即关闭评估提示
+        closeEvaluationMessages();
+
+        // 检测评估完成消息并处理
+        var processFlashMessages = function () {
+            var flashMessages = document.querySelectorAll('.alert');
+            flashMessages.forEach(function (flash) {
+                // 检查是否包含评估完成的消息
+                if (flash.textContent.includes('代码评估完成') ||
+                    flash.textContent.includes('评估过程中出现错误')) {
+                    // 如果是评估结果消息，立即关闭加载遮罩
+                    if (loadingOverlay) {
+                        loadingOverlay.style.display = 'none';
+                    }
+                }
+
+                // 隐藏包含脚本的消息
+                if (flash.innerHTML.includes('<script>')) {
+                    flash.style.display = 'none';
+                }
+            });
+        };
+
+        // 页面加载后立即处理Flash消息
+        processFlashMessages();
+
+        // 观察DOM变化，在Flash消息添加到DOM时处理它们
+        var observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+                if (mutation.addedNodes && mutation.addedNodes.length > 0) {
+                    // 检查是否有新的Flash消息添加
+                    for (var i = 0; i < mutation.addedNodes.length; i++) {
+                        var node = mutation.addedNodes[i];
+                        if (node.classList && node.classList.contains('alert')) {
+                            // 如果是评估消息或包含脚本的消息，立即隐藏
+                            if (node.textContent.includes('正在评估代码') ||
+                                node.textContent.includes('请稍候') ||
+                                node.innerHTML.includes('<script>')) {
+                                node.style.display = 'none';
+                            } else {
+                                processFlashMessages();
+                            }
+                            break;
+                        }
+                    }
+                }
+            });
         });
+
+        // 开始观察body元素的变化
+        observer.observe(document.body, { childList: true, subtree: true });
     });
-    
-    // 开始观察body元素的变化
-    observer.observe(document.body, { childList: true, subtree: true });
-});
 </script>
-{% endblock %} 
+{% endblock %}

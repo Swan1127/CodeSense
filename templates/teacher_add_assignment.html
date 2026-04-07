@@ -12,12 +12,14 @@
                     <h4 class="mb-0"><i class="bi bi-magic"></i> 智能格式化工具</h4>
                 </div>
                 <div class="card-body">
-                    <p class="card-text">将您的作业要求、说明、样例等文本粘贴到下方，AI将自动为您提取信息并填充到表单中。</p>
+                    <p class="card-text">输入简短指令（如"留一道动态规划作业"）或粘贴完整的作业文本，AI将自动生成题目并填充到表单中。</p>
                     <div class="mb-3">
-                        <textarea id="raw-text-input" class="form-control" rows="8" placeholder="在此处粘贴您的作业原始文本，例如：\n题目名称：两数之和\n描述：给定两个整数 a 和 b，输出它们的和。\n输入格式：两个整数 a b\n输出格式：一个整数\n样例输入：3 5\n样例输出：8"></textarea>
+                        <textarea id="raw-text-input" class="form-control" rows="8"
+                            placeholder="您可以输入简短指令或粘贴完整的作业文本，例如：&#10;&#10;简短指令：留一道动态规划的C语言作业&#10;简短指令：设计一道考察链表操作的编程题&#10;简短指令：出一道二叉树遍历的题目&#10;&#10;或粘贴完整作业文本：&#10;题目名称：两数之和&#10;描述：给定两个整数 a 和 b，输出它们的和。&#10;输入格式：两个整数 a b&#10;输出格式：一个整数&#10;样例输入：3 5&#10;样例输出：8"></textarea>
                     </div>
                     <button id="format-button" class="btn btn-primary">
-                        <span id="format-button-spinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;"></span>
+                        <span id="format-button-spinner" class="spinner-border spinner-border-sm" role="status"
+                            aria-hidden="true" style="display: none;"></span>
                         <span id="format-button-text"><i class="bi bi-stars"></i> 智能格式化并填充</span>
                     </button>
                     <div id="wait-message" class="alert alert-info mt-3" style="display: none;">
@@ -35,18 +37,20 @@
                     <h3 class="mb-0">创建新作业</h3>
                 </div>
                 <div class="card-body">
-                    <form id="assignment-form" method="POST" action="{{ url_for('assignments.add_teacher_assignment') }}">
+                    <form id="assignment-form" method="POST"
+                        action="{{ url_for('assignments.add_teacher_assignment') }}">
                         {{ form.hidden_tag() }}
 
                         <div class="mb-3">
                             <label for="assignment_id" class="form-label">作业ID
-                                <span id="suggested-id-badge" class="badge bg-info ms-2" style="display:none;">AI建议: <span id="suggested-id-value"></span></span>
+                                <span id="suggested-id-badge" class="badge bg-info ms-2" style="display:none;">AI建议:
+                                    <span id="suggested-id-value"></span></span>
                             </label>
                             {{ form.assignment_id(class="form-control", placeholder="例如：101") }}
                             {% if form.assignment_id.errors %}
-                                <div class="invalid-feedback d-block">
-                                    {{ form.assignment_id.errors[0] }}
-                                </div>
+                            <div class="invalid-feedback d-block">
+                                {{ form.assignment_id.errors[0] }}
+                            </div>
                             {% endif %}
                         </div>
 
@@ -54,19 +58,20 @@
                             <label for="title" class="form-label">作业标题</label>
                             {{ form.title(class="form-control", placeholder="例如：A+B Problem") }}
                             {% if form.title.errors %}
-                                <div class="invalid-feedback d-block">
-                                    {{ form.title.errors[0] }}
-                                </div>
+                            <div class="invalid-feedback d-block">
+                                {{ form.title.errors[0] }}
+                            </div>
                             {% endif %}
                         </div>
 
                         <div class="mb-3">
                             <label for="description" class="form-label">作业描述</label>
-                            {{ form.description(class="form-control", id="assignment-description", rows="15", placeholder="请详细描述作业要求，或使用上方智能格式化工具自动填充...") }}
+                            {{ form.description(class="form-control", id="assignment-description", rows="15",
+                            placeholder="请详细描述作业要求，或使用上方智能格式化工具自动填充...") }}
                             {% if form.description.errors %}
-                                <div class="invalid-feedback d-block">
-                                    {{ form.description.errors[0] }}
-                                </div>
+                            <div class="invalid-feedback d-block">
+                                {{ form.description.errors[0] }}
+                            </div>
                             {% endif %}
                         </div>
 
@@ -79,7 +84,8 @@
                                 </button>
                             </div>
                             <div class="card-body p-2">
-                                <p class="text-muted small mb-2">添加输入/输出对，学生提交代码后系统将自动编译运行并对比输出。<br>勾选「样例」可让学生在题目页看到该用例。</p>
+                                <p class="text-muted small mb-2">添加输入/输出对，学生提交代码后系统将自动编译运行并对比输出。<br>勾选「样例」可让学生在题目页看到该用例。
+                                </p>
                                 <div id="testcase-list">
                                     <!-- 动态插入用例行 -->
                                 </div>
@@ -87,7 +93,8 @@
                         </div>
 
                         <div class="d-flex justify-content-end">
-                            <a href="{{ url_for('assignments.teacher_assignments') }}" class="btn btn-secondary me-2">取消</a>
+                            <a href="{{ url_for('assignments.teacher_assignments') }}"
+                                class="btn btn-secondary me-2">取消</a>
                             <button type="submit" class="btn btn-success">创建作业</button>
                         </div>
                     </form>
@@ -100,231 +107,231 @@
 
 {% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    const formatButton = document.getElementById('format-button');
-    const rawTextInput = document.getElementById('raw-text-input');
-    const spinner = document.getElementById('format-button-spinner');
-    const buttonText = document.getElementById('format-button-text');
-    const waitMessage = document.getElementById('wait-message');
-    const formatStatus = document.getElementById('format-status');
-    const formatStatusText = document.getElementById('format-status-text');
+    document.addEventListener('DOMContentLoaded', function () {
+        const formatButton = document.getElementById('format-button');
+        const rawTextInput = document.getElementById('raw-text-input');
+        const spinner = document.getElementById('format-button-spinner');
+        const buttonText = document.getElementById('format-button-text');
+        const waitMessage = document.getElementById('wait-message');
+        const formatStatus = document.getElementById('format-status');
+        const formatStatusText = document.getElementById('format-status-text');
 
-    // Form fields - 优先用 id 选择器，更可靠
-    const assignmentIdField = document.getElementById('assignment_id') || document.querySelector('[name="assignment_id"]');
-    const titleField = document.getElementById('title') || document.querySelector('[name="title"]');
-    const descriptionField = document.getElementById('assignment-description');
-    const suggestedIdBadge = document.getElementById('suggested-id-badge');
-    const suggestedIdValue = document.getElementById('suggested-id-value');
-    
-    // 调试：确认元素是否找到
-    console.log('表单元素:', { assignmentIdField, titleField, descriptionField });
+        // Form fields - 优先用 id 选择器，更可靠
+        const assignmentIdField = document.getElementById('assignment_id') || document.querySelector('[name="assignment_id"]');
+        const titleField = document.getElementById('title') || document.querySelector('[name="title"]');
+        const descriptionField = document.getElementById('assignment-description');
+        const suggestedIdBadge = document.getElementById('suggested-id-badge');
+        const suggestedIdValue = document.getElementById('suggested-id-value');
 
-    function setStatus(msg) {
-        formatStatus.style.display = 'block';
-        formatStatusText.textContent = msg;
-    }
+        // 调试：确认元素是否找到
+        console.log('表单元素:', { assignmentIdField, titleField, descriptionField });
 
-    formatButton.addEventListener('click', async () => {
-        const rawText = rawTextInput.value;
-        if (rawText.trim().length < 20) {
-            alert('请输入足够长的文本以便AI进行分析（至少20个字符）。');
-            return;
+        function setStatus(msg) {
+            formatStatus.style.display = 'block';
+            formatStatusText.textContent = msg;
         }
 
-        // 重置表单字段和状态
-        titleField.value = '';
-        descriptionField.value = '';
-        suggestedIdBadge.style.display = 'none';
-        formatStatus.style.display = 'none';
-
-        // 显示加载状态
-        spinner.style.display = 'inline-block';
-        buttonText.textContent = '正在分析...';
-        formatButton.disabled = true;
-        waitMessage.style.display = 'block';
-
-        let accumulatedText = '';
-
-        try {
-            setStatus('正在连接AI服务...');
-
-            const response = await fetch("{{ url_for('api.format_assignment') }}", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ raw_text: rawText }),
-            });
-
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.message || `服务器错误: ${response.status}`);
+        formatButton.addEventListener('click', async () => {
+            const rawText = rawTextInput.value;
+            if (rawText.trim().length < 5) {
+                alert('请输入作业的描述或指令（至少5个字符）。');
+                return;
             }
 
-            setStatus('AI正在生成内容，实时接收中...');
+            // 重置表单字段和状态
+            titleField.value = '';
+            descriptionField.value = '';
+            suggestedIdBadge.style.display = 'none';
+            formatStatus.style.display = 'none';
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
+            // 显示加载状态
+            spinner.style.display = 'inline-block';
+            buttonText.textContent = '正在分析...';
+            formatButton.disabled = true;
+            waitMessage.style.display = 'block';
 
-            // 实时读取流式响应
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+            let accumulatedText = '';
 
-                buffer += decoder.decode(value, { stream: true });
-                // 按完整的 SSE 行（以 \n 结尾）处理，保留不完整的行到下一轮
-                const lines = buffer.split('\n');
-                buffer = lines.pop(); // 最后一个可能是不完整的行，留到下轮
+            try {
+                setStatus('正在连接AI服务...');
 
-                for (const line of lines) {
-                    if (line.startsWith('data:')) {
-                        const jsonStr = line.substring(5).trim();
-                        if (!jsonStr) continue;
-                        try {
-                            const data = JSON.parse(jsonStr);
-                            if (data.error) {
-                                throw new Error(data.error);
+                const response = await fetch("{{ url_for('api.format_assignment') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ raw_text: rawText }),
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.message || `服务器错误: ${response.status}`);
+                }
+
+                setStatus('AI正在生成内容，实时接收中...');
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                // 实时读取流式响应
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    // 按完整的 SSE 行（以 \n 结尾）处理，保留不完整的行到下一轮
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // 最后一个可能是不完整的行，留到下轮
+
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            const jsonStr = line.substring(5).trim();
+                            if (!jsonStr) continue;
+                            try {
+                                const data = JSON.parse(jsonStr);
+                                if (data.error) {
+                                    throw new Error(data.error);
+                                }
+                                if (data.override_id) {
+                                    // 后端返回真实可用ID，直接覆盖
+                                    assignmentIdField.value = data.override_id;
+                                }
+                                if (data.token) {
+                                    accumulatedText += data.token;
+                                    setStatus(`AI正在生成内容... 已接收 ${accumulatedText.length} 字符`);
+                                }
+                            } catch (e) {
+                                if (e.message && !e.message.includes('JSON')) {
+                                    throw e; // 是业务错误，重新抛出
+                                }
+                                // JSON解析失败是正常的（流还没结束），忽略
                             }
-                            if (data.override_id) {
-                                // 后端返回真实可用ID，直接覆盖
-                                assignmentIdField.value = data.override_id;
-                            }
-                            if (data.token) {
-                                accumulatedText += data.token;
-                                setStatus(`AI正在生成内容... 已接收 ${accumulatedText.length} 字符`);
-                            }
-                        } catch (e) {
-                            if (e.message && !e.message.includes('JSON')) {
-                                throw e; // 是业务错误，重新抛出
-                            }
-                            // JSON解析失败是正常的（流还没结束），忽略
                         }
                     }
                 }
-            }
-            // 处理 buffer 中剩余内容
-            if (buffer.startsWith('data:')) {
-                const jsonStr = buffer.substring(5).trim();
-                if (jsonStr) {
-                    try {
-                        const data = JSON.parse(jsonStr);
-                        if (data.token) accumulatedText += data.token;
-                        if (data.override_id) assignmentIdField.value = data.override_id;
-                    } catch(e) {}
-                }
-            }
-
-            setStatus('AI生成完毕，正在解析结果...');
-
-            // 流结束后，解析完整的 JSON
-            if (!accumulatedText.trim()) {
-                throw new Error('AI未返回任何内容，请检查API密钥配置。');
-            }
-
-            // 清理可能的 markdown 代码块包裹
-            let jsonText = accumulatedText.trim();
-            if (jsonText.startsWith('```json')) {
-                jsonText = jsonText.slice(7);
-            } else if (jsonText.startsWith('```')) {
-                jsonText = jsonText.slice(3);
-            }
-            if (jsonText.endsWith('```')) {
-                jsonText = jsonText.slice(0, -3);
-            }
-            jsonText = jsonText.trim();
-
-            let parsed;
-            try {
-                parsed = JSON.parse(jsonText);
-            } catch (parseErr) {
-                console.warn('直接JSON解析失败，尝试修复裸换行符...', parseErr.message);
-                // 修复 AI 在 JSON 字符串值内输出裸换行符的问题
-                // 策略：只把 JSON 字符串值内部的裸换行替换为 \n
-                let fixedJson = jsonText.replace(/"((?:[^"\\]|\\.)*)"/g, function(match, inner) {
-                    return '"' + inner.replace(/\r\n/g, '\\n').replace(/\n/g, '\\n').replace(/\r/g, '\\r') + '"';
-                });
-                try {
-                    parsed = JSON.parse(fixedJson);
-                    console.log('修复后解析成功');
-                } catch (parseErr2) {
-                    console.error('JSON解析失败，原始内容:', accumulatedText);
-                    console.error('修复后内容:', fixedJson);
-                    throw new Error('AI返回格式有误，请重试。（详情见控制台）');
-                }
-            }
-
-            // 调试：打印解析结果
-            console.log('AI解析结果:', parsed);
-            console.log('所有字段:', Object.keys(parsed));
-            console.log('description值:', parsed.description);
-
-            // 填充表单字段
-            if (parsed.title) {
-                titleField.value = parsed.title;
-            }
-            // 填充描述（兼容多种可能的字段名）
-            const desc = parsed.description || parsed.desc || parsed.content || parsed.problem_description || '';
-            console.log('准备填充description，元素:', descriptionField, '值长度:', desc.length);
-            descriptionField.value = desc;
-            console.log('填充后 descriptionField.value 长度:', descriptionField.value.length);
-            // 触发 input 事件以防有监听器
-            descriptionField.dispatchEvent(new Event('input', { bubbles: true }));
-            descriptionField.dispatchEvent(new Event('change', { bubbles: true }));
-
-            // 显示 AI 建议的作业ID（仅显示 badge，实际 ID 已由 override_id 帧在流中填入）
-            if (parsed.suggested_id) {
-                suggestedIdValue.textContent = assignmentIdField.value || parsed.suggested_id;
-                suggestedIdBadge.style.display = 'inline';
-                suggestedIdBadge.title = 'AI建议的ID（可手动修改）';
-                // 只在 override_id 未填入时才用 AI 建议值
-                if (!assignmentIdField.value) {
-                    assignmentIdField.value = parsed.suggested_id;
-                }
-                suggestedIdBadge.onclick = function() {};
-                suggestedIdBadge.classList.remove('bg-info');
-                suggestedIdBadge.classList.add('bg-success');
-                suggestedIdBadge.style.cursor = 'default';
-            }
-
-            // 自动填充测试用例
-            if (parsed.test_cases && Array.isArray(parsed.test_cases) && parsed.test_cases.length > 0) {
-                const list = document.getElementById('testcase-list');
-                list.innerHTML = '';  // 清空已有用例
-                caseCount = 0;
-                parsed.test_cases.forEach(function(tc) {
-                    const row = createCaseRow(caseCount++);
-                    list.appendChild(row);
-                    row.querySelector('.case-input').value = tc.input || tc.input_data || '';
-                    row.querySelector('.case-output').value = tc.output || tc.expected_output || '';
-                    if (tc.is_public) {
-                        row.querySelector('.form-check-input').checked = true;
+                // 处理 buffer 中剩余内容
+                if (buffer.startsWith('data:')) {
+                    const jsonStr = buffer.substring(5).trim();
+                    if (jsonStr) {
+                        try {
+                            const data = JSON.parse(jsonStr);
+                            if (data.token) accumulatedText += data.token;
+                            if (data.override_id) assignmentIdField.value = data.override_id;
+                        } catch (e) { }
                     }
-                });
-                setStatus(`✅ 填充完成！已自动生成 ${parsed.test_cases.length} 个测试用例，请检查后提交。`);
-            } else {
-                setStatus('✅ 填充完成！请检查并确认内容后提交。');
+                }
+
+                setStatus('AI生成完毕，正在解析结果...');
+
+                // 流结束后，解析完整的 JSON
+                if (!accumulatedText.trim()) {
+                    throw new Error('AI未返回任何内容，请检查API密钥配置。');
+                }
+
+                // 清理可能的 markdown 代码块包裹
+                let jsonText = accumulatedText.trim();
+                if (jsonText.startsWith('```json')) {
+                    jsonText = jsonText.slice(7);
+                } else if (jsonText.startsWith('```')) {
+                    jsonText = jsonText.slice(3);
+                }
+                if (jsonText.endsWith('```')) {
+                    jsonText = jsonText.slice(0, -3);
+                }
+                jsonText = jsonText.trim();
+
+                let parsed;
+                try {
+                    parsed = JSON.parse(jsonText);
+                } catch (parseErr) {
+                    console.warn('直接JSON解析失败，尝试修复裸换行符...', parseErr.message);
+                    // 修复 AI 在 JSON 字符串值内输出裸换行符的问题
+                    // 策略：只把 JSON 字符串值内部的裸换行替换为 \n
+                    let fixedJson = jsonText.replace(/"((?:[^"\\]|\\.)*)"/g, function (match, inner) {
+                        return '"' + inner.replace(/\r\n/g, '\\n').replace(/\n/g, '\\n').replace(/\r/g, '\\r') + '"';
+                    });
+                    try {
+                        parsed = JSON.parse(fixedJson);
+                        console.log('修复后解析成功');
+                    } catch (parseErr2) {
+                        console.error('JSON解析失败，原始内容:', accumulatedText);
+                        console.error('修复后内容:', fixedJson);
+                        throw new Error('AI返回格式有误，请重试。（详情见控制台）');
+                    }
+                }
+
+                // 调试：打印解析结果
+                console.log('AI解析结果:', parsed);
+                console.log('所有字段:', Object.keys(parsed));
+                console.log('description值:', parsed.description);
+
+                // 填充表单字段
+                if (parsed.title) {
+                    titleField.value = parsed.title;
+                }
+                // 填充描述（兼容多种可能的字段名）
+                const desc = parsed.description || parsed.desc || parsed.content || parsed.problem_description || '';
+                console.log('准备填充description，元素:', descriptionField, '值长度:', desc.length);
+                descriptionField.value = desc;
+                console.log('填充后 descriptionField.value 长度:', descriptionField.value.length);
+                // 触发 input 事件以防有监听器
+                descriptionField.dispatchEvent(new Event('input', { bubbles: true }));
+                descriptionField.dispatchEvent(new Event('change', { bubbles: true }));
+
+                // 显示 AI 建议的作业ID（仅显示 badge，实际 ID 已由 override_id 帧在流中填入）
+                if (parsed.suggested_id) {
+                    suggestedIdValue.textContent = assignmentIdField.value || parsed.suggested_id;
+                    suggestedIdBadge.style.display = 'inline';
+                    suggestedIdBadge.title = 'AI建议的ID（可手动修改）';
+                    // 只在 override_id 未填入时才用 AI 建议值
+                    if (!assignmentIdField.value) {
+                        assignmentIdField.value = parsed.suggested_id;
+                    }
+                    suggestedIdBadge.onclick = function () { };
+                    suggestedIdBadge.classList.remove('bg-info');
+                    suggestedIdBadge.classList.add('bg-success');
+                    suggestedIdBadge.style.cursor = 'default';
+                }
+
+                // 自动填充测试用例
+                if (parsed.test_cases && Array.isArray(parsed.test_cases) && parsed.test_cases.length > 0) {
+                    const list = document.getElementById('testcase-list');
+                    list.innerHTML = '';  // 清空已有用例
+                    caseCount = 0;
+                    parsed.test_cases.forEach(function (tc) {
+                        const row = createCaseRow(caseCount++);
+                        list.appendChild(row);
+                        row.querySelector('.case-input').value = tc.input || tc.input_data || '';
+                        row.querySelector('.case-output').value = tc.output || tc.expected_output || '';
+                        if (tc.is_public) {
+                            row.querySelector('.form-check-input').checked = true;
+                        }
+                    });
+                    setStatus(`✅ 填充完成！已自动生成 ${parsed.test_cases.length} 个测试用例，请检查后提交。`);
+                } else {
+                    setStatus('✅ 填充完成！请检查并确认内容后提交。');
+                }
+
+            } catch (error) {
+                console.error('格式化过程中发生错误:', error);
+                setStatus('❌ 错误: ' + error.message);
+                alert('格式化失败: ' + error.message);
+            } finally {
+                spinner.style.display = 'none';
+                buttonText.innerHTML = '<i class="bi bi-stars"></i> 智能格式化并填充';
+                formatButton.disabled = false;
+                waitMessage.style.display = 'none';
             }
-
-        } catch (error) {
-            console.error('格式化过程中发生错误:', error);
-            setStatus('❌ 错误: ' + error.message);
-            alert('格式化失败: ' + error.message);
-        } finally {
-            spinner.style.display = 'none';
-            buttonText.innerHTML = '<i class="bi bi-stars"></i> 智能格式化并填充';
-            formatButton.disabled = false;
-            waitMessage.style.display = 'none';
-        }
+        });
     });
-});
 
-// ── 测试用例管理 ────────────────────────────────────────────────
-let caseCount = 0;
+    // ── 测试用例管理 ────────────────────────────────────────────────
+    let caseCount = 0;
 
-function createCaseRow(idx) {
-    const row = document.createElement('div');
-    row.className = 'testcase-row border rounded p-2 mb-2 bg-white';
-    row.dataset.idx = idx;
-    row.innerHTML = `
+    function createCaseRow(idx) {
+        const row = document.createElement('div');
+        row.className = 'testcase-row border rounded p-2 mb-2 bg-white';
+        row.dataset.idx = idx;
+        row.innerHTML = `
         <div class="d-flex align-items-center mb-1">
             <span class="badge bg-secondary me-2">#${idx + 1}</span>
             <div class="form-check form-check-inline ms-auto">
@@ -346,78 +353,78 @@ function createCaseRow(idx) {
                           placeholder="期望的标准输出"></textarea>
             </div>
         </div>`;
-    return row;
-}
+        return row;
+    }
 
-document.addEventListener('DOMContentLoaded', function () {
-    document.getElementById('btn-add-case').addEventListener('click', function () {
-        const list = document.getElementById('testcase-list');
-        const row = createCaseRow(caseCount++);
-        list.appendChild(row);
-    });
+    document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('btn-add-case').addEventListener('click', function () {
+            const list = document.getElementById('testcase-list');
+            const row = createCaseRow(caseCount++);
+            list.appendChild(row);
+        });
 
-    document.getElementById('testcase-list').addEventListener('click', function (e) {
-        const btn = e.target.closest('.btn-del-case');
-        if (btn) {
-            btn.closest('.testcase-row').remove();
-        }
-    });
+        document.getElementById('testcase-list').addEventListener('click', function (e) {
+            const btn = e.target.closest('.btn-del-case');
+            if (btn) {
+                btn.closest('.testcase-row').remove();
+            }
+        });
 
-    // 表单提交后，先创建作业，再批量保存测试用例
-    document.getElementById('assignment-form').addEventListener('submit', async function (e) {
-        const rows = document.querySelectorAll('.testcase-row');
-        if (rows.length === 0) return;  // 没有测试用例，正常提交
+        // 表单提交后，先创建作业，再批量保存测试用例
+        document.getElementById('assignment-form').addEventListener('submit', async function (e) {
+            const rows = document.querySelectorAll('.testcase-row');
+            if (rows.length === 0) return;  // 没有测试用例，正常提交
 
-        e.preventDefault();
+            e.preventDefault();
 
-        // 先提交表单（AJAX），获取新作业 ID
-        const formData = new FormData(this);
-        let assignmentId = null;
-        let redirectUrl = '/teacher';
+            // 先提交表单（AJAX），获取新作业 ID
+            const formData = new FormData(this);
+            let assignmentId = null;
+            let redirectUrl = '/teacher';
 
-        try {
-            const resp = await fetch(this.action, {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-            const json = await resp.json();
-            if (json.success) {
-                assignmentId = json.assignment_id;
-                redirectUrl = json.redirect || redirectUrl;
-            } else {
-                // 服务器返回错误（如ID冲突），回退普通提交展示 flash
+            try {
+                const resp = await fetch(this.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const json = await resp.json();
+                if (json.success) {
+                    assignmentId = json.assignment_id;
+                    redirectUrl = json.redirect || redirectUrl;
+                } else {
+                    // 服务器返回错误（如ID冲突），回退普通提交展示 flash
+                    this.submit();
+                    return;
+                }
+            } catch (_) {
+                // JSON 解析失败，回退普通提交
                 this.submit();
                 return;
             }
-        } catch (_) {
-            // JSON 解析失败，回退普通提交
-            this.submit();
-            return;
-        }
 
-        // 收集测试用例数据
-        const cases = [];
-        rows.forEach(function (row) {
-            cases.push({
-                input_data: row.querySelector('.case-input').value,
-                expected_output: row.querySelector('.case-output').value,
-                is_public: row.querySelector('.form-check-input').checked,
+            // 收集测试用例数据
+            const cases = [];
+            rows.forEach(function (row) {
+                cases.push({
+                    input_data: row.querySelector('.case-input').value,
+                    expected_output: row.querySelector('.case-output').value,
+                    is_public: row.querySelector('.form-check-input').checked,
+                });
             });
+
+            // 批量保存测试用例
+            try {
+                await fetch(`/api/assignments/${assignmentId}/testcases/batch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cases })
+                });
+            } catch (_) { }
+
+            // 跳转
+            window.location.href = redirectUrl;
         });
-
-        // 批量保存测试用例
-        try {
-            await fetch(`/api/assignments/${assignmentId}/testcases/batch`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cases })
-            });
-        } catch (_) {}
-
-        // 跳转
-        window.location.href = redirectUrl;
     });
-});
 </script>
 {% endblock %}
