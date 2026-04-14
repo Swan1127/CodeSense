@@ -3,6 +3,7 @@ import threading
 import os
 from models import db, Submission, AbilityTrend
 from services.ai_evaluator import AIEvaluator
+from services.api_keys import api_keys  # 导入 API 密钥管理器
 from flask import current_app
 
 
@@ -48,7 +49,7 @@ def generate_ability_analysis_async(app, student_id):
                         })
 
                 # 4. 调用AI生成分析（添加超时重试机制）
-                api_key = current_app.config.get('ZHIPU_API_KEY') or os.environ.get('ZHIPU_API_KEY')
+                api_key = api_keys.zhipu_key
                 if not api_key:
                     print(f"❌ AI服务未配置，无法生成分析 - 学生 {student_id}")
                     AbilityTrend.update_analysis(

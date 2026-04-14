@@ -32,6 +32,7 @@ from models import db, init_db
 from utils.code_evaluator import initialize_models
 from utils.guidance_generator import initialize_guidance_system
 from utils.code_advisor import initialize_code_advisor  # 导入代码建议系统初始化函数
+from services.api_keys import api_keys  # 导入 API 密钥管理器
 
 # 加载环境变量
 load_dotenv()
@@ -40,32 +41,30 @@ load_dotenv()
 def check_environment_variables():
     """检查关键环境变量并提供警告"""
     warnings = []
-    
+
     # 检查数据库配置
     db_url = os.environ.get('DATABASE_URL')
     if not db_url:
         warnings.append("DATABASE_URL 未设置，将使用默认MySQL配置")
-    
+
     # 检查SECRET_KEY
     secret_key = os.environ.get('SECRET_KEY')
     if not secret_key:
         warnings.append("SECRET_KEY 未设置，生产环境中请设置强密钥")
     elif secret_key in ['dev', 'dev-key-change-in-production']:
         warnings.append("使用默认SECRET_KEY，生产环境中请更改")
-    
-    # 检查AI服务配置
-    zhipu_key = os.environ.get('ZHIPU_API_KEY')
-    openai_key = os.environ.get('OPENAI_API_KEY')
-    if not zhipu_key and not openai_key:
+
+    # 检查AI服务配置（使用统一 API 密钥管理器）
+    if not api_keys.has_any_key:
         warnings.append("未设置AI API密钥（ZHIPU_API_KEY或OPENAI_API_KEY），AI功能将不可用")
-    
+
     # 显示警告
     if warnings:
         print("\n⚠️  环境变量警告：")
         for warning in warnings:
             print(f"  - {warning}")
         print()
-    
+
     return len(warnings) == 0
 
 

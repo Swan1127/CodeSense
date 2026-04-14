@@ -15,6 +15,9 @@ import traceback
 from datetime import datetime
 import logging
 
+# 导入 API 密钥管理器
+from services.api_keys import api_keys
+
 # 配置日志
 logger = logging.getLogger(__name__)
 
@@ -215,7 +218,7 @@ class AsyncTaskManager:
                     return
                 
                 # 初始化AI评估器
-                api_key = self.app.config.get('ZHIPU_API_KEY', os.environ.get('ZHIPU_API_KEY'))
+                api_key = api_keys.zhipu_key
                 if not api_key:
                     if self.logger:
                         self.logger.warning(f"API密钥未设置，无法为学生 {student_id} 进行AI分析")

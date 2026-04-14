@@ -9,6 +9,7 @@ import traceback
 import logging
 from typing import Dict, Optional, Any
 from .prompts import prompt_manager  # 导入提示词管理器
+from services.api_keys import api_keys  # 导入 API 密钥管理器
 
 # 设置日志
 logger = logging.getLogger("code_advisor")
@@ -815,38 +816,35 @@ def initialize_code_advisor() -> bool:
     
     try:
         logger.info("开始初始化代码建议系统...")
-        
-        # 检查环境变量
-        api_key_zhipu = os.environ.get("ZHIPU_API_KEY")
-        api_key_openai = os.environ.get("OPENAI_API_KEY")
-        
-        use_llm = True
-        if not api_key_zhipu and not api_key_openai:
+
+        # 使用统一的 API 密钥管理器检查
+        use_llm = api_keys.has_any_key
+
+        if not use_llm:
             logger.warning("未找到大模型API密钥，将使用本地规则引擎")
-            use_llm = False
-        
+
         if use_llm:
             try:
                 # 检查是否安装了必要的包
                 try:
-                    if api_key_zhipu:
+                    if api_keys.has_zhipu:
                         import zhipuai
                         logger.info("智谱AI SDK已安装")
                 except ImportError:
                     logger.warning("未安装智谱AI SDK (zhipuai)")
-                    if api_key_zhipu:
+                    if api_keys.has_zhipu:
                         logger.warning("尽管设置了ZHIPU_API_KEY，但由于未安装SDK，将无法使用智谱AI")
-                
+
                 try:
-                    if api_key_openai:
+                    if api_keys.has_openai:
                         import openai
                         logger.info("OpenAI SDK已安装")
                 except ImportError:
                     logger.warning("未安装OpenAI SDK (openai)")
-                    if api_key_openai:
+                    if api_keys.has_openai:
                         logger.warning("尽管设置了OPENAI_API_KEY，但由于未安装SDK，将无法使用OpenAI")
-                
-                if api_key_zhipu or api_key_openai:
+
+                if api_keys.has_any_key:
                     logger.info("将尝试使用大模型评估")
                     code_advisor = CodeAdvisor(use_llm=True)
                     logger.info("[OK] 代码建议系统(使用大模型)初始化成功")

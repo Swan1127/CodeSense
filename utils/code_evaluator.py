@@ -52,6 +52,9 @@ else:
 # 导入大模型评估器
 from utils.llm_evaluator import LLMEvaluator
 
+# 导入统一的 API 密钥管理器
+from services.api_keys import api_keys
+
 # 全局变量以存储模型
 model_initialized = False
 tokenizer = None
@@ -71,17 +74,16 @@ def initialize_models():
     # 初始化大模型评估器
     try:
         print("\n尝试初始化大模型评估器...")
-        # 检查环境变量
-        api_key = os.environ.get("ZHIPU_API_KEY") or os.environ.get("OPENAI_API_KEY")
-        
-        if api_key:
+        # 使用统一的 API 密钥管理器检查
+
+        if api_keys.has_any_key:
             # 初始化评估器
             try:
-                if os.environ.get("ZHIPU_API_KEY"):
+                if api_keys.has_zhipu:
                     print("正在初始化智谱AI大模型评估器...")
                     llm_evaluator = LLMEvaluator(api_type="zhipu", strict_mode=False)  # 修改为False，降低严格程度
                     print("✓ 智谱AI大模型评估器初始化成功（关闭严格评分模式）")
-                elif os.environ.get("OPENAI_API_KEY"):
+                elif api_keys.has_openai:
                     print("正在初始化OpenAI大模型评估器...")
                     llm_evaluator = LLMEvaluator(api_type="openai", strict_mode=False)  # 修改为False，降低严格程度
                     print("✓ OpenAI大模型评估器初始化成功（关闭严格评分模式）")

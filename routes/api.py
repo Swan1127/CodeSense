@@ -12,6 +12,7 @@ from utils.code_evaluator import evaluate_cpp_code
 from utils.guidance_generator import generate_guidance, generate_answer_to_question  # 导入指导生成函数和答案生成函数
 from utils.code_advisor import generate_code_advice  # 导入新的代码建议系统
 from services.ai_evaluator import AIEvaluator
+from services.api_keys import api_keys  # 导入 API 密钥管理器
 import json
 import traceback
 import os
@@ -81,6 +82,7 @@ def get_student_submissions(student_id):
 
 
 # 代码块增强辅助函数
+# 注意：这些函数已迁移到 utils/markdown_formatter.py，建议使用新的 MarkdownFormatter 类
 def enhance_code_blocks(markdown_text, default_lang='cpp'):
     """增强Markdown中的代码块，确保语言标记正确"""
     import re
@@ -637,7 +639,7 @@ def get_code_advice():
                 print(f"聊天模式：回答用户问题 - {user_question}")
 
                 # 使用AI生成针对性回答
-                api_key = current_app.config.get('ZHIPU_API_KEY') or os.environ.get('ZHIPU_API_KEY')
+                api_key = api_keys.zhipu_key
                 if not api_key:
                     return error_response("AI服务未配置", 500)
 
@@ -696,22 +698,32 @@ def get_code_advice():
                 messages.append({"role": "user", "content": user_prompt})
 
                 # 调用AI（流式）
-                response = requests.post(
-                    "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {api_key}"
-                    },
-                    json={
-                        "model": "glm-4-flash",
-                        "messages": messages,
-                        "temperature": 0.7,
-                        "max_tokens": 1000,
-                        "stream": True  # 启用流式输出
-                    },
-                    timeout=30,
-                    stream=True  # 流式接收响应
-                )
+                try:
+                    response = requests.post(
+                        "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {api_key}"
+                        },
+                        json={
+                            "model": "glm-4-flash",
+                            "messages": messages,
+                            "temperature": 0.7,
+                            "max_tokens": 1000,
+                            "stream": True  # 启用流式输出
+                        },
+                        timeout=30,
+                        stream=True  # 流式接收响应
+                    )
+                except requests.exceptions.ConnectionError as e:
+                    print(f"AI API 连接失败: {e}")
+                    return error_response("无法连接到AI服务，请稍后重试", 503)
+                except requests.exceptions.Timeout as e:
+                    print(f"AI API 超时: {e}")
+                    return error_response("AI服务响应超时，请稍后重试", 504)
+                except Exception as e:
+                    print(f"AI API 请求异常: {e}")
+                    return error_response(f"AI服务暂时不可用: {str(e)}", 500)
 
                 if response.status_code == 200:
                     # 流式返回SSE格式
@@ -812,28 +824,7 @@ def get_code_advice():
                 print(f"生成代码建议失败: {e}")
                 print(traceback.format_exc())
                 return error_response(f"生成代码建议失败: {str(e)}", 500)
-            if suggestions:
-                for i, suggestion in enumerate(suggestions, 1):
-                    advice += f"{i}. {suggestion}\n"
-            else:
-                advice += """1. 添加更多注释，解释关键算法和逻辑
-2. 使用更有意义的变量名，提高代码可读性
-3. 考虑边界情况和错误处理，提高代码健壮性"""
-                
-            return api_response(
-                success=True,
-                message="代码建议生成成功 (基础版)",
-                data={
-                    'advice': advice,
-                    'metrics': {
-                        'algorithm_score': analysis_result.get('algorithm_score', 65),
-                        'style_score': analysis_result.get('style_score', 70),
-                        'functionality_score': analysis_result.get('functionality_score', 75),
-                        'efficiency_score': analysis_result.get('efficiency_score', 65)
-                    }
-                }
-            )
-            
+
     except Exception as e:
         print(f"处理代码建议请求失败: {e}")
         print(traceback.format_exc())
@@ -973,8 +964,8 @@ def format_assignment():
     if len(raw_text.strip()) < 5:
         return error_response("Text is too short to format.", 400)
 
-    # 在请求上下文内提前获取 api_key，避免生成器脱离上下文后访问 current_app
-    api_key = current_app.config.get('ZHIPU_API_KEY') or os.environ.get('ZHIPU_API_KEY')
+    # 在请求上下文内提前获取 api_key，使用统一的 API 密钥管理器
+    api_key = api_keys.zhipu_key
 
     # 在请求上下文中查询数据库，获取一个未被占用的作业ID
     try:

@@ -8,11 +8,18 @@ import re
 # 加载环境变量
 load_dotenv()
 
+# 导入统一的 API 密钥管理器
+from services.api_keys import api_keys
+
+
 class AIEvaluator:
     def __init__(self, api_key: str = None):
         """初始化智谱AI评估器"""
-        # 优先使用传入的api_key，如果没有则从环境变量中获取
-        self.api_key = api_key or os.environ.get("ZHIPU_API_KEY", "")
+        # 优先使用传入的api_key，如果没有则使用统一的 API 密钥管理器
+        if api_key:
+            self.api_key = api_key
+        else:
+            self.api_key = api_keys.get_key('zhipu')
         
     def evaluate_code(self, code: str, assignment_title: str) -> Dict:
         """使用智谱大模型评估代码"""

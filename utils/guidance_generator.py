@@ -5,6 +5,7 @@ import os
 import re
 import traceback
 from utils.llm_evaluator import LLMEvaluator
+from services.api_keys import api_keys
 
 # 全局变量
 guidance_generator = None
@@ -13,23 +14,22 @@ initialized = False
 def initialize_guidance_system():
     """初始化编程指导系统"""
     global guidance_generator, initialized
-    
+
     if initialized:
         return True
-    
+
     try:
         print("\n尝试初始化编程指导系统...")
-        # 检查环境变量
-        api_key = os.environ.get("ZHIPU_API_KEY") or os.environ.get("OPENAI_API_KEY")
-        
-        if api_key:
+        # 使用统一的 API 密钥管理器检查
+
+        if api_keys.has_any_key:
             # 初始化评估器
             try:
-                if os.environ.get("ZHIPU_API_KEY"):
+                if api_keys.has_zhipu:
                     print("正在初始化智谱AI编程指导系统...")
                     guidance_generator = LLMEvaluator(api_type="zhipu")
                     print("✓ 智谱AI编程指导系统初始化成功")
-                elif os.environ.get("OPENAI_API_KEY"):
+                elif api_keys.has_openai:
                     print("正在初始化OpenAI编程指导系统...")
                     guidance_generator = LLMEvaluator(api_type="openai")
                     print("✓ OpenAI编程指导系统初始化成功")
@@ -68,7 +68,7 @@ def initialize_guidance_system():
                 print(traceback.format_exc())
                 
                 # 尝试切换API
-                if os.environ.get("ZHIPU_API_KEY") and os.environ.get("OPENAI_API_KEY"):
+                if api_keys.has_zhipu and api_keys.has_openai:
                     if "zhipuai" in str(e):
                         print("尝试切换到OpenAI API...")
                         try:

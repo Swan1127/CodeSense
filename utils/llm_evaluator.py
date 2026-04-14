@@ -10,6 +10,10 @@ import traceback
 # 加载环境变量
 load_dotenv()
 
+# 导入统一的 API 密钥管理器
+from services.api_keys import api_keys
+
+
 class LLMEvaluator:
     """大模型代码评估器"""
     
@@ -63,7 +67,7 @@ class LLMEvaluator:
                     print("======================================\n")
                     raise ImportError("未正确安装zhipuai库") from e
 
-                api_key = os.environ.get("ZHIPU_API_KEY")
+                api_key = api_keys.zhipu_key
                 if not api_key:
                     print("\n======== API密钥缺失 ========")
                     print("未设置ZHIPU_API_KEY环境变量")
@@ -80,7 +84,7 @@ class LLMEvaluator:
                 print(f"⚠️ 智谱AI初始化失败: {str(e)}")
                 print(f"尝试回退到其他API或本地评估方式")
                 # 尝试回退到OpenAI
-                if os.environ.get("OPENAI_API_KEY"):
+                if api_keys.has_openai:
                     print("检测到OpenAI API密钥，尝试切换到OpenAI...")
                     self.api_type = "openai"
                     self.model_name = "gpt-4-turbo"
@@ -106,7 +110,7 @@ class LLMEvaluator:
                     print("======================================\n")
                     raise ImportError("未正确安装openai库") from e
 
-                api_key = os.environ.get("OPENAI_API_KEY")
+                api_key = api_keys.openai_key
                 if not api_key:
                     print("\n======== API密钥缺失 ========")
                     print("未设置OPENAI_API_KEY环境变量")

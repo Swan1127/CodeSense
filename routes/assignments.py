@@ -179,18 +179,32 @@ def manage_assignments():
                 flash('会话已过期，请重新登录')
                 return redirect(url_for('auth.login'))
             
-            print("获取每个作业的最高得分...")    
-            for assignment in assignment_list.items:
-                try:
-                    max_score = Submission.query.filter_by(
-                        assignment_id=assignment.id,
-                        student_id=student_id
-                    ).order_by(desc(Submission.score)).first()
-                    
-                    assignment.max_student_score = max_score.score if max_score else 0
-                    print(f"作业 {assignment.id} 最高分: {assignment.max_student_score}")
-                except Exception as e:
-                    print(f"获取作业 {assignment.id} 分数时出错: {str(e)}")
+            print("获取每个作业的最高得分...")
+            # 优化：使用单次查询获取所有作业的最高分，避免 N+1 问题
+            assignment_ids = [a.id for a in assignment_list.items]
+            if assignment_ids:
+                # 子查询：获取每个作业该学生的最高分
+                from sqlalchemy import func
+                max_scores_subquery = db.session.query(
+                    Submission.assignment_id,
+                    func.max(Submission.score).label('max_score')
+                ).filter(
+                    Submission.student_id == student_id,
+                    Submission.assignment_id.in_(assignment_ids)
+                ).group_by(Submission.assignment_id).subquery()
+
+                # 主查询：连接获取结果
+                max_scores_query = db.session.query(
+                    max_scores_subquery.c.assignment_id,
+                    max_scores_subquery.c.max_score
+                )
+                max_scores_dict = {row.assignment_id: row.max_score for row in max_scores_query.all()}
+
+                # 分配分数
+                for assignment in assignment_list.items:
+                    assignment.max_student_score = max_scores_dict.get(assignment.id, 0)
+            else:
+                for assignment in assignment_list.items:
                     assignment.max_student_score = 0
             
             print("渲染学生作业视图...")
