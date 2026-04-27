@@ -193,7 +193,8 @@ def edit_class(class_id):
     teachers = User.query.filter_by(usertype='教师').all()
     
     if request.method == 'POST':
-        cls.teacher_id = request.form.get('teacher_id')
+        teacher_id = request.form.get('teacher_id')
+        cls.teacher_id = teacher_id if teacher_id else None
         cls.major = request.form.get('major')
         cls.grade = request.form.get('grade')
         cls.name = request.form.get('name')
