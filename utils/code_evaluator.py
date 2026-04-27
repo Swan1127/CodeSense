@@ -1069,24 +1069,57 @@ def generate_feedback(code, score, assignment_title=None):
     
     # 根据分数给出改进建议
     feedback += "\n改进建议：\n"
-    if score <= 60:
+    if score <= 40:
+        # 基础层：给出精确到行的具体建议 + 类比代码示例
         if "#include" not in code:
-            feedback += "- 添加必要的头文件引用。\n"
+            feedback += "- **第1行**：缺少头文件引用。C++程序通常需要 `#include <iostream>` 来使用输入输出功能。\n"
         if "using namespace std" not in code and "std::" not in code:
-            feedback += "- 使用std命名空间或在使用标准库时添加std::前缀。\n"
+            feedback += "- **命名空间**：未声明 `using namespace std;`，这会导致 `cout`、`cin` 等标准函数无法直接使用。\n"
+        if "int main" not in code and "void main" not in code:
+            feedback += "- **程序入口**：缺少 `int main()` 函数。每个C++程序必须有一个 main 函数作为起点。\n"
         if code_lines < 10:
-            feedback += "- 扩展代码实现，确保完成所有功能要求。\n"
-        feedback += "- 添加注释说明代码功能和实现逻辑。\n"
+            feedback += "- **代码量不足**：当前代码过短，可能未实现题目要求的核心逻辑。请先理清思路，再逐步补充代码。\n"
+        
+        # 检查常见语法错误并给出具体行号
+        lines = code.split('\n')
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            if stripped and not stripped.startswith('//') and not stripped.startswith('#'):
+                # 检查缺少分号
+                if stripped.endswith(')') and not stripped.startswith('if') and not stripped.startswith('for') and not stripped.startswith('while') and not stripped.startswith('else'):
+                    if '{' not in stripped and '//' not in stripped:
+                        feedback += f"- **第{i}行**：该语句可能缺少分号 `;`。\n"
+                        break  # 只报告第一个问题，避免信息过载
+        
+        feedback += "\n💡 **类比示例**（展示基本程序结构，非题目答案）：\n"
+        feedback += "```cpp\n"
+        feedback += "#include <iostream>\n"
+        feedback += "using namespace std;\n"
+        feedback += "int main() {\n"
+        feedback += "    int x;\n"
+        feedback += "    cin >> x;          // 读取输入\n"
+        feedback += "    cout << x * 2;     // 处理并输出\n"
+        feedback += "    return 0;\n"
+        feedback += "}\n"
+        feedback += "```\n"
+        feedback += "上面的示例展示了一个完整C++程序的基本框架：头文件→命名空间→main函数→输入→处理→输出。请参考此结构来组织你的代码。\n"
+        
+    elif score <= 60:
+        # 进阶层：引导思考
+        feedback += "- 你的代码已经具备基本框架，离正确答案不远了！👍\n"
+        if "#include" not in code:
+            feedback += "- 检查一下头文件引用是否完整。\n"
+        feedback += "- 💭 **思考**：试着用几组不同的输入手动运行你的程序，看看输出是否符合预期。\n"
+        feedback += "- 💭 **思考**：特别注意边界情况——当输入为0或负数时，你的程序表现如何？\n"
+        feedback += "- 添加注释说明代码功能和实现逻辑，这有助于你自己理清思路。\n"
     
     if score <= 85:
-        feedback += "- 考虑优化代码结构，提高可读性和维护性。\n"
-        feedback += "- 确保代码风格一致，使用合理的缩进和命名。\n"
-    
-    # 对于分数为低分的情况，添加更严厉的建议
-    if score <= 20:
-        feedback += "- 代码质量很差，需要全面改进。\n"
-        feedback += "- 建议重新学习C++基础知识，尤其是语法和基本结构。\n"
-        feedback += "- 确保理解题目要求，按要求实现代码。\n"
+        if score > 60:
+            # 优化层：高级建议
+            feedback += "- ✨ 考虑给变量起更有描述性的名字（如用 `sum` 代替 `s`，用 `count` 代替 `n`）。\n"
+            feedback += "- ✨ 检查缩进是否一致，代码风格统一能大幅提升可读性。\n"
+            if code.count('//') < 3 and code_lines > 15:
+                feedback += "- ✨ 建议在关键逻辑处添加注释，便于他人（和未来的你）理解代码意图。\n"
     
     return feedback
 
