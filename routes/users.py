@@ -3,7 +3,7 @@
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app
 from itsdangerous import URLSafeTimedSerializer
-from models import db, User, Submission, SystemLog
+from models import db, User, Submission, SystemLog, Class
 from utils.auth import login_required, admin_required, admin_or_teacher_required
 from sqlalchemy import desc
 from forms import EditProfileForm
@@ -214,8 +214,12 @@ def view_submissions():
 @login_required
 def edit_profile():
     """编辑个人资料"""
-    form = EditProfileForm()
     user = User.query.get(session.get('student_id'))
+    form = EditProfileForm()
+    
+    # 获取所有班级作为下拉选项
+    classes = Class.query.all()
+    form.class_name.choices = [('', '未分配')] + [(c.name, c.name) for c in classes]
     
     if form.validate_on_submit():
         try:
@@ -223,6 +227,14 @@ def edit_profile():
             user.username = form.username.data
             user.full_name = form.full_name.data
             user.class_name = form.class_name.data
+            
+            # 同时更新 class_id 以保持一致
+            if form.class_name.data:
+                target_class = Class.query.filter_by(name=form.class_name.data).first()
+                if target_class:
+                    user.class_id = target_class.id
+            else:
+                user.class_id = None
             
             db.session.commit()
             flash('资料更新成功！', 'success')

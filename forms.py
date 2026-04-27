@@ -50,5 +50,5 @@ class EditProfileForm(FlaskForm):
     """编辑资料表单"""
     username = StringField('用户名', validators=[DataRequired(message='用户名不能为空'), Length(1, 50)])
     full_name = StringField('姓名', validators=[DataRequired(message='姓名不能为空'), Length(1, 50)])
-    class_name = StringField('班级', validators=[Optional(), Length(0, 50)])
+    class_name = SelectField('班级', validators=[Optional()])
     submit = SubmitField('保存修改') 
