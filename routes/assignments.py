@@ -926,6 +926,7 @@ def add_teacher_assignment():
             id=form.assignment_id.data,
             title=form.title.data,
             description=form.description.data,
+            due_date=form.due_date.data,
             creator_id=current_user.student_id, # Set the creator
             total_score=0,
             average_score=0.0,
