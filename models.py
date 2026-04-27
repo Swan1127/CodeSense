@@ -898,8 +898,8 @@ class InviteToken(db.Model):
         return record
 
     @staticmethod
-    def validate_and_use(token_str):
-        """校验token是否有效，若有效则标记为已使用。返回 (ok, error_msg)"""
+    def validate(token_str):
+        """仅校验token是否有效（存在、未使用、未过期），不标记为已使用"""
         record = InviteToken.query.filter_by(token=token_str).first()
         if not record:
             return False, '无效的邀请链接'
@@ -907,7 +907,36 @@ class InviteToken(db.Model):
             return False, '该邀请链接已被使用'
         if dt.utcnow() > record.expires_at:
             return False, '邀请链接已过期，请联系管理员获取新链接'
-        record.is_used = True
-        record.used_at = dt.utcnow()
+        return True, ''
+
+    @staticmethod
+    def mark_as_used(token_str):
+        """将token标记为已使用"""
+        record = InviteToken.query.filter_by(token=token_str).first()
+        if record and not record.is_used:
+            record.is_used = True
+            record.used_at = dt.utcnow()
+            db.session.commit()
+            return True
+        return False
+
+    @staticmethod
+    def invalidate_all_unused():
+        """作废以前所有未使用的邀请链接"""
+        now = dt.utcnow()
+        unused_tokens = InviteToken.query.filter_by(is_used=False).filter(InviteToken.expires_at > now).all()
+        for t in unused_tokens:
+            t.expires_at = now  # 将过期时间设为当前时间即为失效
         db.session.commit()
-        return True, None
+
+    @staticmethod
+    def validate_and_use(token_str):
+        """
+        校验并使用token。
+        注意：为了更好的用户体验，注册页面加载时应只用 validate()，
+        只有在表单提交成功后才调用 mark_as_used()。
+        """
+        ok, err_msg = InviteToken.validate(token_str)
+        if ok:
+            InviteToken.mark_as_used(token_str)
+        return ok, err_msg

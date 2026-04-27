@@ -398,8 +398,14 @@ def view_staff_details(student_id):
 @login_required
 @admin_required
 def invite_teacher():
-    """生成一个用于教师注册的邀请链接（24小时有效，单次使用）"""
+    """生成一个用于教师注册的邀请链接（24小时有效，单次使用，且每次进入页面都会刷新唯一有效链接）"""
     from models import InviteToken
+    # 先作废之前所有未使用的邀请链接，实现“邀请一次一刷新”
+    try:
+        InviteToken.invalidate_all_unused()
+    except Exception as e:
+        current_app.logger.error(f"作废旧邀请码失败: {e}")
+
     serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
     token = serializer.dumps('teacher-invitation', salt='teacher-reg-salt')
     InviteToken.create(token_str=token, created_by=session.get('student_id'))

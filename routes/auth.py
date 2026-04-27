@@ -132,7 +132,7 @@ def register_teacher(token):
     # 数据库层单次使用校验
     try:
         from models import InviteToken
-        ok, err_msg = InviteToken.validate_and_use(token)
+        ok, err_msg = InviteToken.validate(token)
         if not ok:
             flash(err_msg, 'danger')
             return redirect(url_for('auth.login'))
@@ -165,6 +165,12 @@ def register_teacher(token):
             user.password = form.password.data
             db.session.add(user)
             db.session.commit()
+
+            # 注册成功后标记 token 为已使用
+            try:
+                InviteToken.mark_as_used(token)
+            except Exception as e:
+                current_app.logger.error(f"标记邀请码已使用失败: {e}")
 
             SystemLog.add_log(
                 log_type='用户注册',
