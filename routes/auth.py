@@ -2,6 +2,7 @@
 身份验证相关路由
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+import uuid
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 from flask_login import login_user, logout_user, current_user
 from models import db, User, SystemLog, SystemConfig
@@ -31,7 +32,13 @@ def login():
         current_app.logger.info(f"登录尝试 - 用户名: {username}, IP: {request.remote_addr}")
         user = User.query.filter_by(username=username).first()
         if user and user.verify_password(password):
+            # 单点登录逻辑：生成新的会话ID，令旧会话失效
+            new_session_id = uuid.uuid4().hex
+            user.current_session_id = new_session_id
+            db.session.commit()
+            
             login_user(user)
+            session['current_session_id'] = new_session_id
             session['student_id'] = user.student_id
             session['username'] = user.username
             session['full_name'] = user.full_name

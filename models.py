@@ -142,6 +142,7 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
     user_ascore = db.Column(db.Float, default=0.0)
     user_tscore = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=dt.utcnow)
+    current_session_id = db.Column(db.String(100), nullable=True, comment='当前合法的会话ID')
     
     # 定义与submissions的关系
     submissions = db.relationship('Submission', backref='user', lazy='dynamic', cascade='all, delete-orphan')
@@ -625,6 +626,13 @@ def init_db(app):
                     print('已添加 assignments.due_date 列')
                 except Exception:
                     pass  # 列已存在
+
+                try:
+                    conn.execute(db.text('ALTER TABLE users ADD COLUMN current_session_id VARCHAR(100) NULL'))
+                    conn.commit()
+                    print('已添加 users.current_session_id 列')
+                except Exception:
+                    pass  # 列已存在
         except Exception as e:
             print(f'自动迁移跳过: {e}')
 
@@ -832,7 +840,7 @@ class AssignmentKnowledgePoint(db.Model):
     created_at = db.Column(db.DateTime, default=dt.utcnow)
 
     # 关系
-    assignment = db.relationship('Assignment', backref='knowledge_points')
+    assignment = db.relationship('Assignment', backref=db.backref('knowledge_points', cascade='all, delete-orphan'))
 
     @staticmethod
     def add_to_assignment(assignment_id, knowledge_point, weight=1.0, difficulty=1.0, auto_detected=False):

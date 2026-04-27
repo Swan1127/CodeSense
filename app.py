@@ -10,7 +10,7 @@ import logging
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from logging import FileHandler
 
-from flask import Flask, request
+from flask import Flask, request, session, flash, redirect, url_for
 from flask_login import LoginManager
 # Flask-Session导入优化
 try:
@@ -159,6 +159,32 @@ def setup_logging(app):
     def log_request_info():
         if request.endpoint not in ['static', 'favicon']:  # 忽略静态文件请求
             access_logger.info(f'{request.remote_addr} - "{request.method} {request.path}" - User-Agent: {request.headers.get("User-Agent", "N/A")}')
+    
+    # 单点登录校验
+    @app.before_request
+    def check_single_session():
+        # 忽略静态文件、静态资源
+        if not request.endpoint or 'static' in request.endpoint or request.endpoint == 'favicon':
+            return
+            
+        # 允许登出操作
+        if request.endpoint == 'auth.logout':
+            return
+
+        from flask_login import current_user, logout_user
+        if current_user.is_authenticated:
+            # 检查Session中的ID是否与数据库中一致
+            session_id = session.get('current_session_id')
+            db_session_id = current_user.current_session_id
+            
+            # 调试日志
+            # app.logger.debug(f"User: {current_user.student_id}, SessionID: {session_id}, DB_SessionID: {db_session_id}")
+            
+            if session_id != db_session_id:
+                app.logger.warning(f"检测到并发登录: 用户 {current_user.username} (ID: {session_id} != DB: {db_session_id})，强制登出。")
+                logout_user()
+                flash('您的账号已在其他地方登录，当前会话已失效。', 'warning')
+                return redirect(url_for('auth.login'))
     
     @app.after_request
     def log_response_info(response):

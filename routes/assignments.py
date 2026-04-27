@@ -274,23 +274,30 @@ def add_assignment():
 
 @assignments.route('/delete_assignment/<int:assignment_id>', methods=['POST'])
 @login_required
-@admin_required
 def delete_assignment(assignment_id):
-    """删除作业"""
+    """删除作业 (仅限管理员或作业创建者)"""
     assignment_to_delete = Assignment.query.get_or_404(assignment_id)
     assignment_title = assignment_to_delete.title
+    
+    # 权限检查：仅允许管理员或创建者删除
+    is_admin = getattr(current_user, 'usertype', '') == '管理员'
+    is_creator = assignment_to_delete.creator_id == current_user.student_id
+    
+    if not (is_admin or is_creator):
+        flash('您没有权限删除此作业', 'danger')
+        return redirect(url_for('assignments.manage_assignments'))
     
     try:
         db.session.delete(assignment_to_delete)
         db.session.commit()
         
         # 添加系统日志
-        admin_id = session.get('student_id')
-        admin_user = User.query.get(admin_id)
+        user_id = session.get('student_id')
+        user_role = '管理员' if is_admin else '教师'
         SystemLog.add_log(
             log_type='删除作业',
-            content=f'管理员 {admin_user.username} 删除了作业：{assignment_title} (ID: {assignment_id})',
-            user_id=admin_id,
+            content=f'{user_role} {current_user.username} 删除了作业：{assignment_title} (ID: {assignment_id})',
+            user_id=user_id,
             icon='bi bi-trash'
         )
         
@@ -299,7 +306,11 @@ def delete_assignment(assignment_id):
         db.session.rollback()
         flash(f'删除作业失败: {str(e)}', 'danger')
     
-    return redirect(url_for('assignments.manage_assignments'))
+    # 根据用户角色返回不同的列表页面
+    if is_admin:
+        return redirect(url_for('assignments.manage_assignments'))
+    else:
+        return redirect(url_for('assignments.teacher_assignments'))
 
 
 @assignments.route('/view_assignment/<int:assignment_id>')

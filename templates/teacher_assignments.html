@@ -66,6 +66,14 @@
                                         class="btn btn-sm btn-primary">
                                         <i class="bi bi-pencil-square"></i> 布置
                                     </a>
+                                    <form
+                                        action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}"
+                                        method="POST" style="display:inline;"
+                                        onsubmit="return confirm('确定要删除这个作业吗？这将永久删除该作业及其所有学生的提交记录，不可恢复！');">
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            <i class="bi bi-trash"></i> 删除
+                                        </button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>
