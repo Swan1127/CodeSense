@@ -458,7 +458,7 @@ def ask_question():
         student_id = session.get('student_id')
         
         # 简单的请求限制检查
-        now = datetime.now()
+        now = datetime.utcnow()
         last_request_time = session.get('last_ai_question_time')
         
         if last_request_time:
@@ -551,7 +551,7 @@ def ask_question():
                         question=question,
                         code_snapshot=code,
                         answer=answer,
-                        asked_at=datetime.now()
+                        asked_at=datetime.utcnow()
                     )
                     db.session.add(new_question)
                     db.session.commit()

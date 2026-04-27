@@ -341,7 +341,7 @@ def admin_dashboard():
         recent_activities = []
         for log in recent_logs:
             # 计算时间差
-            time_diff = datetime.datetime.now() - log.created_at
+            time_diff = datetime.datetime.utcnow() - log.created_at
             if time_diff.days > 0:
                 time_str = f"{time_diff.days}天前"
             elif time_diff.seconds >= 3600:
@@ -675,7 +675,7 @@ def profile():
         
         for log in recent_logs:
             # 计算相对时间
-            time_diff = dt.now() - log.created_at
+            time_diff = dt.utcnow() - log.created_at
             if time_diff.days > 0:
                 time_str = f"{time_diff.days}天前"
             elif time_diff.seconds >= 3600:

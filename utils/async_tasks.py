@@ -62,7 +62,7 @@ class AsyncTaskManager:
             'id': f"{task_type}_{int(time.time())}_{threading.current_thread().ident}",
             'type': task_type,
             'data': kwargs,
-            'created_at': datetime.now(),
+            'created_at': datetime.utcnow(),
             'attempts': 0
         }
         
