@@ -1086,7 +1086,12 @@
         // 设置变量
         var assignmentId = "{{ assignment.id }}";
         var submissionCount = {{ submission_count }};
-    });
+
+    // 获取旧版AI组件引用（兼容旧代码）
+    var aiPlaceholder = document.getElementById('ai-placeholder');
+    var aiLoading = document.getElementById('ai-loading');
+    var aiResponse = document.getElementById('ai-response');
+    var codeMetrics = document.querySelector('.feedback-metrics');
 
     // 提交代码按钮
     var submitButton = document.getElementById('submit-code-btn');
@@ -1690,6 +1695,8 @@
             toastEl.remove();
         });
     }
+    // 隐藏加载通知
+    hideEvaluationMessages();
 });
 </script>
 
