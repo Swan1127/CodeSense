@@ -514,8 +514,8 @@ def download_code(submission_id):
     try:
         submission = Submission.query.get_or_404(submission_id)
         
-        # 确保只有提交者或管理员可以下载代码
-        if session['usertype'] != '管理员' and session['student_id'] != submission.student_id:
+        # 确保只有提交者、教师或管理员可以下载代码
+        if session['usertype'] not in ['管理员', '教师'] and session['student_id'] != submission.student_id:
             flash('您无权下载该代码', 'danger')
             return redirect(url_for('main.home'))
         
