@@ -11,14 +11,14 @@
         padding: 2rem;
         margin-bottom: 2rem;
     }
-    
+
     .stats-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 1rem;
         margin-bottom: 2rem;
     }
-    
+
     .stat-card {
         background: white;
         border-radius: 0.5rem;
@@ -26,18 +26,18 @@
         text-align: center;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     }
-    
+
     .stat-value {
         font-size: 2rem;
         font-weight: 600;
         color: var(--primary-color);
     }
-    
+
     .stat-label {
         color: #6c757d;
         margin-top: 0.5rem;
     }
-    
+
     .progress-card {
         background: white;
         border-radius: 0.5rem;
@@ -45,34 +45,34 @@
         margin-bottom: 2rem;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     }
-    
+
     .progress-item {
         margin-bottom: 1rem;
     }
-    
+
     .progress-header {
         display: flex;
         justify-content: space-between;
         margin-bottom: 0.5rem;
     }
-    
+
     .progress {
         height: 0.5rem;
         border-radius: 0.25rem;
     }
-    
+
     .student-table {
         background: white;
         border-radius: 0.5rem;
         padding: 1.5rem;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     }
-    
+
     .table th {
         border-top: none;
         background: #f8f9fa;
     }
-    
+
     .student-avatar {
         width: 40px;
         height: 40px;
@@ -109,7 +109,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- 统计数据 -->
     <div class="stats-grid">
         <div class="stat-card">
@@ -133,7 +133,7 @@
             <div class="stat-label">作业完成数</div>
         </div>
     </div>
-    
+
     <!-- 作业完成进度 -->
     {% if assignment_progress %}
     <div class="progress-card">
@@ -145,19 +145,17 @@
                 <span>{{ item.completed }}/{{ item.total }} ({{ item.progress_rate }}%)</span>
             </div>
             <div class="progress">
-                <div class="progress-bar" 
-                     style="width: {{ item.progress_rate }}%"
-                     role="progressbar"></div>
+                <div class="progress-bar" style="width: {{ item.progress_rate }}%" role="progressbar"></div>
             </div>
         </div>
         {% endfor %}
     </div>
     {% endif %}
-    
+
     <!-- 学生列表 -->
     <div class="student-table">
         <h4>学生列表</h4>
-        
+
         {% if students.items %}
         <div class="table-responsive">
             <table class="table">
@@ -186,14 +184,15 @@
                         </td>
                         <td>{{ student.student_id }}</td>
                         <td>
-                            <span class="badge {% if student.user_ascore >= 4.0 %}badge-success{% elif student.user_ascore >= 3.0 %}badge-warning{% else %}badge-secondary{% endif %}">
+                            <span class="badge badge-score-{{ student.user_ascore|round|int }}">
                                 {{ "%.1f"|format(student.user_ascore) }}
                             </span>
                         </td>
                         <td>{{ student.submit_count }}</td>
                         <td>{{ student.created_at.strftime('%Y-%m-%d') if student.created_at else '-' }}</td>
                         <td>
-                            <a href="{{ url_for('users.view_student_details', student_id=student.student_id) }}" class="btn btn-sm btn-outline-primary">
+                            <a href="{{ url_for('users.view_student_details', student_id=student.student_id) }}"
+                                class="btn btn-sm btn-outline-primary">
                                 查看详情
                             </a>
                         </td>
@@ -202,44 +201,47 @@
                 </tbody>
             </table>
         </div>
-        
+
         <!-- 分页 -->
         {% if students.pages > 1 %}
         <nav aria-label="学生列表分页">
             <ul class="pagination justify-content-center">
                 {% if students.has_prev %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('classes.class_detail', class_id=cls.id, page=students.prev_num) }}">上一页</a>
+                    <a class="page-link"
+                        href="{{ url_for('classes.class_detail', class_id=cls.id, page=students.prev_num) }}">上一页</a>
                 </li>
                 {% endif %}
-                
+
                 {% for page_num in students.iter_pages() %}
-                    {% if page_num %}
-                        {% if page_num != students.page %}
-                        <li class="page-item">
-                            <a class="page-link" href="{{ url_for('classes.class_detail', class_id=cls.id, page=page_num) }}">{{ page_num }}</a>
-                        </li>
-                        {% else %}
-                        <li class="page-item active">
-                            <span class="page-link">{{ page_num }}</span>
-                        </li>
-                        {% endif %}
-                    {% else %}
-                    <li class="page-item disabled">
-                        <span class="page-link">…</span>
-                    </li>
-                    {% endif %}
+                {% if page_num %}
+                {% if page_num != students.page %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('classes.class_detail', class_id=cls.id, page=page_num) }}">{{
+                        page_num }}</a>
+                </li>
+                {% else %}
+                <li class="page-item active">
+                    <span class="page-link">{{ page_num }}</span>
+                </li>
+                {% endif %}
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">…</span>
+                </li>
+                {% endif %}
                 {% endfor %}
-                
+
                 {% if students.has_next %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('classes.class_detail', class_id=cls.id, page=students.next_num) }}">下一页</a>
+                    <a class="page-link"
+                        href="{{ url_for('classes.class_detail', class_id=cls.id, page=students.next_num) }}">下一页</a>
                 </li>
                 {% endif %}
             </ul>
         </nav>
         {% endif %}
-        
+
         {% else %}
         <div class="text-center py-4">
             <i class="bi bi-people" style="font-size: 3rem; color: #ddd;"></i>

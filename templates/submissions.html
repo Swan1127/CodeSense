@@ -238,13 +238,9 @@
                         <td>{{ submission.assignment.title }}</td>
                         <td>
                             {% if submission.score is not none %}
-                            {% if submission.score >= 80 %}
-                            <span class="badge badge-success">{{ submission.score }}</span>
-                            {% elif submission.score >= 60 %}
-                            <span class="badge badge-warning">{{ submission.score }}</span>
-                            {% else %}
-                            <span class="badge badge-danger">{{ submission.score }}</span>
-                            {% endif %}
+                            <span class="badge badge-score-{{ submission.score|round|int }}">
+                                {{ submission.score }}
+                            </span>
                             {% else %}
                             <span class="badge badge-secondary">未评分</span>
                             {% endif %}

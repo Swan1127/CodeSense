@@ -196,8 +196,7 @@
         </td>
         <td>
             {% if assignment.max_student_score %}
-            <span
-                class="badge {% if assignment.max_student_score >= 4.0 %}badge-success{% elif assignment.max_student_score >= 3.0 %}badge-warning{% else %}badge-danger{% endif %}">
+            <span class="badge badge-score-{{ assignment.max_student_score|round|int }}">
                 {{ assignment.max_student_score }}
             </span>
             {% else %}

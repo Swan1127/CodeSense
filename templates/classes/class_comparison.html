@@ -234,9 +234,8 @@
                         </td>
                         <td>{{ item.stats.student_count }}</td>
                         <td>
-                            <span
-                                class="badge {% if item.stats.avg_score >= 4.0 %}badge-success{% elif item.stats.avg_score >= 3.0 %}badge-warning{% else %}badge-secondary{% endif %}">
-                                {{ "%.1f"|format(item.stats.avg_score) }}
+                            class="badge badge-score-{{ item.stats.avg_score|round|int }}">
+                            {{ "%.1f"|format(item.stats.avg_score) }}
                             </span>
                         </td>
                         <td>{{ item.stats.total_submissions }}</td>

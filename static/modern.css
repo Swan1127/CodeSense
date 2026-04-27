@@ -2,39 +2,41 @@
 
 :root {
   /* 主色调 */
-  --primary-color: #2563eb; /* 深蓝色 */
+  --primary-color: #2563eb;
+  /* 深蓝色 */
   --primary-hover: #1d4ed8;
-  --secondary-color: #f59e0b; /* 金色点缀 */
-  
+  --secondary-color: #f59e0b;
+  /* 金色点缀 */
+
   /* 中性色 */
   --dark: #1f2937;
   --dark-light: #374151;
   --medium: #9ca3af;
   --light: #f3f4f6;
   --white: #ffffff;
-  
+
   /* 功能色 */
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
   --info: #3b82f6;
-  
+
   /* 字体 */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
-  
+
   /* 圆角 */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
-  
+
   /* 间距 */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
-  
+
   /* 阴影 */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -118,7 +120,8 @@ a:hover {
   transition: all 0.2s ease;
 }
 
-.navbar-link:hover, .navbar-link.active {
+.navbar-link:hover,
+.navbar-link.active {
   color: var(--primary-color);
   background-color: rgba(37, 99, 235, 0.05);
 }
@@ -359,7 +362,8 @@ a:hover {
   border-collapse: collapse;
 }
 
-.table th, .table td {
+.table th,
+.table td {
   padding: var(--spacing-md);
   text-align: left;
   border-bottom: 1px solid #e5e7eb;
@@ -407,6 +411,32 @@ a:hover {
 .badge-danger {
   background-color: rgba(239, 68, 68, 0.1);
   color: var(--danger);
+}
+
+/* 评分专属徽章 (1-5分) */
+.badge-score-1 {
+  background-color: #ef4444;
+  color: white;
+}
+
+.badge-score-2 {
+  background-color: #f97316;
+  color: white;
+}
+
+.badge-score-3 {
+  background-color: #eab308;
+  color: white;
+}
+
+.badge-score-4 {
+  background-color: #84cc16;
+  color: white;
+}
+
+.badge-score-5 {
+  background-color: #22c55e;
+  color: white;
 }
 
 /* 提示和警告 */
@@ -470,27 +500,28 @@ a:hover {
     align-items: center;
     gap: var(--spacing-md);
   }
-  
+
   .navbar-nav {
-    display: flex !important; /* 强制显示 */
+    display: flex !important;
+    /* 强制显示 */
     justify-content: center;
     width: 100%;
     flex-wrap: wrap;
     padding: var(--spacing-sm) 0;
     margin-top: var(--spacing-sm);
   }
-  
+
   .navbar-user {
     width: 100%;
     justify-content: center;
     margin-top: var(--spacing-sm);
   }
-  
+
   .footer-content {
     flex-direction: column;
     gap: var(--spacing-md);
   }
-  
+
   .footer-links {
     flex-direction: column;
     gap: var(--spacing-sm);
@@ -578,11 +609,22 @@ a:hover {
 }
 
 /* 各类型 Toast 的左侧边线 */
-.toast-success { border-left: 5px solid var(--success); }
-.toast-danger { border-left: 5px solid var(--danger); }
-.toast-warning { border-left: 5px solid var(--warning); }
-.toast-info { border-left: 5px solid var(--info); }
+.toast-success {
+  border-left: 5px solid var(--success);
+}
+
+.toast-danger {
+  border-left: 5px solid var(--danger);
+}
+
+.toast-warning {
+  border-left: 5px solid var(--warning);
+}
+
+.toast-info {
+  border-left: 5px solid var(--info);
+}
 
 .btn-close {
   box-shadow: none !important;
-} 
+}

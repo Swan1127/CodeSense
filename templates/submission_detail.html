@@ -52,20 +52,7 @@
         border-radius: 0.375rem;
     }
 
-    .badge-success {
-        background-color: #d1fae5;
-        color: #047857;
-    }
-
-    .badge-warning {
-        background-color: #fef3c7;
-        color: #b45309;
-    }
-
-    .badge-danger {
-        background-color: #fee2e2;
-        color: #b91c1c;
-    }
+    /* 移除冗余的 badge-success, badge-warning, badge-danger 定义，统一使用 modern.css */
 
     .code-section {
         padding: 1.5rem;
@@ -233,9 +220,8 @@
             <div class="submission-meta-item">
                 <i class="bi bi-award"></i>
                 <span class="submission-meta-label">得分:</span>
-                <span
-                    class="ms-1 fw-bold fs-5 {% if submission.score >= 4 %}text-success{% elif submission.score >= 3 %}text-warning{% else %}text-danger{% endif %}">
-                    {{ submission.score }}/5
+                <span class="ms-1 badge badge-score-{{ submission.score|round|int }} fs-6">
+                    {{ submission.score }} / 5
                 </span>
                 {% if submission.sandbox_total is not none %}
                 <span
