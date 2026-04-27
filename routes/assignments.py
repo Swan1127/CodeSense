@@ -170,6 +170,9 @@ def manage_assignments():
                 sort_by=sort_by,
                 sort_order=sort_order
             )
+        elif usertype == '教师':
+            print("显示教师视图 - 重定向到教师作业管理")
+            return redirect(url_for('assignments.teacher_assignments'))
         else:
             # 对于学生用户，获取每个作业的最高得分
             student_id = session.get('student_id')
