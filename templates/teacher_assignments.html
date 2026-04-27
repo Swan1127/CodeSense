@@ -28,12 +28,14 @@
                 <table class="table table-hover">
                     <thead>
                         <tr>
-                            <th>ID</th>
+                        <tr>
+                            <th width="60">ID</th>
                             <th>作业标题</th>
+                            <th width="120">发布日期</th>
+                            <th width="150">截止倒计时</th>
                             <th>已布置给我的班级</th>
-                            <th>总提交数</th>
-                            <th>平均分</th>
-                            <th>操作</th>
+                            <th width="100">提交/平均分</th>
+                            <th width="150">操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -41,51 +43,83 @@
                         <tr>
                             <td>{{ assignment.id }}</td>
                             <td>
-                                <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}">
+                                <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}"
+                                    class="fw-bold">
                                     {{ assignment.title }}
                                 </a>
                             </td>
                             <td>
-                                {% if assignment.assigned_to_my_classes %}
-                                {% for class_name in assignment.assigned_to_my_classes %}
-                                <span class="badge bg-success">{{ class_name }}</span>
-                                {% endfor %}
-                                {% else %}
-                                <span class="badge bg-secondary">未布置</span>
-                                {% endif %}
+                                <small class="text-muted">
+                                    {{ assignment.created_time.strftime('%Y-%m-%d %H:%M') if assignment.created_time
+                                    else '未知' }}
+                                </small>
                             </td>
-                            <td>{{ assignment.count }}</td>
-                            <td>{{ "%.2f"|format(assignment.average_score) }}</td>
                             <td>
-                                <div class="btn-group">
-                                    <a href="{{ url_for('assignments.edit_assignment', assignment_id=assignment.id) }}"
-                                        class="btn btn-sm btn-warning">
-                                        <i class="bi bi-pencil"></i> 编辑
-                                    </a>
-                                    <a href="{{ url_for('assignments.assign_to_classes', assignment_id=assignment.id) }}"
-                                        class="btn btn-sm btn-primary">
-                                        <i class="bi bi-pencil-square"></i> 布置
-                                    </a>
-                                    <form
-                                        action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}"
-                                        method="POST" style="display:inline;"
-                                        onsubmit="return confirm('确定要删除这个作业吗？这将永久删除该作业及其所有学生的提交记录，不可恢复！');">
-                                        <button type="submit" class="btn btn-sm btn-danger">
-                                            <i class="bi bi-trash"></i> 删除
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="6" class="text-center text-muted">系统中还没有任何作业。</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                                {% if assignment.due_date %}
+                                {% set total_seconds = (assignment.due_date - assignment.created_time).total_seconds()
+                                if assignment.created_time else 86400 * 7 %}
+                                {% set remaining_seconds = (assignment.due_date - now).total_seconds() %}
+
+                                {% if remaining_seconds > 0 %}
+                                {% set progress = (remaining_seconds / total_seconds * 100) | round | int %}
+                                {% if progress > 100 %}{% set progress = 100 %}{% endif %}
+                                {% if progress < 0 %}{% set progress=0 %}{% endif %} <div class="progress mb-1"
+                                    style="height: 4px; border-radius: 2px;">
+                                    <div class="progress-bar {% if progress > 50 %}bg-success{% elif progress > 15 %}bg-warning{% else %}bg-danger{% endif %}"
+                                        role="progressbar" style="width: {{ progress }}%;"></div>
             </div>
+            <small class="text-muted" style="font-size: 0.7rem;">
+                剩余: {{ (remaining_seconds / 3600 / 24) | round(1) }} 天
+            </small>
+            {% else %}
+            <span class="badge bg-danger">已截止</span>
+            {% endif %}
+            {% else %}
+            <span class="text-muted small">无截止日期</span>
+            {% endif %}
+            </td>
+            <td>
+                {% if assignment.assigned_to_my_classes %}
+                {% for class_name in assignment.assigned_to_my_classes %}
+                <span class="badge bg-success">{{ class_name }}</span>
+                {% endfor %}
+                {% else %}
+                <span class="badge bg-secondary">未布置</span>
+                {% endif %}
+            </td>
+            <td>
+                <small class="text-muted">提交: {{ assignment.count }}</small><br>
+                <small class="text-info">平均: {{ "%.2f"|format(assignment.average_score) }}</small>
+            </td>
+            <td>
+                <div class="btn-group">
+                    <a href="{{ url_for('assignments.edit_assignment', assignment_id=assignment.id) }}"
+                        class="btn btn-sm btn-warning">
+                        <i class="bi bi-pencil"></i> 编辑
+                    </a>
+                    <a href="{{ url_for('assignments.assign_to_classes', assignment_id=assignment.id) }}"
+                        class="btn btn-sm btn-primary">
+                        <i class="bi bi-pencil-square"></i> 布置
+                    </a>
+                    <form action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}"
+                        method="POST" style="display:inline;"
+                        onsubmit="return confirm('确定要删除这个作业吗？这将永久删除该作业及其所有学生的提交记录，不可恢复！');">
+                        <button type="submit" class="btn btn-sm btn-danger">
+                            <i class="bi bi-trash"></i> 删除
+                        </button>
+                    </form>
+                </div>
+            </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="text-center text-muted">系统中还没有任何作业。</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+            </table>
         </div>
     </div>
+</div>
 </div>
 {% endblock %}

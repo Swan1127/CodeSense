@@ -259,6 +259,12 @@ def create_app(config_name='default'):
             return _json.loads(s) if s else []
         except Exception:
             return []
+
+    # 注册全局上下文变量
+    @app.context_processor
+    def inject_now():
+        from datetime import datetime as dt_now
+        return {'now': dt_now.utcnow()}
     
     # 初始化Flask-Session（如果可用）
     if HAS_FLASK_SESSION and Session is not None:

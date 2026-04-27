@@ -128,11 +128,14 @@
             <table class="table">
                 <thead>
                     <tr>
-                        <th width="80">ID</th>
+                    <tr>
+                        <th width="60">ID</th>
                         <th>标题</th>
-                        <th width="120">提交次数</th>
-                        <th width="120">平均分</th>
-                        <th width="170">操作</th>
+                        <th width="100">出题教师</th>
+                        <th width="120">发布日期</th>
+                        <th width="150">状态/倒计时</th>
+                        <th width="100">提交/平均分</th>
+                        <th width="150">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -140,81 +143,119 @@
                     <tr>
                         <td>{{ assignment.id }}</td>
                         <td>
-                            <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}">
+                            <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}"
+                                class="fw-bold">
                                 {{ assignment.title }}
                             </a>
                         </td>
-                        <td>{{ assignment.count }}</td>
-                        <td>{{ '%.2f' % assignment.average_score if assignment.average_score else '暂无' }}</td>
                         <td>
-                            <div class="d-flex gap-2">
-                                <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}"
-                                    class="btn btn-secondary btn-sm">
-                                    <i class="bi bi-eye"></i> 查看
-                                </a>
-                                <a href="{{ url_for('assignments.edit_assignment', assignment_id=assignment.id) }}"
-                                    class="btn btn-warning btn-sm">
-                                    <i class="bi bi-pencil"></i> 编辑
-                                </a>
-                                <form
-                                    action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}"
-                                    method="post" onsubmit="return confirm('确定要删除此作业吗？此操作不可撤销。');">
-                                    <button type="submit" class="btn btn-danger btn-sm">
-                                        <i class="bi bi-trash"></i> 删除
-                                    </button>
-                                </form>
-                            </div>
+                            <span class="badge bg-light text-dark">
+                                {{ assignment.creator.full_name if assignment.creator else '未知' }}
+                            </span>
                         </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+                        <td>
+                            <small class="text-muted">
+                                {{ assignment.created_time.strftime('%Y-%m-%d %H:%M') if assignment.created_time else
+                                '未知' }}
+                            </small>
+                        </td>
+                        <td>
+                            {% if assignment.due_date %}
+                            {% set total_seconds = (assignment.due_date - assignment.created_time).total_seconds() if
+                            assignment.created_time else 86400 * 7 %}
+                            {% set remaining_seconds = (assignment.due_date - now).total_seconds() %}
 
-        <!-- 分页 -->
-        {% if assignments.pages > 1 %}
-        <div class="d-flex justify-content-center mt-4">
-            <nav>
-                <ul class="pagination">
-                    <li class="page-item {% if not assignments.has_prev %}disabled{% endif %}">
+                            {% if remaining_seconds > 0 %}
+                            {% set progress = (remaining_seconds / total_seconds * 100) | round | int %}
+                            {% if progress > 100 %}{% set progress = 100 %}{% endif %}
+                            {% if progress < 0 %}{% set progress=0 %}{% endif %} <div class="progress mb-1"
+                                style="height: 4px; border-radius: 2px;">
+                                <div class="progress-bar {% if progress > 50 %}bg-success{% elif progress > 15 %}bg-warning{% else %}bg-danger{% endif %}"
+                                    role="progressbar" style="width: {{ progress }}%;"></div>
+        </div>
+        <small class="text-muted" style="font-size: 0.7rem;">
+            剩余: {{ (remaining_seconds / 3600 / 24) | round(1) }} 天
+        </small>
+        {% else %}
+        <span class="badge bg-danger">已截止</span>
+        {% endif %}
+        {% else %}
+        <span class="text-muted small">无截止日期</span>
+        {% endif %}
+        </td>
+        <td>
+            <small class="text-muted">提交: {{ assignment.count }}</small><br>
+            <small class="text-info">平均: {{ '%.2f' % assignment.average_score if assignment.average_score else '0.00'
+                }}</small>
+        </td>
+        <td>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}"
+                    class="btn btn-secondary btn-sm">
+                    <i class="bi bi-eye"></i> 查看
+                </a>
+                <a href="{{ url_for('assignments.edit_assignment', assignment_id=assignment.id) }}"
+                    class="btn btn-warning btn-sm">
+                    <i class="bi bi-pencil"></i> 编辑
+                </a>
+                <form action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}" method="post"
+                    onsubmit="return confirm('确定要删除此作业吗？此操作不可撤销。');">
+                    <button type="submit" class="btn btn-danger btn-sm">
+                        <i class="bi bi-trash"></i> 删除
+                    </button>
+                </form>
+            </div>
+        </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+        </table>
+    </div>
+
+    <!-- 分页 -->
+    {% if assignments.pages > 1 %}
+    <div class="d-flex justify-content-center mt-4">
+        <nav>
+            <ul class="pagination">
+                <li class="page-item {% if not assignments.has_prev %}disabled{% endif %}">
+                    <a class="page-link"
+                        href="{{ url_for('assignments.manage_assignments', page=assignments.prev_num, search=search_term, sort_by=sort_by, sort_order=sort_order) if assignments.has_prev else '#' }}">
+                        <i class="bi bi-chevron-left"></i> 上一页
+                    </a>
+                </li>
+
+                {# 计算显示页码的范围 #}
+                {% set start_page = assignments.page - 2 if assignments.page - 2 > 0 else 1 %}
+                {% set end_page = assignments.page + 2 if assignments.page + 2 < assignments.pages else
+                    assignments.pages %} {% for page_num in range(start_page, end_page + 1) %} <li
+                    class="page-item {% if page_num == assignments.page %}active{% endif %}">
+                    <a class="page-link"
+                        href="{{ url_for('assignments.manage_assignments', page=page_num, search=search_term, sort_by=sort_by, sort_order=sort_order) }}">{{
+                        page_num }}</a>
+                    </li>
+                    {% endfor %}
+
+                    <li class="page-item {% if not assignments.has_next %}disabled{% endif %}">
                         <a class="page-link"
-                            href="{{ url_for('assignments.manage_assignments', page=assignments.prev_num, search=search_term, sort_by=sort_by, sort_order=sort_order) if assignments.has_prev else '#' }}">
-                            <i class="bi bi-chevron-left"></i> 上一页
+                            href="{{ url_for('assignments.manage_assignments', page=assignments.next_num, search=search_term, sort_by=sort_by, sort_order=sort_order) if assignments.has_next else '#' }}">
+                            下一页 <i class="bi bi-chevron-right"></i>
                         </a>
                     </li>
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
 
-                    {# 计算显示页码的范围 #}
-                    {% set start_page = assignments.page - 2 if assignments.page - 2 > 0 else 1 %}
-                    {% set end_page = assignments.page + 2 if assignments.page + 2 < assignments.pages else
-                        assignments.pages %} {% for page_num in range(start_page, end_page + 1) %} <li
-                        class="page-item {% if page_num == assignments.page %}active{% endif %}">
-                        <a class="page-link"
-                            href="{{ url_for('assignments.manage_assignments', page=page_num, search=search_term, sort_by=sort_by, sort_order=sort_order) }}">{{
-                            page_num }}</a>
-                        </li>
-                        {% endfor %}
-
-                        <li class="page-item {% if not assignments.has_next %}disabled{% endif %}">
-                            <a class="page-link"
-                                href="{{ url_for('assignments.manage_assignments', page=assignments.next_num, search=search_term, sort_by=sort_by, sort_order=sort_order) if assignments.has_next else '#' }}">
-                                下一页 <i class="bi bi-chevron-right"></i>
-                            </a>
-                        </li>
-                </ul>
-            </nav>
-        </div>
-        {% endif %}
-
+    {% else %}
+    <div class="alert alert-info">
+        {% if search_term %}
+        <i class="bi bi-info-circle"></i> 没有找到匹配 "{{ search_term }}" 的作业。
         {% else %}
-        <div class="alert alert-info">
-            {% if search_term %}
-            <i class="bi bi-info-circle"></i> 没有找到匹配 "{{ search_term }}" 的作业。
-            {% else %}
-            <i class="bi bi-info-circle"></i> 暂无作业数据，请点击"添加新作业"按钮创建第一个作业。
-            {% endif %}
-        </div>
+        <i class="bi bi-info-circle"></i> 暂无作业数据，请点击"添加新作业"按钮创建第一个作业。
         {% endif %}
     </div>
+    {% endif %}
+</div>
 </div>
 
 <!-- 增加统计卡片部分 -->

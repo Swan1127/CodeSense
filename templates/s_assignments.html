@@ -11,72 +11,72 @@
         margin-bottom: 1.5rem;
         overflow: hidden;
     }
-    
+
     .table {
         margin-bottom: 0;
     }
-    
+
     .table th {
         font-weight: 600;
         color: #374151;
         background-color: #f9fafb;
         border-bottom: 1px solid #e5e7eb;
     }
-    
+
     .table td {
         padding: 0.75rem 1rem;
         vertical-align: middle;
         border-bottom: 1px solid #e5e7eb;
     }
-    
+
     .table tbody tr:hover {
         background-color: #f9fafb;
     }
-    
+
     .table tbody tr:last-child td {
         border-bottom: none;
     }
-    
+
     .table a {
         color: var(--primary-color);
         text-decoration: none;
         font-weight: 500;
     }
-    
+
     .table a:hover {
         color: var(--primary-hover);
         text-decoration: underline;
     }
-    
+
     .badge {
         font-size: 0.75rem;
         font-weight: 500;
         padding: 0.25rem 0.5rem;
         border-radius: 9999px;
     }
-    
+
     .badge-success {
         background-color: #ecfdf5;
         color: #10b981;
     }
-    
+
     .badge-warning {
         background-color: #fffbeb;
         color: #f59e0b;
     }
-    
+
     .badge-danger {
         background-color: #fef2f2;
         color: #ef4444;
     }
-    
+
     .pagination {
         display: flex;
         justify-content: center;
         margin-top: 1.5rem;
         gap: 0.5rem;
     }
-    
+
     .page-link {
         display: inline-flex;
         align-items: center;
@@ -90,19 +90,19 @@
         text-decoration: none;
         transition: all 0.15s ease;
     }
-    
+
     .page-link:hover {
         background-color: #f9fafb;
         border-color: #d1d5db;
         z-index: 2;
     }
-    
+
     .page-link.active {
         background-color: var(--primary-color);
         border-color: var(--primary-color);
         color: #fff;
     }
-    
+
     .page-info {
         display: inline-flex;
         align-items: center;
@@ -138,73 +138,108 @@
             <table class="table">
                 <thead>
                     <tr>
-                        <th width="80">ID</th>
+                        <th width="60">ID</th>
                         <th>标题</th>
-                        <th width="120">提交次数</th>
-                        <th width="120">平均分</th>
-                        <th width="120">个人最高分</th>
+                        <th width="100">出题教师</th>
+                        <th width="150">发布日期</th>
+                        <th width="150">截止倒计时</th>
+                        <th width="100">提交/平均分</th>
+                        <th width="100">个人最高分</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for assignment in assignments %}
                     <tr>
+                        <td>{{ assignment.id }}</td>
                         <td>
-                            <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}">
-                                {{ assignment.id }}
-                            </a>
-                        </td>
-                        <td>
-                            <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}">
+                            <a href="{{ url_for('assignments.view_assignment', assignment_id=assignment.id) }}"
+                                class="fw-bold">
                                 {{ assignment.title }}
                             </a>
                         </td>
-                        <td>{{ assignment.count }}</td>
-                        <td>{{ assignment.average_score }}</td>
+                        <td>{{ assignment.creator.full_name if assignment.creator else '未知' }}</td>
                         <td>
-                            {% if assignment.max_student_score %}
-                                <span class="badge {% if assignment.max_student_score >= 4.0 %}badge-success{% elif assignment.max_student_score >= 3.0 %}badge-warning{% else %}badge-danger{% endif %}">
-                                    {{ assignment.max_student_score }}
-                                </span>
-                            {% else %}
-                                <span class="text-muted">未提交</span>
-                            {% endif %}
+                            <small class="text-muted">
+                                {{ assignment.created_time.strftime('%Y-%m-%d %H:%M') if assignment.created_time else
+                                '未知' }}
+                            </small>
                         </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+                        <td>
+                            {% if assignment.due_date %}
+                            {% set total_seconds = (assignment.due_date - assignment.created_time).total_seconds() if
+                            assignment.created_time else 86400 * 7 %}
+                            {% set remaining_seconds = (assignment.due_date - now).total_seconds() %}
 
-        <!-- 分页 -->
-        <nav aria-label="Page navigation">
-            <ul class="pagination justify-content-center">
-                <li class="page-item {% if not assignments.has_prev %}disabled{% endif %}" style="list-style-type: none;">
-                    <a href="{{ url_for('assignments.student_assignments', page=assignments.prev_num) }}" class="page-link">
-                        <i class="bi bi-chevron-left"></i> 上一页
-                    </a>
-                </li>
-                {% for p in assignments.iter_pages() %}
-                    {% if p %}
-                        <li class="page-item {% if p == assignments.page %}active{% endif %}" style="list-style-type: none;">
-                            <a href="{{ url_for('assignments.student_assignments', page=p) }}" class="page-link">{{ p }}</a>
-                        </li>
-                    {% else %}
-                        <li class="page-item disabled" style="list-style-type: none;"><span class="page-link">...</span></li>
-                    {% endif %}
-                {% endfor %}
-                <li class="page-item {% if not assignments.has_next %}disabled{% endif %}" style="list-style-type: none;">
-                    <a href="{{ url_for('assignments.student_assignments', page=assignments.next_num) }}" class="page-link">
-                        下一页
-                    </a>
-                </li>
-            </ul>
-        </nav>
-        {% else %}
-        <div class="alert alert-info">
-            <i class="bi bi-info-circle me-2"></i> 当前没有可用的作业。
+                            {% if remaining_seconds > 0 %}
+                            {% set progress = (remaining_seconds / total_seconds * 100) | round | int %}
+                            {% if progress > 100 %}{% set progress = 100 %}{% endif %}
+                            {% if progress < 0 %}{% set progress=0 %}{% endif %} <div class="progress mb-1"
+                                style="height: 6px; border-radius: 3px;">
+                                <div class="progress-bar {% if progress > 50 %}bg-success{% elif progress > 15 %}bg-warning{% else %}bg-danger{% endif %}"
+                                    role="progressbar" style="width: {{ progress }}%;" aria-valuenow="{{ progress }}"
+                                    aria-valuemin="0" aria-valuemax="100"></div>
         </div>
+        <small class="{% if progress <= 15 %}text-danger font-weight-bold{% else %}text-muted{% endif %}"
+            style="font-size: 0.7rem;">
+            剩余: {{ (remaining_seconds / 3600 / 24) | round(1) }} 天
+        </small>
+        {% else %}
+        <span class="badge badge-danger">已截止</span>
         {% endif %}
+        {% else %}
+        <span class="text-muted small">无截止日期</span>
+        {% endif %}
+        </td>
+        <td>
+            <small class="text-muted">提交: {{ assignment.count }}</small><br>
+            <small class="text-info">平均: {{ assignment.average_score }}</small>
+        </td>
+        <td>
+            {% if assignment.max_student_score %}
+            <span
+                class="badge {% if assignment.max_student_score >= 4.0 %}badge-success{% elif assignment.max_student_score >= 3.0 %}badge-warning{% else %}badge-danger{% endif %}">
+                {{ assignment.max_student_score }}
+            </span>
+            {% else %}
+            <span class="text-muted small">未提交</span>
+            {% endif %}
+        </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+        </table>
     </div>
+
+    <!-- 分页 -->
+    <nav aria-label="Page navigation">
+        <ul class="pagination justify-content-center">
+            <li class="page-item {% if not assignments.has_prev %}disabled{% endif %}" style="list-style-type: none;">
+                <a href="{{ url_for('assignments.student_assignments', page=assignments.prev_num) }}" class="page-link">
+                    <i class="bi bi-chevron-left"></i> 上一页
+                </a>
+            </li>
+            {% for p in assignments.iter_pages() %}
+            {% if p %}
+            <li class="page-item {% if p == assignments.page %}active{% endif %}" style="list-style-type: none;">
+                <a href="{{ url_for('assignments.student_assignments', page=p) }}" class="page-link">{{ p }}</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled" style="list-style-type: none;"><span class="page-link">...</span></li>
+            {% endif %}
+            {% endfor %}
+            <li class="page-item {% if not assignments.has_next %}disabled{% endif %}" style="list-style-type: none;">
+                <a href="{{ url_for('assignments.student_assignments', page=assignments.next_num) }}" class="page-link">
+                    下一页
+                </a>
+            </li>
+        </ul>
+    </nav>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i> 当前没有可用的作业。
+    </div>
+    {% endif %}
+</div>
 </div>
 
 <div class="row mt-4">
@@ -216,7 +251,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-4">
         <div class="card">
             <div class="card-body">
@@ -225,7 +260,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-4">
         <div class="card">
             <div class="card-body">
