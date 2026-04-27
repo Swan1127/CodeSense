@@ -7,7 +7,7 @@
     .overview-card {
         margin-bottom: 2rem;
     }
-    
+
     .overview-card h2 {
         font-size: 1.5rem;
         font-weight: 600;
@@ -16,18 +16,18 @@
         display: flex;
         align-items: center;
     }
-    
+
     .overview-card h2 i {
         margin-right: 0.75rem;
     }
-    
+
     .stats-container {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
         gap: 1.5rem;
         margin-bottom: 2rem;
     }
-    
+
     .stat-card {
         background-color: #fff;
         border-radius: 0.5rem;
@@ -37,25 +37,25 @@
         display: flex;
         flex-direction: column;
     }
-    
+
     .stat-card .stat-value {
         font-size: 2rem;
         font-weight: 700;
         color: var(--primary-color);
         margin-bottom: 0.5rem;
     }
-    
+
     .stat-card .stat-label {
         color: #4b5563;
         font-size: 0.875rem;
     }
-    
+
     .table {
         width: 100%;
         border-collapse: collapse;
         margin-bottom: 1.5rem;
     }
-    
+
     .table th {
         background-color: #f9fafb;
         color: #111827;
@@ -64,17 +64,17 @@
         padding: 0.75rem 1rem;
         border-bottom: 2px solid #e5e7eb;
     }
-    
+
     .table td {
         padding: 0.75rem 1rem;
         border-bottom: 1px solid #e5e7eb;
         color: #4b5563;
     }
-    
+
     .table tr:hover {
         background-color: #f9fafb;
     }
-    
+
     .badge {
         padding: 0.35em 0.65em;
         font-size: 0.75em;
@@ -82,28 +82,28 @@
         border-radius: 0.375rem;
         white-space: nowrap;
     }
-    
+
     .badge-success {
         background-color: #10b981;
         color: white;
     }
-    
+
     .badge-warning {
         background-color: #f59e0b;
         color: white;
     }
-    
+
     .badge-danger {
         background-color: #ef4444;
         color: white;
     }
-    
+
     .btn-sm {
         padding: 0.375rem 0.75rem;
         font-size: 0.875rem;
         border-radius: 0.375rem;
     }
-    
+
     .section-title {
         font-size: 1.25rem;
         font-weight: 600;
@@ -112,12 +112,12 @@
         display: flex;
         align-items: center;
     }
-    
+
     .section-title i {
         margin-right: 0.5rem;
         color: var(--primary-color);
     }
-    
+
     .chart-container {
         position: relative;
         height: 300px;
@@ -134,24 +134,26 @@
 
 <div class="overview-card">
     <h2><i class="bi bi-person-badge"></i>学生信息概览</h2>
-    
+
     <div class="stats-container">
         <div class="stat-card">
             <div class="stat-value">{{ user.submit_count }}</div>
             <div class="stat-label">总提交次数</div>
         </div>
-        
+
         <div class="stat-card">
-            <div class="stat-value">{{ user.user_tscore }}</div>
+            <div class="stat-value">{{ "%.2f"|format(user.user_tscore) if user.user_tscore is not none else '0.00' }}
+            </div>
             <div class="stat-label">总得分</div>
         </div>
-        
+
         <div class="stat-card">
-            <div class="stat-value">{{ user.user_ascore }}</div>
+            <div class="stat-value">{{ "%.2f"|format(user.user_ascore) if user.user_ascore is not none else '0.00' }}
+            </div>
             <div class="stat-label">平均得分</div>
         </div>
     </div>
-    
+
     <div class="card">
         <div class="card-header">
             <div class="card-title"><i class="bi bi-person-lines-fill"></i> 基本信息</div>
@@ -172,8 +174,8 @@
                         <td>{{ user.username }}</td>
                         <td>{{ user.student_id }}</td>
                         <td>{{ user.submit_count }}</td>
-                        <td>{{ user.user_tscore }}</td>
-                        <td>{{ user.user_ascore }}</td>
+                        <td>{{ "%.2f"|format(user.user_tscore) if user.user_tscore is not none else '0.00' }}</td>
+                        <td>{{ "%.2f"|format(user.user_ascore) if user.user_ascore is not none else '0.00' }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -204,7 +206,7 @@
         <div class="chart-container">
             <canvas id="trendChart"></canvas>
         </div>
-        
+
         <div class="chart-container">
             <canvas id="scoreDistributionChart"></canvas>
         </div>
@@ -236,29 +238,31 @@
                         <td>{{ submission.assignment.title }}</td>
                         <td>
                             {% if submission.score is not none %}
-                                {% if submission.score >= 80 %}
-                                    <span class="badge badge-success">{{ submission.score }}</span>
-                                {% elif submission.score >= 60 %}
-                                    <span class="badge badge-warning">{{ submission.score }}</span>
-                                {% else %}
-                                    <span class="badge badge-danger">{{ submission.score }}</span>
-                                {% endif %}
+                            {% if submission.score >= 80 %}
+                            <span class="badge badge-success">{{ submission.score }}</span>
+                            {% elif submission.score >= 60 %}
+                            <span class="badge badge-warning">{{ submission.score }}</span>
                             {% else %}
-                                <span class="badge badge-secondary">未评分</span>
+                            <span class="badge badge-danger">{{ submission.score }}</span>
+                            {% endif %}
+                            {% else %}
+                            <span class="badge badge-secondary">未评分</span>
                             {% endif %}
                         </td>
                         <td>
                             {% if submission.ai_feedback %}
-                                <span class="badge badge-primary"><i class="bi bi-check-circle-fill"></i> 有</span>
+                            <span class="badge badge-primary"><i class="bi bi-check-circle-fill"></i> 有</span>
                             {% else %}
-                                <span class="badge badge-secondary"><i class="bi bi-x-circle"></i> 无</span>
+                            <span class="badge badge-secondary"><i class="bi bi-x-circle"></i> 无</span>
                             {% endif %}
                         </td>
                         <td>
-                            <a href="{{ url_for('assignments.view_submission', submission_id=submission.id) }}" class="btn btn-sm btn-secondary">
+                            <a href="{{ url_for('assignments.view_submission', submission_id=submission.id) }}"
+                                class="btn btn-sm btn-secondary">
                                 <i class="bi bi-eye"></i> 查看
                             </a>
-                            <a href="{{ url_for('assignments.download_code', submission_id=submission.id) }}" class="btn btn-sm btn-primary">
+                            <a href="{{ url_for('assignments.download_code', submission_id=submission.id) }}"
+                                class="btn btn-sm btn-primary">
                                 <i class="bi bi-download"></i> 下载
                             </a>
                         </td>
@@ -270,34 +274,43 @@
     </div>
 </div>
 
-<div class="card mt-4">
-    <div class="card-header">
-        <div class="card-title"><i class="bi bi-graph-up"></i> 提交分析</div>
+<div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-title"><i class="bi bi-graph-up"></i> 深度能力分析报告</div>
+    {% if session.get('student_id') == user.student_id %}
+    <button id="refreshAnalysisBtn" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-arrow-clockwise"></i> 重新生成分析
+    </button>
+    {% endif %}
+</div>
+<div class="card-body">
+    {% if ability_trend %}
+    {% if ability_trend.status == 'processing' %}
+    <div class="text-center py-4">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <p class="text-muted">AI 正在深度分析您的编程习惯和能力趋势，请稍候...</p>
     </div>
-    <div class="card-body">
-        <p>下面是您的代码提交情况的简要分析：</p>
-        <ul class="content-list">
-            <a>您总共提交了 <strong>{{ user.submit_count }}</strong> 次代码</a>
-            <br>
-            <a>平均得分为 <strong>{{ user.user_ascore }}</strong> 分</a>
-            <br>
-            {% if user.user_ascore is not none %}
-                {% if user.user_ascore >= 80 %}
-                    <a>您的平均分处于<strong>优秀</strong>水平，继续保持！</a>
-                {% elif user.user_ascore >= 60 %}
-                    <a>您的平均分处于<strong>良好</strong>水平，还有提升空间</a>
-                {% else %}
-                    <a>您的平均分需要提高，建议多复习并咨询老师</a>
-                {% endif %}
-            {% else %}
-                <a>暂无有效评分数据</a>
-            {% endif %}
-        </ul>
-        
-        <div class="alert alert-info mt-3">
-            <i class="bi bi-lightbulb me-2"></i> <strong>提示：</strong> 考虑参考代码风格指南和算法优化技巧，提高您的代码质量并获得更高分数。
-        </div>
+    {% elif ability_trend.analysis_markdown %}
+    <div class="markdown-render" data-markdown="{{ ability_trend.analysis_markdown }}"></div>
+    <div class="text-muted mt-3 small">
+        <i class="bi bi-clock"></i> 最近分析时间: {{ ability_trend.last_updated.strftime('%Y-%m-%d %H:%M') }}
     </div>
+    {% else %}
+    <div class="alert alert-light text-center py-4">
+        <i class="bi bi-info-circle fs-2 d-block mb-2 text-primary"></i>
+        <p>暂无详细分析报告，请点击右上角按钮生成。</p>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="alert alert-light text-center py-4">
+        <i class="bi bi-info-circle fs-2 d-block mb-2 text-primary"></i>
+        <p>暂无分析数据，请提交更多作业后生成。</p>
+    </div>
+    {% endif %}
+
+    <div class="alert alert-info mt-3">
+        <i class="bi bi-lightbulb me-2"></i> <strong>小贴士：</strong> 系统会根据您最近 20 次的提交记录进行全方位的 AI 复盘，帮助您精准定位薄弱环节。
+    </div>
+</div>
 </div>
 {% endblock %}
 
@@ -318,20 +331,20 @@
 </script>
 <script>
     // 页面加载完成后执行
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         // 如果有错误消息，3秒后自动隐藏
-        setTimeout(function() {
+        setTimeout(function () {
             const flashMessages = document.querySelectorAll('.flash-messages');
-            flashMessages.forEach(function(message) {
+            flashMessages.forEach(function (message) {
                 message.style.display = 'none';
             });
         }, 3000);
-        
-        // 初始化能力分析图表
+
+        // 初始化能力分析图表 - 使用雷达图 (Radar Chart)
         const abilityCtx = document.getElementById('abilityChart');
         if (abilityCtx) {
             new Chart(abilityCtx, {
-                type: 'bar',
+                type: 'radar',
                 data: {
                     labels: ['算法能力', '代码风格', '功能实现', '效率优化', '代码可读性'],
                     datasets: [{
@@ -343,9 +356,13 @@
                             abilityData.student.efficiency,
                             abilityData.student.readability
                         ],
-                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
                         borderColor: 'rgba(54, 162, 235, 1)',
-                        borderWidth: 1
+                        pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 2
                     }, {
                         label: '班级平均',
                         data: [
@@ -355,21 +372,27 @@
                             abilityData.class_avg.efficiency,
                             abilityData.class_avg.readability
                         ],
-                        backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
                         borderColor: 'rgba(255, 99, 132, 1)',
-                        borderWidth: 1
+                        pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 2
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 100,
-                            title: {
-                                display: true,
-                                text: '得分'
+                        r: {
+                            angleLines: {
+                                display: true
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 100,
+                            ticks: {
+                                stepSize: 20
                             }
                         }
                     },
@@ -378,14 +401,13 @@
                             position: 'top'
                         },
                         title: {
-                            display: true,
-                            text: '能力评分对比'
+                            display: false
                         }
                     }
                 }
             });
         }
-        
+
         // 初始化提交趋势图表
         const trendCtx = document.getElementById('trendChart');
         if (trendCtx) {
@@ -421,7 +443,7 @@
                 }
             });
         }
-        
+
         // 初始化分数分布图表
         const scoreDistributionCtx = document.getElementById('scoreDistributionChart');
         if (scoreDistributionCtx) {
@@ -447,6 +469,35 @@
                         }
                     }
                 }
+            });
+        }
+        // 刷新分析按钮点击事件
+        const refreshBtn = document.getElementById('refreshAnalysisBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function () {
+                const icon = this.querySelector('i');
+                icon.classList.add('bi-spin'); // 可在CSS中添加旋转动画
+                this.classList.add('disabled');
+                this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> 请求中...';
+
+                fetch('{{ url_for("users.refresh_analysis") }}')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            alert(data.message);
+                            location.reload();
+                        } else {
+                            alert('刷新失败: ' + data.message);
+                            this.classList.remove('disabled');
+                            this.innerHTML = '<i class="bi bi-arrow-clockwise"></i> 重新生成分析';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('请求出错，请稍后重试');
+                        this.classList.remove('disabled');
+                        this.innerHTML = '<i class="bi bi-arrow-clockwise"></i> 重新生成分析';
+                    });
             });
         }
     });

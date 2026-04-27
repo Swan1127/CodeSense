@@ -1,10 +1,11 @@
 """
 用户管理相关路由
 """
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app, jsonify
 from itsdangerous import URLSafeTimedSerializer
-from models import db, User, Submission, SystemLog, Class
+from models import db, User, Submission, SystemLog, Class, AbilityTrend
 from utils.auth import login_required, admin_required, admin_or_teacher_required
+from tasks.ability_analysis import trigger_analysis_if_needed
 from sqlalchemy import desc
 from forms import EditProfileForm
 import pandas as pd
@@ -165,7 +166,7 @@ def view_submissions():
         # 获取学生信息
         user = User.query.get_or_404(student_id)
         
-        # 准备图表数据
+        # 3. 准备图表数据
         chart_data = {
             'x': [sub.assignment_id for sub in submissions.items],
             'y': [sub.score if sub.score is not None else 0 for sub in submissions.items],
@@ -178,30 +179,30 @@ def view_submissions():
             ]
         }
         
-        # 计算能力分析数据（示例数据，实际应根据业务逻辑计算）
-        # 这里我们使用随机数据进行演示，实际应用中应基于提交记录计算
+        # 4. 获取真实的能力分析数据
+        ability_scores = user.get_ability_scores()
+        class_avg_scores = User.get_class_average_scores()
+        
         ability_data = {
-            'student': {
-                'algorithm': random.randint(60, 95),  # 算法能力
-                'style': random.randint(60, 95),      # 代码风格
-                'functionality': random.randint(60, 95), # 功能实现
-                'efficiency': random.randint(60, 95),   # 效率优化
-                'readability': random.randint(60, 95)   # 代码可读性
-            },
-            'class_avg': {
-                'algorithm': random.randint(65, 85),
-                'style': random.randint(65, 85),
-                'functionality': random.randint(65, 85),
-                'efficiency': random.randint(65, 85),
-                'readability': random.randint(65, 85)
-            }
+            'student': ability_scores,
+            'class_avg': class_avg_scores.get(user.class_name, {
+                'algorithm': 70, 'style': 70, 'functionality': 70, 'efficiency': 70, 'readability': 70
+            })
         }
+        
+        # 5. 获取 AI 能力趋势分析
+        ability_trend = AbilityTrend.query.filter_by(student_id=student_id).first()
+        
+        # 如果没有分析或者已过期，尝试触发异步生成
+        if not ability_trend or ability_trend.status in ['pending', 'outdated', 'failed']:
+            trigger_analysis_if_needed(student_id)
         
         return render_template('submissions.html', 
                             submissions=submissions, 
                             user=user, 
                             chart_data=chart_data,
-                            ability_data=ability_data)
+                            ability_data=ability_data,
+                            ability_trend=ability_trend)
     except Exception as e:
         import traceback
         print(f'访问学情分析时出错: {str(e)}')
@@ -210,7 +211,21 @@ def view_submissions():
         return redirect(url_for('main.home'))
 
 
-@users.route('/edit_profile', methods=['GET', 'POST'])
+@users.route('/refresh_analysis')
+@login_required
+def refresh_analysis():
+    """手动刷新能力分析"""
+    student_id = session.get('student_id')
+    if not student_id:
+        return jsonify({'status': 'error', 'message': '未找到学生 ID'}), 401
+    
+    # 强制触发重新分析
+    triggered = trigger_analysis_if_needed(student_id, force=True)
+    
+    if triggered:
+        return jsonify({'status': 'success', 'message': '已启动深度能力分析分析，请稍后刷新页面查看结果'})
+    else:
+        return jsonify({'status': 'info', 'message': '分析任务正在处理中，请稍候'})
 @login_required
 def edit_profile():
     """编辑个人资料"""
