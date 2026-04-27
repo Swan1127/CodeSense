@@ -162,8 +162,8 @@
         {% endfor %}
         {% else %}
         <div class="text-center py-5 bg-white rounded shadow-sm">
-            <img src="https://illustrations.popsy.co/gray/celebration.svg" alt="All perfected"
-                style="width: 200px; opacity: 0.8;">
+            <img src="{{ url_for('static', filename='images/success_metamorphosis.png') }}" alt="All perfected"
+                style="width: 200px; opacity: 1;">
             <h4 class="mt-4">恭喜您！目前没有显著瓶颈</h4>
             <p class="text-muted">所有已分配作业均已达到满分，您可以尝试挑战更高难度的扩展题。</p>
         </div>
@@ -178,6 +178,9 @@
     document.addEventListener('DOMContentLoaded', function () {
         const skillsData = {{ skills_data_json| safe
     }};
+    const metaHistory = {{ maturity_history| safe }};
+    const metaLabels = metaHistory.map((_, i) => i === metaHistory.length - 1 ? '当前' : `阶段 ${i + 1}`);
+
     const ctx = document.getElementById('abilityRadarChart').getContext('2d');
 
     const chartOptions = {
@@ -244,20 +247,20 @@
     const metaCtx = document.getElementById('metamorphosisChart').getContext('2d');
 
     const metaData = {
-        labels: ['起步期', '重构 1', '重构 2', '重构 3', '当前阶段'],
+        labels: metaLabels,
         datasets: [{
             label: '综合能力值',
-            data: [20, 35, 60, 80, {{ maturity_score }}],
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 6,
-        pointBackgroundColor: '#fff',
-        pointBorderColor: '#3b82f6',
-        pointBorderWidth: 3
-    }]
-        };
+            data: metaHistory,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 6,
+            pointBackgroundColor: '#fff',
+            pointBorderColor: '#3b82f6',
+            pointBorderWidth: 3
+        }]
+    };
 
     new Chart(metaCtx, {
         type: 'line',

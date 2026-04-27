@@ -213,66 +213,54 @@ class AbilityScorer:
     
     def calculate_detailed_ability_scores(self, student_id: str) -> Dict[str, float]:
         """
-        计算学生的详细能力评分
+        计算学生的详细能力评分 (Average View)
         
         返回:
-            Dict: 包含各项能力的详细评分
+            Dict: 包含各项能力的详细评分 (0-100)
         """
         try:
             user = User.query.get(student_id)
             if not user or user.usertype != '学生':
-                return {
-                    'algorithm': 0.0,
-                    'style': 0.0, 
-                    'functionality': 0.0,
-                    'efficiency': 0.0,
-                    'readability': 0.0
-                }
+                return {k: 0.0 for k in ['algorithm', 'style', 'functionality', 'efficiency', 'readability']}
             
-            submissions = list(user.submissions.all())
-            if not submissions:
-                return {
-                    'algorithm': 0.0,
-                    'style': 0.0,
-                    'functionality': 0.0, 
-                    'efficiency': 0.0,
-                    'readability': 0.0
-                }
+            # 获取所有提交 (不要一开始就过滤掉没有 ai_feedback 的，否则会导致基础分无法回算)
+            all_submissions = list(user.submissions.all())
+            if not all_submissions:
+                return {k: 0.0 for k in ['algorithm', 'style', 'functionality', 'efficiency', 'readability']}
             
-            # 基于综合能力评分和提交表现计算各项能力
-            overall_score = self.calculate_student_ability_score(student_id)
+            # 记录各维度的总分和计数
+            totals = {k: 0.0 for k in ['algorithm', 'style', 'functionality', 'efficiency', 'readability']}
+            valid_counts = {k: 0 for k in ['algorithm', 'style', 'functionality', 'efficiency', 'readability']}
             
-            # 根据提交数量和质量调整各项分数
-            submit_count = len(submissions)
-            avg_score = sum(s.score for s in submissions if s.score) / len([s for s in submissions if s.score]) if any(s.score for s in submissions) else 0
+            import json
+            for sub in all_submissions:
+                if sub.ai_feedback:
+                    try:
+                        data = json.loads(sub.ai_feedback)
+                        for key in totals:
+                            score_key = f"{key}_score"
+                            if score_key in data:
+                                totals[key] += float(data[score_key]) * 20
+                                valid_counts[key] += 1
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        continue
             
-            # 基础分数（基于综合评分）
-            base_score = overall_score * 20  # 转换为100分制
+            # 计算平均分
+            avg_scores = {}
+            for key in totals:
+                avg_scores[key] = totals[key] / valid_counts[key] if valid_counts[key] > 0 else 0.0
             
-            # 各项能力的相对权重调整
-            scores = {
-                'algorithm': base_score * (0.9 + 0.2 * min(1.0, submit_count / 10)),  # 算法能力与提交数相关
-                'functionality': base_score * (0.8 + 0.4 * min(1.0, avg_score / 5)),  # 功能实现与平均分相关
-                'efficiency': base_score * (0.7 + 0.3 * min(1.0, overall_score / 5)),  # 效率与整体能力相关
-                'readability': base_score * (0.8 + 0.2 * min(1.0, submit_count / 5)),  # 可读性与经验相关
-                'style': base_score * (0.75 + 0.25 * min(1.0, overall_score / 5))      # 风格与整体能力相关
-            }
-            
-            # 确保分数在合理范围内 (0-100)
-            for key in scores:
-                scores[key] = max(0, min(100, scores[key]))
-            
-            return scores
+            # 极速回归补偿：如果所有维度都是 0（可能由于解析失败或旧数据），则采用系统总分
+            if sum(avg_scores.values()) == 0:
+                avg_val = sum(s.score for s in all_submissions if s.score) / len(all_submissions) if all_submissions else 0
+                base = min(100, avg_val * 20)
+                avg_scores = {k: base for k in avg_scores}
+                
+            return avg_scores
             
         except Exception as e:
             logger.error(f"计算学生 {student_id} 详细能力评分时出错: {e}")
-            return {
-                'algorithm': 0.0,
-                'style': 0.0,
-                'functionality': 0.0,
-                'efficiency': 0.0, 
-                'readability': 0.0
-            }
+            return {k: 0.0 for k in ['algorithm', 'style', 'functionality', 'efficiency', 'readability']}
     
     def update_all_students_scores(self):
         """更新所有学生的能力评分"""

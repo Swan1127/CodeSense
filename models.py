@@ -213,11 +213,11 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
             base_score = min(100, max(0, avg_score * 20))  # 转换为100分制
             
             return {
-                'algorithm': base_score * 0.9,      # 算法能力
-                'style': base_score * 0.8,          # 代码风格
-                'functionality': base_score * 0.95, # 功能实现
-                'efficiency': base_score * 0.75,    # 效率优化
-                'readability': base_score * 0.85    # 代码可读性
+                'algorithm': base_score,     # 算法能力
+                'style': base_score,         # 代码风格
+                'functionality': base_score, # 功能实现
+                'efficiency': base_score,    # 效率优化
+                'readability': base_score    # 代码可读性
             }
     
     @staticmethod

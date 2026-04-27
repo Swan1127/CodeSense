@@ -1289,3 +1289,107 @@ def get_submission_status(submission_id):
         'score': submission.score,
         'id': submission.id
     })
+
+
+@api.route('/assignments/create_batch_item', methods=['POST'])
+@login_required
+@admin_required
+def create_batch_item():
+    """批量导入创建单个作业(由前端批处理循环调用)"""
+    data = request.get_json()
+    if not data or 'title' not in data or 'description' not in data:
+        return jsonify({'error': '缺少必要字段'}), 400
+        
+    try:
+        # 自动计算新ID
+        max_id = db.session.query(db.func.max(Assignment.id)).scalar() or 0
+        new_id = max_id + 1
+        
+        new_assignment = Assignment(
+            id=new_id,
+            title=data['title'],
+            description=data['description'],
+            total_score=0,
+            average_score=0.0,
+            count=0,
+            target_classes="",
+            creator_id=session.get('student_id')
+        )
+        
+        db.session.add(new_assignment)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': '创建成功',
+            'assignment_id': new_id
+        })
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        current_app.logger.error(f"批量创建作业失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/assignments/parse_file', methods=['POST'])
+@login_required
+@admin_required
+def parse_file():
+    """解析上传的题库文件并提取文本行 (支持 docx, xlsx, csv, txt, md)"""
+    if 'file' not in request.files:
+        return jsonify({'error': '没有检测到文件被上传'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '文件名为空'}), 400
+        
+    filename = file.filename.lower()
+    lines = []
+    
+    try:
+        if filename.endswith(('.txt', '.md')):
+            content = file.read().decode('utf-8', errors='ignore')
+            lines = [line.strip() for line in content.split('\n') if line.strip()]
+            
+        elif filename.endswith('.csv'):
+            import pandas as pd
+            try:
+                df = pd.read_csv(file, header=None)
+            except Exception:
+                file.seek(0)
+                df = pd.read_csv(file, encoding='gbk', header=None)
+            
+            # 取第一列或组合所有列
+            for index, row in df.iterrows():
+                row_text = ' '.join([str(val).strip() for val in row.values if pd.notna(val) and str(val).strip()])
+                if row_text:
+                    lines.append(row_text)
+                    
+        elif filename.endswith(('.xlsx', '.xls')):
+            import pandas as pd
+            df = pd.read_excel(file, header=None)
+            for index, row in df.iterrows():
+                row_text = ' '.join([str(val).strip() for val in row.values if pd.notna(val) and str(val).strip()])
+                if row_text:
+                    lines.append(row_text)
+                    
+        elif filename.endswith('.docx'):
+            import docx
+            doc = docx.Document(file)
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    lines.append(para.text.strip())
+                    
+        else:
+            return jsonify({'error': '不支持的文件扩展名。仅支持 .txt, .md, .csv, .xlsx, .docx'}), 400
+            
+        return jsonify({
+            'success': True,
+            'lines': lines,
+            'count': len(lines)
+        })
+        
+    except Exception as e:
+        import traceback
+        current_app.logger.error(f"解析文件失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'error': f'文件解析失败: {str(e)}'}), 500

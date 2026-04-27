@@ -138,19 +138,19 @@
     <div class="stats-container">
         <div class="stat-card">
             <div class="stat-value">{{ user.submit_count }}</div>
-            <div class="stat-label">总提交次数</div>
+            <div class="stat-label">总练习次数</div>
         </div>
 
         <div class="stat-card">
-            <div class="stat-value">{{ "%.2f"|format(user.user_tscore) if user.user_tscore is not none else '0.00' }}
+            <div class="stat-value">{{ "%.1f"|format(comprehensive_score) if comprehensive_score else '0.0' }}
             </div>
-            <div class="stat-label">总得分</div>
+            <div class="stat-label">综合能力评估</div>
         </div>
 
         <div class="stat-card">
-            <div class="stat-value">{{ "%.2f"|format(user.user_ascore) if user.user_ascore is not none else '0.00' }}
+            <div class="stat-value">{{ strongest_dim if strongest_dim else '暂无' }}
             </div>
-            <div class="stat-label">平均得分</div>
+            <div class="stat-label">核心优势领域</div>
         </div>
     </div>
 
@@ -164,9 +164,9 @@
                     <tr>
                         <th>用户名</th>
                         <th>学号</th>
-                        <th>提交次数</th>
-                        <th>总得分</th>
-                        <th>平均得分</th>
+                        <th>练习次数</th>
+                        <th>综合能力</th>
+                        <th>核心优势</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -174,8 +174,10 @@
                         <td>{{ user.username }}</td>
                         <td>{{ user.student_id }}</td>
                         <td>{{ user.submit_count }}</td>
-                        <td>{{ "%.2f"|format(user.user_tscore) if user.user_tscore is not none else '0.00' }}</td>
-                        <td>{{ "%.2f"|format(user.user_ascore) if user.user_ascore is not none else '0.00' }}</td>
+                        <td><span
+                                class="badge {{ 'bg-success' if comprehensive_score and comprehensive_score >= 80 else 'bg-warning' if comprehensive_score and comprehensive_score >= 60 else 'bg-secondary' }}">{{
+                                "%.1f"|format(comprehensive_score) if comprehensive_score else '0.0' }}</span></td>
+                        <td><span class="badge bg-primary">{{ strongest_dim if strongest_dim else '暂无' }}</span></td>
                     </tr>
                 </tbody>
             </table>

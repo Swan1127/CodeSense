@@ -183,6 +183,16 @@ def view_submissions():
         ability_scores = user.get_ability_scores()
         class_avg_scores = User.get_class_average_scores()
         
+        comprehensive_score = sum(ability_scores.values()) / 5 if ability_scores else 0
+        dim_map = {
+            'algorithm': '算法能力',
+            'style': '代码风格',
+            'functionality': '功能实现',
+            'efficiency': '效率优化',
+            'readability': '代码可读性'
+        }
+        strongest_dim = dim_map.get(max(ability_scores, key=ability_scores.get), '暂无') if ability_scores and comprehensive_score > 0 else '暂未定型'
+        
         ability_data = {
             'student': ability_scores,
             'class_avg': class_avg_scores.get(user.class_name, {
@@ -202,7 +212,9 @@ def view_submissions():
                             user=user, 
                             chart_data=chart_data,
                             ability_data=ability_data,
-                            ability_trend=ability_trend)
+                            ability_trend=ability_trend,
+                            comprehensive_score=comprehensive_score,
+                            strongest_dim=strongest_dim)
     except Exception as e:
         import traceback
         print(f'访问学情分析时出错: {str(e)}')

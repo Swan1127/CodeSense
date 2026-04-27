@@ -175,101 +175,26 @@ def home():
             recent_assignments = Assignment.query.filter(
                 Assignment.target_classes.like(f'%{class_name}%')
             ).order_by(Assignment.created_time.desc()).limit(4).all()
-        else:
-            recent_assignments = []
+        # 1. 通过统一的能力引擎获取雷达图数据
+        ability_scores = current_user.get_ability_scores()
+        algorithm_score = ability_scores.get('algorithm', 60)
+        style_score = ability_scores.get('style', 60)
+        functionality_score = ability_scores.get('functionality', 60)
+        efficiency_score = ability_scores.get('efficiency', 60)
+        readability_score = ability_scores.get('readability', 60)
         
-        # 初始化能力得分变量
-        # 学生能力得分（默认值为60，如果有评估结果则使用实际值）
-        algorithm_score = 60
-        style_score = 60
-        functionality_score = 60
-        efficiency_score = 60
-        readability_score = 60
+        # 2. 获取班级平均能力得分
+        class_averages = User.get_class_average_scores()
+        class_name = current_user.class_name
+        st_class_avg = class_averages.get(class_name, {})
         
-        # 班级平均得分（默认值）
-        class_algorithm_score = 65
-        class_style_score = 65
-        class_functionality_score = 65
-        class_efficiency_score = 65
-        class_readability_score = 65
+        class_algorithm_score = st_class_avg.get('algorithm', 65)
+        class_style_score = st_class_avg.get('style', 65)
+        class_functionality_score = st_class_avg.get('functionality', 65)
+        class_efficiency_score = st_class_avg.get('efficiency', 65)
+        class_readability_score = st_class_avg.get('readability', 65)
         
-        # 如果有提交记录，计算学生的能力得分
-        if submissions:
-            # 最近一次提交记录中的AI评估结果
-            recent_submission = max(submissions, key=lambda s: s.submitted_at if s.submitted_at else datetime.datetime.min)
-            if recent_submission and recent_submission.ai_feedback:
-                try:
-                    ai_feedback = json.loads(recent_submission.ai_feedback)
-                    # 检查是否为新的结构化数据格式
-                    if 'algorithm_score' in ai_feedback:
-                        algorithm_score = ai_feedback.get('algorithm_score', algorithm_score)
-                        style_score = ai_feedback.get('style_score', style_score)
-                        functionality_score = ai_feedback.get('functionality_score', functionality_score)
-                        efficiency_score = ai_feedback.get('efficiency_score', efficiency_score)
-                        readability_score = ai_feedback.get('readability_score', readability_score)
-                        print(f"成功从结构化数据中获取学生能力分数")
-                    else:
-                        # 旧格式数据，使用默认值
-                        print(f"使用旧格式AI反馈数据，采用默认分数")
-                except (json.JSONDecodeError, TypeError) as e:
-                    # 如果解析失败，可能是纯文本格式，使用默认值
-                    print(f"AI反馈解析失败，使用默认分数: {e}")
-                    pass
-        
-        # 从数据库获取班级平均能力得分
-        # 获取当前用户班级的所有提交记录并计算平均值
-        if current_user.class_name:
-            # 根据班级名称过滤提交记录
-            class_users = User.query.filter_by(class_name=current_user.class_name).all()
-            user_ids = [user.student_id for user in class_users]
-            class_submissions = Submission.query.filter(
-                Submission.student_id.in_(user_ids),
-                Submission.ai_feedback.isnot(None)
-            ).all()
-        else:
-            # 如果用户没有班级信息，则获取所有提交记录
-            class_submissions = Submission.query.filter(Submission.ai_feedback.isnot(None)).all()
-        
-        # 初始化计数器和累加器
-        algorithm_total = 0
-        style_total = 0
-        functionality_total = 0
-        efficiency_total = 0
-        readability_total = 0
-        valid_count = 0
-        
-        # 计算总和
-        for sub in class_submissions:
-            if sub.ai_feedback:
-                try:
-                    ai_data = json.loads(sub.ai_feedback)
-                    # 检查是否为新的结构化数据格式
-                    if 'algorithm_score' in ai_data:
-                        algorithm_total += float(ai_data.get('algorithm_score', 0))
-                        style_total += float(ai_data.get('style_score', 0))
-                        functionality_total += float(ai_data.get('functionality_score', 0))
-                        efficiency_total += float(ai_data.get('efficiency_score', 0))
-                        readability_total += float(ai_data.get('readability_score', 0))
-                        valid_count += 1
-                    # 如果是旧格式数据，暂时跳过
-                except (json.JSONDecodeError, TypeError, ValueError):
-                    # 跳过无法解析的记录
-                    pass
-        
-        # 计算平均值（如果没有有效记录则使用默认值）
-        if valid_count > 0:
-            class_algorithm_score = round(algorithm_total / valid_count, 1)
-            class_style_score = round(style_total / valid_count, 1)
-            class_functionality_score = round(functionality_total / valid_count, 1)
-            class_efficiency_score = round(efficiency_total / valid_count, 1)
-            class_readability_score = round(readability_total / valid_count, 1)
-            print(f"从{valid_count}条记录中计算得出班级平均分")
-        # 否则使用默认值
-        
-        # 获取班级平均能力得分（实际项目中应从数据库获取）
-        # 这里简化处理，使用固定值
-        
-        # 准备能力数据的JSON格式，方便模板中使用
+        # 3. 准备能力数据的 JSON 格式供雷达图使用
         skills_data = {
             'student': {
                 'algorithm': float(algorithm_score),
@@ -289,19 +214,13 @@ def home():
         
         # 打印调试信息
         print("雷达图数据:")
-        print(f"算法能力: {algorithm_score}")
-        print(f"代码风格: {style_score}")
-        print(f"功能实现: {functionality_score}")
-        print(f"效率优化: {efficiency_score}")
-        print(f"代码可读性: {readability_score}")
-        print(f"班级平均算法能力: {class_algorithm_score}")
-        print(f"班级平均代码风格: {class_style_score}")
-        print(f"班级平均功能实现: {class_functionality_score}")
-        print(f"班级平均效率优化: {class_efficiency_score}")
-        print(f"班级平均代码可读性: {class_readability_score}")
+        print(f"学生得分: {algorithm_score}, {style_score}, {functionality_score}, {efficiency_score}, {readability_score}")
+        print(f"班级平均: {class_algorithm_score}, {class_style_score}, {class_functionality_score}, {class_efficiency_score}, {class_readability_score}")
         print(f"JSON数据: {json.dumps(skills_data)}")
         
-        # --- 深度评估：4 核心维度能力成像 (Score_total = Σ w_i * φ_i) ---
+        # 获取班级平均分数据以计算相对基准 φ_avg
+        class_averages = User.get_class_average_scores()
+        class_name = current_user.class_name
         all_subs = Submission.query.filter_by(student_id=student_id).order_by(Submission.submitted_at.asc()).all()
         
         # 1. φ_avg (相对得分): 对齐班级基准线的平均表现
@@ -367,6 +286,9 @@ def home():
             'phi_freq': round(phi_freq, 1),
             'phi_std': round(phi_std, 1),
             'phi_grad': round(phi_grad, 1),
+            'recent_assignments': recent_assignments,
+            'submissions': submissions,
+            'submitted_assignments': submitted_assignments,
             # 雷达图数据
             'algorithm_score': float(algorithm_score),
             'style_score': float(style_score),
@@ -879,6 +801,14 @@ def user_profile(user_username):
         'student': {k: float(v) for k, v in ability_scores.items()},
         'class_average': {k: float(v) for k, v in st_class_avg.items()}
     }
+
+    # 准备真实蜕变轨迹数据 (取最近 10 次提交的分数)
+    # 我们将分数映射到 20-100 的示意高度，或者直接展示原始分 (0-5)
+    maturity_history = []
+    if all_student_subs:
+        recent_all = sorted(all_student_subs, key=lambda x: x.submitted_at)[-10:]
+        # 为了让图表好看，我们将 0-5 分映射到 20-100
+        maturity_history = [max(20, s.score * 20) for s in recent_all]
     
     return render_template('sprofile.html', 
                           user=user, 
@@ -888,6 +818,7 @@ def user_profile(user_username):
                           phi_freq=round(phi_freq, 1),
                           phi_std=round(phi_std, 1),
                           phi_grad=round(phi_grad, 1),
+                          maturity_history=maturity_history,
                           skills_data_json=json.dumps(skills_data))
 
 @main.route('/debug_session')
