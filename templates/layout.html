@@ -163,16 +163,33 @@
     <!-- 主内容区 -->
     <main class="main-content">
         <div class="container">
-            <!-- 闪现消息 -->
-            {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-            {% for category, message in messages %}
-            <div class="alert alert-{{ category if category != 'message' else 'info' }}">
-                <i class="bi bi-info-circle-fill"></i> {{ message }}
+            <!-- 闪现消息 Toast 容器 -->
+            <div class="toast-container">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                {% set toast_type = category if category != 'message' else 'info' %}
+                <div class="toast toast-{{ toast_type }}" role="alert" aria-live="assertive" aria-atomic="true"
+                    data-bs-delay="5000">
+                    <div class="toast-header">
+                        <i
+                            class="bi {% if toast_type == 'success' %}bi-check-circle-fill text-success{% elif toast_type == 'danger' %}bi-x-circle-fill text-danger{% elif toast_type == 'warning' %}bi-exclamation-triangle-fill text-warning{% else %}bi-info-circle-fill text-info{% endif %} me-2"></i>
+                        <strong class="me-auto">
+                            {% if toast_type == 'success' %}成功
+                            {% elif toast_type == 'danger' %}错误
+                            {% elif toast_type == 'warning' %}警告
+                            {% else %}提示{% endif %}
+                        </strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        {{ message }}
+                    </div>
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
             </div>
-            {% endfor %}
-            {% endif %}
-            {% endwith %}
 
             <!-- 页面内容 -->
             {% block content %}{% endblock %}
@@ -206,6 +223,11 @@
             document.querySelectorAll('.markdown-body, .markdown-render').forEach(function (el) {
                 var raw = el.getAttribute('data-markdown') || el.textContent || '';
                 if (raw.trim()) el.innerHTML = marked.parse(raw);
+            });
+            // 初始化并显示所有 Toast
+            document.querySelectorAll('.toast').forEach(function (toastEl) {
+                var toast = new bootstrap.Toast(toastEl);
+                toast.show();
             });
         });
     </script>

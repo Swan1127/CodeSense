@@ -539,4 +539,50 @@ a:hover {
   margin-top: var(--spacing-lg);
   color: var(--medium);
   font-size: 0.875rem;
+}
+
+/* 闪现消息 Toast 容器 */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 覆盖 Bootstrap Toast 默认样式以匹配现代风格 */
+.toast {
+  background-color: var(--white);
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  min-width: 300px;
+  overflow: hidden;
+}
+
+.toast-header {
+  background-color: transparent;
+  border-bottom: none;
+  padding: var(--spacing-sm) var(--spacing-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toast-body {
+  padding: var(--spacing-md);
+  font-size: 0.9375rem;
+  color: var(--dark-light);
+}
+
+/* 各类型 Toast 的左侧边线 */
+.toast-success { border-left: 5px solid var(--success); }
+.toast-danger { border-left: 5px solid var(--danger); }
+.toast-warning { border-left: 5px solid var(--warning); }
+.toast-info { border-left: 5px solid var(--info); }
+
+.btn-close {
+  box-shadow: none !important;
 } 
