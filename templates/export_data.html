@@ -7,14 +7,14 @@
     .export-card {
         margin-bottom: 2rem;
     }
-    
+
     .export-options {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
         gap: 1.5rem;
         margin-top: 1.5rem;
     }
-    
+
     .export-option {
         border: 1px solid #e5e7eb;
         border-radius: 0.5rem;
@@ -22,29 +22,29 @@
         background-color: #fff;
         transition: all 0.3s;
     }
-    
+
     .export-option:hover {
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         transform: translateY(-2px);
     }
-    
+
     .export-icon {
         font-size: 2rem;
         color: var(--primary-color);
         margin-bottom: 1rem;
     }
-    
+
     .export-title {
         font-weight: 600;
         font-size: 1.25rem;
         margin-bottom: 0.5rem;
     }
-    
+
     .export-description {
         color: #6b7280;
         margin-bottom: 1.5rem;
     }
-    
+
     .export-option .btn {
         width: 100%;
     }
@@ -52,9 +52,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1 class="page-title">导出数据</h1>
-    <p class="page-subtitle">导出系统数据用于备份或分析</p>
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="page-title">导出数据</h1>
+        <p class="page-subtitle">导出系统数据用于备份或分析</p>
+    </div>
+    <a href="{{ url_for('main.admin_dashboard') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回仪表盘
+    </a>
 </div>
 
 <div class="card export-card">
@@ -66,7 +71,7 @@
         <div class="alert alert-info">
             <i class="bi bi-info-circle"></i> 导出大量数据可能需要一些时间，请耐心等待下载开始。
         </div>
-        
+
         <div class="export-options">
             <div class="export-option">
                 <div class="export-icon">
@@ -80,7 +85,7 @@
                     <i class="bi bi-download"></i> 导出用户数据
                 </button>
             </div>
-            
+
             <div class="export-option">
                 <div class="export-icon">
                     <i class="bi bi-list-check"></i>
@@ -93,7 +98,7 @@
                     <i class="bi bi-download"></i> 导出作业数据
                 </a>
             </div>
-            
+
             <div class="export-option">
                 <div class="export-icon">
                     <i class="bi bi-journal-code"></i>
@@ -102,11 +107,12 @@
                 <div class="export-description">
                     导出代码提交记录，包括提交ID、作业ID、学号、提交时间、代码、评分等。
                 </div>
-                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#submissionFilterModal">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal"
+                    data-bs-target="#submissionFilterModal">
                     <i class="bi bi-download"></i> 导出提交记录
                 </button>
             </div>
-            
+
             <div class="export-option">
                 <div class="export-icon">
                     <i class="bi bi-file-earmark-zip"></i>
@@ -115,7 +121,8 @@
                 <div class="export-description">
                     一次性导出所有数据，包括用户、作业、提交记录和系统日志，以ZIP压缩包形式下载。
                 </div>
-                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#allDataFilterModal">
+                <button type="button" class="btn btn-success" data-bs-toggle="modal"
+                    data-bs-target="#allDataFilterModal">
                     <i class="bi bi-download"></i> 导出全部数据
                 </button>
             </div>
@@ -130,10 +137,10 @@
     <div class="card-body">
         <h4>CSV文件格式</h4>
         <p>导出的数据为CSV（逗号分隔值）文件格式，可以使用Excel、Google表格或其他电子表格软件打开。</p>
-        
+
         <h4>数据安全</h4>
         <p>导出的数据可能包含敏感信息，请妥善保管，避免泄露。</p>
-        
+
         <h4>使用建议</h4>
         <p>建议定期导出数据作为备份，以防系统出现问题或数据丢失。</p>
     </div>
@@ -152,7 +159,7 @@
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i> 您可以选择筛选条件，留空则导出所有用户数据
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="userClassFilter" class="form-label">按班级筛选</label>
                         <select class="form-select" id="userClassFilter" name="class_name">
@@ -162,10 +169,11 @@
                             {% endfor %}
                         </select>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="userIdFilter" class="form-label">按学号筛选</label>
-                        <input type="text" class="form-control" id="userIdFilter" name="student_id" placeholder="输入学号（留空导出所有）">
+                        <input type="text" class="form-control" id="userIdFilter" name="student_id"
+                            placeholder="输入学号（留空导出所有）">
                         <small class="form-text text-muted">输入学号可精确导出某个用户的数据</small>
                     </div>
                 </div>
@@ -181,7 +189,8 @@
 </div>
 
 <!-- 提交记录筛选模态框 -->
-<div class="modal fade" id="submissionFilterModal" tabindex="-1" aria-labelledby="submissionFilterModalLabel" aria-hidden="true">
+<div class="modal fade" id="submissionFilterModal" tabindex="-1" aria-labelledby="submissionFilterModalLabel"
+    aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -193,7 +202,7 @@
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i> 您可以选择筛选条件，留空则导出所有提交记录
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="submissionClassFilter" class="form-label">按班级筛选</label>
                         <select class="form-select" id="submissionClassFilter" name="class_name">
@@ -203,10 +212,11 @@
                             {% endfor %}
                         </select>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="submissionIdFilter" class="form-label">按学号筛选</label>
-                        <input type="text" class="form-control" id="submissionIdFilter" name="student_id" placeholder="输入学号（留空导出所有）">
+                        <input type="text" class="form-control" id="submissionIdFilter" name="student_id"
+                            placeholder="输入学号（留空导出所有）">
                         <small class="form-text text-muted">输入学号可精确导出某个学生的提交记录</small>
                     </div>
                 </div>
@@ -222,7 +232,8 @@
 </div>
 
 <!-- 全部数据筛选模态框 -->
-<div class="modal fade" id="allDataFilterModal" tabindex="-1" aria-labelledby="allDataFilterModalLabel" aria-hidden="true">
+<div class="modal fade" id="allDataFilterModal" tabindex="-1" aria-labelledby="allDataFilterModalLabel"
+    aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -234,7 +245,7 @@
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i> 您可以选择筛选条件，留空则导出所有数据
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="allDataClassFilter" class="form-label">按班级筛选</label>
                         <select class="form-select" id="allDataClassFilter" name="class_name">
@@ -244,10 +255,11 @@
                             {% endfor %}
                         </select>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="allDataIdFilter" class="form-label">按学号筛选</label>
-                        <input type="text" class="form-control" id="allDataIdFilter" name="student_id" placeholder="输入学号（留空导出所有）">
+                        <input type="text" class="form-control" id="allDataIdFilter" name="student_id"
+                            placeholder="输入学号（留空导出所有）">
                         <small class="form-text text-muted">输入学号可精确导出某个学生的所有数据</small>
                     </div>
                 </div>
@@ -263,70 +275,70 @@
 </div>
 
 <script>
-// 处理用户数据导出表单提交
-document.getElementById('userFilterForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    const params = new URLSearchParams();
-    
-    const className = formData.get('class_name');
-    const studentId = formData.get('student_id');
-    
-    if (className) params.append('class_name', className);
-    if (studentId) params.append('student_id', studentId);
-    
-    const url = "{{ url_for('main.download_data', export_type='users') }}" + 
-                (params.toString() ? '?' + params.toString() : '');
-    
-    window.location.href = url;
-    
-    // 关闭模态框
-    const modal = bootstrap.Modal.getInstance(document.getElementById('userFilterModal'));
-    modal.hide();
-});
+    // 处理用户数据导出表单提交
+    document.getElementById('userFilterForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const params = new URLSearchParams();
 
-// 处理提交记录导出表单提交
-document.getElementById('submissionFilterForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    const params = new URLSearchParams();
-    
-    const className = formData.get('class_name');
-    const studentId = formData.get('student_id');
-    
-    if (className) params.append('class_name', className);
-    if (studentId) params.append('student_id', studentId);
-    
-    const url = "{{ url_for('main.download_data', export_type='submissions') }}" + 
-                (params.toString() ? '?' + params.toString() : '');
-    
-    window.location.href = url;
-    
-    // 关闭模态框
-    const modal = bootstrap.Modal.getInstance(document.getElementById('submissionFilterModal'));
-    modal.hide();
-});
+        const className = formData.get('class_name');
+        const studentId = formData.get('student_id');
 
-// 处理全部数据导出表单提交
-document.getElementById('allDataFilterForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    const params = new URLSearchParams();
-    
-    const className = formData.get('class_name');
-    const studentId = formData.get('student_id');
-    
-    if (className) params.append('class_name', className);
-    if (studentId) params.append('student_id', studentId);
-    
-    const url = "{{ url_for('main.download_data', export_type='all') }}" + 
-                (params.toString() ? '?' + params.toString() : '');
-    
-    window.location.href = url;
-    
-    // 关闭模态框
-    const modal = bootstrap.Modal.getInstance(document.getElementById('allDataFilterModal'));
-    modal.hide();
-});
+        if (className) params.append('class_name', className);
+        if (studentId) params.append('student_id', studentId);
+
+        const url = "{{ url_for('main.download_data', export_type='users') }}" +
+            (params.toString() ? '?' + params.toString() : '');
+
+        window.location.href = url;
+
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('userFilterModal'));
+        modal.hide();
+    });
+
+    // 处理提交记录导出表单提交
+    document.getElementById('submissionFilterForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const params = new URLSearchParams();
+
+        const className = formData.get('class_name');
+        const studentId = formData.get('student_id');
+
+        if (className) params.append('class_name', className);
+        if (studentId) params.append('student_id', studentId);
+
+        const url = "{{ url_for('main.download_data', export_type='submissions') }}" +
+            (params.toString() ? '?' + params.toString() : '');
+
+        window.location.href = url;
+
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('submissionFilterModal'));
+        modal.hide();
+    });
+
+    // 处理全部数据导出表单提交
+    document.getElementById('allDataFilterForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const params = new URLSearchParams();
+
+        const className = formData.get('class_name');
+        const studentId = formData.get('student_id');
+
+        if (className) params.append('class_name', className);
+        if (studentId) params.append('student_id', studentId);
+
+        const url = "{{ url_for('main.download_data', export_type='all') }}" +
+            (params.toString() ? '?' + params.toString() : '');
+
+        window.location.href = url;
+
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('allDataFilterModal'));
+        modal.hide();
+    });
 </script>
-{% endblock %} 
+{% endblock %}
