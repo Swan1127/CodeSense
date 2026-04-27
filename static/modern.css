@@ -628,3 +628,165 @@ a:hover {
 .btn-close {
   box-shadow: none !important;
 }
+/* ==========================================================================
+   Code Review Evolution & Maturity Index
+   ========================================================================== */
+
+.maturity-hero {
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    color: white;
+    padding: 3rem 2rem;
+    border-radius: 1rem;
+    margin-bottom: 2.5rem;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.maturity-hero::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, transparent 70%);
+    border-radius: 50%;
+}
+
+.maturity-score-display {
+    text-align: center;
+    position: relative;
+    z-index: 1;
+}
+
+.maturity-value {
+    font-size: 4rem;
+    font-weight: 800;
+    margin: 0;
+    line-height: 1;
+    background: linear-gradient(to bottom, #fff, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.maturity-label {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 0.5rem;
+}
+
+.maturity-growth {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
+    border-radius: 2rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin-top: 1.5rem;
+}
+
+/* Review Highlight Cards */
+.review-highlight-card {
+    background: #fff;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 2.5rem;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.review-highlight-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.review-header {
+    padding: 1rem 1.5rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.review-title {
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.review-body {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 0;
+}
+
+.review-code {
+    flex: 1.5;
+    min-width: 450px;
+    background: #f8fafc;
+    padding: 2rem;
+    border-right: 1px solid #e2e8f0;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 0.9rem;
+    position: relative;
+    overflow-x: auto;
+}
+
+.review-analysis {
+    flex: 1;
+    min-width: 300px;
+    padding: 2rem;
+    background: #fff;
+}
+
+.review-analysis h4 {
+    font-size: 1rem;
+    color: #334155;
+    margin-bottom: 1.25rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.code-line-feedback {
+    background: #fef2f2;
+    border-left: 3px solid #ef4444;
+    margin: 0.5rem 0;
+    padding: 0.5rem 1rem;
+    border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.code-line-feedback strong {
+    color: #991b1b;
+    font-size: 0.8rem;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.code-line-feedback p {
+    margin: 0;
+    color: #b91c1c;
+    font-size: 0.9rem;
+}
+
+@media (max-width: 992px) {
+    .review-body {
+        flex-direction: column;
+    }
+    .review-code {
+        min-width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #e2e8f0;
+    }
+}

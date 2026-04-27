@@ -143,8 +143,16 @@
     }
 
     @keyframes blink {
-        0%, 49% { opacity: 1; }
-        50%, 100% { opacity: 0; }
+
+        0%,
+        49% {
+            opacity: 1;
+        }
+
+        50%,
+        100% {
+            opacity: 0;
+        }
     }
 
     .analysis-section {
@@ -153,12 +161,12 @@
         border-radius: 8px;
         padding: 1.25rem;
         margin-bottom: 1rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         transition: all 0.3s ease;
     }
 
     .analysis-section:hover {
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
 
     .analysis-section h3 {
@@ -234,67 +242,78 @@
     <div class="col-md-4">
         <div class="card">
             <div class="card-body" style="padding: 1.5rem;">
-                <h5 class="card-title" style="margin-bottom: 1.5rem;"><i class="bi bi-journal-code" style="margin-right: 10px;"></i> 我的作业</h5>
-                
+                <h5 class="card-title" style="margin-bottom: 1.5rem;"><i class="bi bi-journal-code"
+                        style="margin-right: 10px;"></i> 我的作业</h5>
+
                 <!-- 重新排列卡片内容，使文本与图标分离 -->
                 <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
                     <div class="text-center">
-                        <div class="badge badge-primary" style="padding: 0.75rem; font-size: 1.2rem; margin-bottom: 1rem;">
+                        <div class="badge badge-primary"
+                            style="padding: 0.75rem; font-size: 1.2rem; margin-bottom: 1rem;">
                             <i class="bi bi-list-check"></i>
                         </div>
                         <h3 style="font-size: 1.8rem; font-weight: 700; margin: 0.75rem 0;">{{ assignments_count }}</h3>
                         <p class="text-muted" style="margin-top: 0.5rem;">需要完成的作业</p>
                     </div>
                 </div>
-                
-                <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-secondary btn-sm mt-3" style="padding: 0.5rem 1rem; margin-top: 1.25rem; font-weight: 500; width: 100%;">
+
+                <a href="{{ url_for('assignments.manage_assignments') }}" class="btn btn-secondary btn-sm mt-3"
+                    style="padding: 0.5rem 1rem; margin-top: 1.25rem; font-weight: 500; width: 100%;">
                     <i class="bi bi-arrow-right" style="margin-right: 8px;"></i> 查看所有作业
                 </a>
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-4">
         <div class="card">
             <div class="card-body" style="padding: 1.5rem;">
-                <h5 class="card-title" style="margin-bottom: 1.5rem;"><i class="bi bi-check-circle" style="margin-right: 10px;"></i> 已提交</h5>
-                
+                <h5 class="card-title" style="margin-bottom: 1.5rem;"><i class="bi bi-check-circle"
+                        style="margin-right: 10px;"></i> 已提交</h5>
+
                 <!-- 重新排列卡片内容，使文本与图标分离 -->
                 <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
                     <div class="text-center">
-                        <div class="badge badge-success" style="padding: 0.75rem; font-size: 1.2rem; margin-bottom: 1rem;">
+                        <div class="badge badge-success"
+                            style="padding: 0.75rem; font-size: 1.2rem; margin-bottom: 1rem;">
                             <i class="bi bi-upload"></i>
                         </div>
                         <h3 style="font-size: 1.8rem; font-weight: 700; margin: 0.75rem 0;">{{ submissions_count }}</h3>
                         <p class="text-muted" style="margin-top: 0.5rem;">已提交的作业</p>
                     </div>
                 </div>
-                
-                <a href="{{ url_for('users.view_submissions') }}" class="btn btn-secondary btn-sm mt-3" style="padding: 0.5rem 1rem; margin-top: 1.25rem; font-weight: 500; width: 100%;">
+
+                <a href="{{ url_for('users.view_submissions') }}" class="btn btn-secondary btn-sm mt-3"
+                    style="padding: 0.5rem 1rem; margin-top: 1.25rem; font-weight: 500; width: 100%;">
                     <i class="bi bi-arrow-right" style="margin-right: 8px;"></i> 查看提交记录
                 </a>
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-4">
         <div class="card">
             <div class="card-body" style="padding: 1.5rem;">
-                <h5 class="card-title" style="margin-bottom: 1.5rem;"><i class="bi bi-star" style="margin-right: 10px;"></i> 平均得分</h5>
-                
+                <h5 class="card-title" style="margin-bottom: 1.5rem;"><i class="bi bi-graph-up-arrow"
+                        style="margin-right: 10px;"></i> 综合能力指标</h5>
+
                 <!-- 重新排列卡片内容，使文本与图标分离 -->
                 <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
                     <div class="text-center">
-                        <div class="badge badge-warning" style="padding: 0.75rem; font-size: 1.2rem; margin-bottom: 1rem;">
-                            <i class="bi bi-bar-chart"></i>
+                        <div class="badge badge-warning"
+                            style="padding: 0.75rem; font-size: 1.2rem; margin-bottom: 1rem; background-color: #f59e0b; color: white;">
+                            <i class="bi bi-activity"></i>
                         </div>
-                        <h3 style="font-size: 1.8rem; font-weight: 700; margin: 0.75rem 0;">{{ average_score|round(2, 'common') if average_score else '暂无' }}</h3>
-                        <p class="text-muted" style="margin-top: 0.5rem;">您的平均分数</p>
+                        <h3 style="font-size: 1.8rem; font-weight: 700; margin: 0.75rem 0;">{{ maturity_score if
+                            maturity_score else '暂无' }}</h3>
+                        <p class="text-muted" style="margin-top: 0.5rem;">多维度贝叶斯权重评估</p>
                     </div>
                 </div>
-                
-                <a href="{{ url_for('main.user_profile', user_username=user.username) }}" class="btn btn-secondary btn-sm mt-3" style="padding: 0.5rem 1rem; margin-top: 1.25rem; font-weight: 500; width: 100%;">
-                    <i class="bi bi-arrow-right" style="margin-right: 8px;"></i> 查看详细数据
+
+                <a href="{{ url_for('main.user_profile', user_username=user.username) }}"
+                    class="btn btn-secondary btn-sm mt-3"
+                    style="padding: 0.5rem 1rem; margin-top: 1.25rem; font-weight: 500; width: 100%;">
+                    <i class="bi bi-arrow-right" style="margin-right: 8px;"></i> 查看能力进化详情
                 </a>
             </div>
         </div>
@@ -317,15 +336,16 @@
                     <div class="card-body" style="padding: 1.5rem;">
                         <h5 class="card-title" style="margin-bottom: 1rem;">{{ assignment.title }}</h5>
                         <p class="text-muted small" style="margin-bottom: 1rem;">
-                            <i class="bi bi-calendar"></i> 
+                            <i class="bi bi-calendar"></i>
                             {% if assignment.due_date %}
                             截止日期: {{ assignment.due_date.strftime('%Y-%m-%d') }}
                             {% else %}
                             无截止日期
                             {% endif %}
                         </p>
-                        <p class="card-text markdown-body" style="margin-bottom: 1.25rem;" data-markdown="{{ assignment.description|truncate(120)|e }}"></p>
-                        
+                        <p class="card-text markdown-body" style="margin-bottom: 1.25rem;"
+                            data-markdown="{{ assignment.description|truncate(120)|e }}"></p>
+
                         {% set submitted = assignment.id in submitted_assignments %}
                         {% if submitted %}
                         <div class="badge badge-success mb-3" style="margin-bottom: 1.25rem; padding: 0.5rem 0.75rem;">
@@ -336,9 +356,10 @@
                             <i class="bi bi-exclamation-circle"></i> 未提交
                         </div>
                         {% endif %}
-                        
+
                         <div class="d-flex justify-content-end">
-                            <a href="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}" class="btn btn-primary btn-sm" style="padding: 0.5rem 1rem; font-weight: 500;">
+                            <a href="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}"
+                                class="btn btn-primary btn-sm" style="padding: 0.5rem 1rem; font-weight: 500;">
                                 {% if submitted %}
                                 <i class="bi bi-pencil"></i> 重新提交
                                 {% else %}
@@ -373,7 +394,8 @@
                 <div class="mb-4" style="margin-bottom: 2rem;" id="knowledge-profile-container">
                     <h5 style="margin-bottom: 1.25rem;">
                         <i class="bi bi-person-badge text-primary"></i> C语言知识点画像
-                        <span id="profile-status-badge" class="badge badge-secondary" style="margin-left: 0.5rem; font-size: 0.75rem;">
+                        <span id="profile-status-badge" class="badge badge-secondary"
+                            style="margin-left: 0.5rem; font-size: 0.75rem;">
                             <i class="bi bi-hourglass-split"></i> 加载中
                         </span>
                     </h5>
@@ -392,20 +414,20 @@
                 <div class="mb-4" style="margin-bottom: 2rem;" id="ai-analysis-container">
                     <h5 style="margin-bottom: 1.25rem;">
                         <i class="bi bi-robot text-success"></i> AI个性化分析
-                        <span id="analysis-status-badge" class="badge badge-secondary" style="margin-left: 0.5rem; font-size: 0.75rem;">
+                        <span id="analysis-status-badge" class="badge badge-secondary"
+                            style="margin-left: 0.5rem; font-size: 0.75rem;">
                             <i class="bi bi-hourglass-split"></i> 加载中
                         </span>
-                        <button id="refresh-analysis-btn" class="btn btn-sm btn-outline-primary" style="margin-left: 0.5rem; display: none;" onclick="location.reload()">
+                        <button id="refresh-analysis-btn" class="btn btn-sm btn-outline-primary"
+                            style="margin-left: 0.5rem; display: none;" onclick="location.reload()">
                             <i class="bi bi-arrow-clockwise"></i> 刷新
                         </button>
                     </h5>
 
                     <!-- 进度条 -->
                     <div class="progress mb-3" id="analysis-progress" style="height: 20px; display: none;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated"
-                             role="progressbar"
-                             id="analysis-progress-bar"
-                             style="width: 0%;">0%</div>
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                            id="analysis-progress-bar" style="width: 0%;">0%</div>
                     </div>
 
                     <!-- 流式输出区域 -->
@@ -451,7 +473,8 @@
                                     <td>{{ submission.assignment.title }}</td>
                                     <td>{{ submission.submitted_at.strftime('%Y-%m-%d %H:%M') }}</td>
                                     <td>
-                                        <span class="badge {% if submission.score >= 80 %}bg-success{% elif submission.score >= 60 %}bg-warning{% else %}bg-danger{% endif %}">
+                                        <span
+                                            class="badge {% if submission.score >= 80 %}bg-success{% elif submission.score >= 60 %}bg-warning{% else %}bg-danger{% endif %}">
                                             {{ submission.score }}
                                         </span>
                                     </td>
@@ -473,238 +496,238 @@
 <!-- 引入marked.js用于Markdown渲染 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
 <script>
-// ==================== SSE流式架构 ====================
-let knowledgeRadarChart = null;
-let isAnalysisComplete = false;
-let markdownBuffer = ''; // Markdown内容缓冲区
-let currentSection = null; // 当前正在渲染的章节
+    // ==================== SSE流式架构 ====================
+    let knowledgeRadarChart = null;
+    let isAnalysisComplete = false;
+    let markdownBuffer = ''; // Markdown内容缓冲区
+    let currentSection = null; // 当前正在渲染的章节
 
-// 知识点映射
-const KNOWLEDGE_POINTS = {
-    'basic_syntax': '基础语法',
-    'pointer': '指针',
-    'function': '函数',
-    'array': '数组',
-    'string': '字符串',
-    'struct': '结构体',
-    'file_io': '文件操作',
-    'dynamic_memory': '动态内存',
-    'linked_list': '链表',
-    'tree': '树',
-    'sorting': '排序算法',
-    'searching': '搜索算法',
-    'recursion': '递归'
-};
+    // 知识点映射
+    const KNOWLEDGE_POINTS = {
+        'basic_syntax': '基础语法',
+        'pointer': '指针',
+        'function': '函数',
+        'array': '数组',
+        'string': '字符串',
+        'struct': '结构体',
+        'file_io': '文件操作',
+        'dynamic_memory': '动态内存',
+        'linked_list': '链表',
+        'tree': '树',
+        'sorting': '排序算法',
+        'searching': '搜索算法',
+        'recursion': '递归'
+    };
 
-// 配置marked.js
-marked.setOptions({
-    breaks: true,
-    gfm: true,
-    headerIds: false,
-    mangle: false
-});
-
-// 页面加载完成后初始化SSE连接并渲染Markdown
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 SSE流式架构已加载，开始连接...');
-    // 渲染所有 data-markdown 元素
-    document.querySelectorAll('[data-markdown]').forEach(function(el) {
-        var raw = el.getAttribute('data-markdown');
-        if (raw && typeof marked !== 'undefined') {
-            el.innerHTML = marked.parse(raw, { breaks: true, gfm: true });
-        }
+    // 配置marked.js
+    marked.setOptions({
+        breaks: true,
+        gfm: true,
+        headerIds: false,
+        mangle: false
     });
-    connectSSE();
-});
 
-// 连接SSE流（使用fetch + ReadableStream替代EventSource）
-async function connectSSE() {
-    console.log('🔌 正在连接流式API: /api/stream/ability-analysis');
+    // 页面加载完成后初始化SSE连接并渲染Markdown
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log('🚀 SSE流式架构已加载，开始连接...');
+        // 渲染所有 data-markdown 元素
+        document.querySelectorAll('[data-markdown]').forEach(function (el) {
+            var raw = el.getAttribute('data-markdown');
+            if (raw && typeof marked !== 'undefined') {
+                el.innerHTML = marked.parse(raw, { breaks: true, gfm: true });
+            }
+        });
+        connectSSE();
+    });
 
-    try {
-        const response = await fetch('/api/stream/ability-analysis', {
-            method: 'GET'
+    // 连接SSE流（使用fetch + ReadableStream替代EventSource）
+    async function connectSSE() {
+        console.log('🔌 正在连接流式API: /api/stream/ability-analysis');
+
+        try {
+            const response = await fetch('/api/stream/ability-analysis', {
+                method: 'GET'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP错误: ${response.status}`);
+            }
+
+            console.log('✅ 连接已建立，开始接收数据流');
+
+            // 获取可读流
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            // 循环读取流数据
+            while (true) {
+                const { done, value } = await reader.read();
+
+                if (done) {
+                    console.log('🏁 流式传输完成');
+                    break;
+                }
+
+                // 解码新数据并添加到缓冲区
+                buffer += decoder.decode(value, { stream: true });
+
+                // 按行分割处理SSE消息
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // 保留不完整的行
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const dataStr = line.slice(6);
+                        try {
+                            const data = JSON.parse(dataStr);
+                            console.log('📦 收到消息:', data.type, data.content ? `(内容长度: ${data.content.length})` : '');
+
+                            // 根据消息类型分发处理
+                            switch (data.type) {
+                                case 'progress':
+                                    handleProgress(data);
+                                    break;
+                                case 'knowledge_profile':
+                                    handleKnowledgeProfile(data.data);
+                                    break;
+                                case 'analysis_start':
+                                    handleAnalysisStart();
+                                    break;
+                                case 'analysis_chunk':
+                                    handleAnalysisChunk(data.content);
+                                    break;
+                                case 'analysis_typo_delete':
+                                    handleTypoDelete(data.count);
+                                    break;
+                                case 'complete':
+                                    handleComplete();
+                                    return; // 完成后退出
+                                case 'error':
+                                    handleError(data.message);
+                                    return; // 错误后退出
+                            }
+                        } catch (error) {
+                            console.error('❌ 解析消息失败:', error, dataStr);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('❌ 流式传输错误:', error);
+            showError('连接中断，请刷新页面重试');
+        }
+    }
+
+    // 处理进度更新
+    function handleProgress(data) {
+        const progressBar = document.getElementById('analysis-progress-bar');
+        const progressContainer = document.getElementById('analysis-progress');
+
+        if (progressContainer) {
+            progressContainer.style.display = 'block';
+        }
+
+        if (progressBar) {
+            progressBar.style.width = data.percent + '%';
+            progressBar.textContent = data.percent + '% - ' + data.message;
+        }
+
+        console.log(`📊 进度: ${data.percent}% - ${data.message}`);
+    }
+
+    // 处理知识点画像数据
+    function handleKnowledgeProfile(profileData) {
+        console.log('🎯 收到知识点画像数据:', profileData);
+
+        // 更新状态徽章
+        const statusBadge = document.getElementById('profile-status-badge');
+        if (statusBadge) {
+            statusBadge.className = 'badge badge-success';
+            statusBadge.innerHTML = '<i class="bi bi-check-circle-fill"></i> 已加载';
+        }
+
+        // 绘制雷达图
+        renderRadarChart(profileData);
+
+        // 生成知识点表格
+        renderKnowledgeTable(profileData);
+    }
+
+    // 绘制知识点雷达图
+    function renderRadarChart(profileData) {
+        const ctx = document.getElementById('knowledgeRadarChart');
+        if (!ctx) return;
+
+        const labels = [];
+        const scores = [];
+
+        // 按照定义顺序提取数据
+        for (const [key, name] of Object.entries(KNOWLEDGE_POINTS)) {
+            if (profileData[key]) {
+                labels.push(name);
+                scores.push(profileData[key].score || 0);
+            }
+        }
+
+        // 销毁旧图表
+        if (knowledgeRadarChart) {
+            knowledgeRadarChart.destroy();
+        }
+
+        // 创建新雷达图
+        knowledgeRadarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '我的评分',
+                    data: scores,
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgba(54, 162, 235, 1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                return context.label + ': ' + context.raw.toFixed(1) + '分';
+                            }
+                        }
+                    }
+                }
+            }
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP错误: ${response.status}`);
-        }
-
-        console.log('✅ 连接已建立，开始接收数据流');
-
-        // 获取可读流
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        // 循环读取流数据
-        while (true) {
-            const { done, value } = await reader.read();
-
-            if (done) {
-                console.log('🏁 流式传输完成');
-                break;
-            }
-
-            // 解码新数据并添加到缓冲区
-            buffer += decoder.decode(value, { stream: true });
-
-            // 按行分割处理SSE消息
-            const lines = buffer.split('\n');
-            buffer = lines.pop(); // 保留不完整的行
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const dataStr = line.slice(6);
-                    try {
-                        const data = JSON.parse(dataStr);
-                        console.log('📦 收到消息:', data.type, data.content ? `(内容长度: ${data.content.length})` : '');
-
-                        // 根据消息类型分发处理
-                        switch(data.type) {
-                            case 'progress':
-                                handleProgress(data);
-                                break;
-                            case 'knowledge_profile':
-                                handleKnowledgeProfile(data.data);
-                                break;
-                            case 'analysis_start':
-                                handleAnalysisStart();
-                                break;
-                            case 'analysis_chunk':
-                                handleAnalysisChunk(data.content);
-                                break;
-                            case 'analysis_typo_delete':
-                                handleTypoDelete(data.count);
-                                break;
-                            case 'complete':
-                                handleComplete();
-                                return; // 完成后退出
-                            case 'error':
-                                handleError(data.message);
-                                return; // 错误后退出
-                        }
-                    } catch (error) {
-                        console.error('❌ 解析消息失败:', error, dataStr);
-                    }
-                }
-            }
-        }
-    } catch (error) {
-        console.error('❌ 流式传输错误:', error);
-        showError('连接中断，请刷新页面重试');
-    }
-}
-
-// 处理进度更新
-function handleProgress(data) {
-    const progressBar = document.getElementById('analysis-progress-bar');
-    const progressContainer = document.getElementById('analysis-progress');
-
-    if (progressContainer) {
-        progressContainer.style.display = 'block';
+        console.log('📊 雷达图已渲染');
     }
 
-    if (progressBar) {
-        progressBar.style.width = data.percent + '%';
-        progressBar.textContent = data.percent + '% - ' + data.message;
-    }
+    // 生成知识点详细表格
+    function renderKnowledgeTable(profileData) {
+        const tableContainer = document.getElementById('knowledge-points-table');
+        if (!tableContainer) return;
 
-    console.log(`📊 进度: ${data.percent}% - ${data.message}`);
-}
-
-// 处理知识点画像数据
-function handleKnowledgeProfile(profileData) {
-    console.log('🎯 收到知识点画像数据:', profileData);
-
-    // 更新状态徽章
-    const statusBadge = document.getElementById('profile-status-badge');
-    if (statusBadge) {
-        statusBadge.className = 'badge badge-success';
-        statusBadge.innerHTML = '<i class="bi bi-check-circle-fill"></i> 已加载';
-    }
-
-    // 绘制雷达图
-    renderRadarChart(profileData);
-
-    // 生成知识点表格
-    renderKnowledgeTable(profileData);
-}
-
-// 绘制知识点雷达图
-function renderRadarChart(profileData) {
-    const ctx = document.getElementById('knowledgeRadarChart');
-    if (!ctx) return;
-
-    const labels = [];
-    const scores = [];
-
-    // 按照定义顺序提取数据
-    for (const [key, name] of Object.entries(KNOWLEDGE_POINTS)) {
-        if (profileData[key]) {
-            labels.push(name);
-            scores.push(profileData[key].score || 0);
-        }
-    }
-
-    // 销毁旧图表
-    if (knowledgeRadarChart) {
-        knowledgeRadarChart.destroy();
-    }
-
-    // 创建新雷达图
-    knowledgeRadarChart = new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: '我的评分',
-                data: scores,
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 2,
-                pointBackgroundColor: 'rgba(54, 162, 235, 1)',
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: 'rgba(54, 162, 235, 1)'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                r: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: {
-                        stepSize: 20
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return context.label + ': ' + context.raw.toFixed(1) + '分';
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    console.log('📊 雷达图已渲染');
-}
-
-// 生成知识点详细表格
-function renderKnowledgeTable(profileData) {
-    const tableContainer = document.getElementById('knowledge-points-table');
-    if (!tableContainer) return;
-
-    let tableHTML = `
+        let tableHTML = `
         <table class="table table-hover table-sm">
             <thead class="table-light">
                 <tr>
@@ -717,20 +740,20 @@ function renderKnowledgeTable(profileData) {
             <tbody>
     `;
 
-    // 按照定义顺序生成表格行
-    for (const [key, name] of Object.entries(KNOWLEDGE_POINTS)) {
-        const data = profileData[key] || {};
-        const score = data.score || 0;
-        const total = data.total_attempts || 0;
-        const correct = data.correct_attempts || 0;
-        const accuracy = data.accuracy || 0;
+        // 按照定义顺序生成表格行
+        for (const [key, name] of Object.entries(KNOWLEDGE_POINTS)) {
+            const data = profileData[key] || {};
+            const score = data.score || 0;
+            const total = data.total_attempts || 0;
+            const correct = data.correct_attempts || 0;
+            const accuracy = data.accuracy || 0;
 
-        let scoreClass = 'text-muted';
-        if (score >= 80) scoreClass = 'text-success fw-bold';
-        else if (score >= 60) scoreClass = 'text-primary';
-        else if (score > 0) scoreClass = 'text-warning';
+            let scoreClass = 'text-muted';
+            if (score >= 80) scoreClass = 'text-success fw-bold';
+            else if (score >= 60) scoreClass = 'text-primary';
+            else if (score > 0) scoreClass = 'text-warning';
 
-        tableHTML += `
+            tableHTML += `
             <tr>
                 <td>${name}</td>
                 <td class="${scoreClass}">${score.toFixed(1)}</td>
@@ -738,274 +761,274 @@ function renderKnowledgeTable(profileData) {
                 <td>${accuracy.toFixed(0)}%</td>
             </tr>
         `;
-    }
+        }
 
-    tableHTML += `
+        tableHTML += `
             </tbody>
         </table>
     `;
 
-    tableContainer.innerHTML = tableHTML;
-    console.log('📋 知识点表格已渲染');
-}
-
-// 处理AI分析开始
-function handleAnalysisStart() {
-    console.log('🤖 AI分析开始...');
-    markdownBuffer = '';
-
-    const outputDiv = document.getElementById('analysis-output');
-    if (outputDiv) {
-        // 不再清空内容,而是移除旧的消息并准备接收新内容
-        outputDiv.innerHTML = '';
-    }
-}
-
-// 处理AI分析流式输出
-let renderTimeout = null;
-let typingCursor = null;  // 光标元素
-
-function handleAnalysisChunk(content) {
-    markdownBuffer += content;
-
-    // 使用防抖策略：累积一定数量的内容后再渲染，避免过于频繁的DOM操作
-    if (renderTimeout) {
-        clearTimeout(renderTimeout);
+        tableContainer.innerHTML = tableHTML;
+        console.log('📋 知识点表格已渲染');
     }
 
-    // 每50ms渲染一次，或者累积了足够的内容（如换行符）立即渲染
-    const shouldRenderNow = content.includes('\n') || markdownBuffer.length % 100 === 0;
+    // 处理AI分析开始
+    function handleAnalysisStart() {
+        console.log('🤖 AI分析开始...');
+        markdownBuffer = '';
 
-    if (shouldRenderNow) {
-        renderMarkdownIncremental();
-    } else {
-        renderTimeout = setTimeout(() => {
+        const outputDiv = document.getElementById('analysis-output');
+        if (outputDiv) {
+            // 不再清空内容,而是移除旧的消息并准备接收新内容
+            outputDiv.innerHTML = '';
+        }
+    }
+
+    // 处理AI分析流式输出
+    let renderTimeout = null;
+    let typingCursor = null;  // 光标元素
+
+    function handleAnalysisChunk(content) {
+        markdownBuffer += content;
+
+        // 使用防抖策略：累积一定数量的内容后再渲染，避免过于频繁的DOM操作
+        if (renderTimeout) {
+            clearTimeout(renderTimeout);
+        }
+
+        // 每50ms渲染一次，或者累积了足够的内容（如换行符）立即渲染
+        const shouldRenderNow = content.includes('\n') || markdownBuffer.length % 100 === 0;
+
+        if (shouldRenderNow) {
             renderMarkdownIncremental();
-        }, 50);
+        } else {
+            renderTimeout = setTimeout(() => {
+                renderMarkdownIncremental();
+            }, 50);
+        }
     }
-}
 
-// 处理打错字删除
-function handleTypoDelete(count) {
-    // 从缓冲区删除最后几个字符
-    if (markdownBuffer.length >= count) {
-        markdownBuffer = markdownBuffer.slice(0, -count);
-        renderMarkdownIncremental();
+    // 处理打错字删除
+    function handleTypoDelete(count) {
+        // 从缓冲区删除最后几个字符
+        if (markdownBuffer.length >= count) {
+            markdownBuffer = markdownBuffer.slice(0, -count);
+            renderMarkdownIncremental();
+        }
     }
-}
 
-// 增量渲染Markdown（流式更新，不清空已有内容）
-function renderMarkdownIncremental() {
-    const outputDiv = document.getElementById('analysis-output');
-    if (!outputDiv) return;
+    // 增量渲染Markdown（流式更新，不清空已有内容）
+    function renderMarkdownIncremental() {
+        const outputDiv = document.getElementById('analysis-output');
+        if (!outputDiv) return;
 
-    // 如果还没有章节标题，显示原始文本流
-    if (!markdownBuffer.includes('###')) {
-        // 直接渲染Markdown（可能还没有章节标题）
-        outputDiv.innerHTML = marked.parse(markdownBuffer);
-        addTypingCursor(outputDiv);  // 添加光标
+        // 如果还没有章节标题，显示原始文本流
+        if (!markdownBuffer.includes('###')) {
+            // 直接渲染Markdown（可能还没有章节标题）
+            outputDiv.innerHTML = marked.parse(markdownBuffer);
+            addTypingCursor(outputDiv);  // 添加光标
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+            return;
+        }
+
+        // 分割Markdown内容为章节（基于### 标题）
+        const sections = parseMarkdownSections(markdownBuffer);
+
+        // 获取已渲染的章节元素
+        const existingSections = outputDiv.querySelectorAll('.analysis-section');
+        const existingCount = existingSections.length;
+
+        // 1. 渲染新增的完整章节
+        for (let i = existingCount; i < sections.length; i++) {
+            const section = sections[i];
+            createSectionElement(section, outputDiv);
+        }
+
+        // 2. 更新最后一个章节的内容（正在流式接收）
+        if (sections.length > 0 && existingCount > 0 && sections.length === existingCount) {
+            const lastSection = sections[sections.length - 1];
+            const lastSectionDiv = existingSections[existingSections.length - 1];
+            updateSectionContent(lastSectionDiv, lastSection);
+        }
+
+        // 3. 添加打字光标到最后
+        addTypingCursor(outputDiv);
+
+        // 自动滚动到底部
         outputDiv.scrollTop = outputDiv.scrollHeight;
-        return;
     }
 
-    // 分割Markdown内容为章节（基于### 标题）
-    const sections = parseMarkdownSections(markdownBuffer);
+    // 添加打字光标
+    function addTypingCursor(container) {
+        // 移除旧光标
+        if (typingCursor && typingCursor.parentNode) {
+            typingCursor.parentNode.removeChild(typingCursor);
+        }
 
-    // 获取已渲染的章节元素
-    const existingSections = outputDiv.querySelectorAll('.analysis-section');
-    const existingCount = existingSections.length;
-
-    // 1. 渲染新增的完整章节
-    for (let i = existingCount; i < sections.length; i++) {
-        const section = sections[i];
-        createSectionElement(section, outputDiv);
+        // 创建新光标
+        typingCursor = document.createElement('span');
+        typingCursor.className = 'typing-cursor';
+        container.appendChild(typingCursor);
     }
 
-    // 2. 更新最后一个章节的内容（正在流式接收）
-    if (sections.length > 0 && existingCount > 0 && sections.length === existingCount) {
-        const lastSection = sections[sections.length - 1];
-        const lastSectionDiv = existingSections[existingSections.length - 1];
-        updateSectionContent(lastSectionDiv, lastSection);
-    }
+    // 创建章节元素
+    function createSectionElement(section, container) {
+        const sectionDiv = document.createElement('div');
+        sectionDiv.className = 'analysis-section';
 
-    // 3. 添加打字光标到最后
-    addTypingCursor(outputDiv);
+        // 根据章节类型添加颜色标识
+        if (section.title.includes('趋势') || section.title.includes('发展')) {
+            sectionDiv.classList.add('section-trend');
+        } else if (section.title.includes('建议') || section.title.includes('改进')) {
+            sectionDiv.classList.add('section-suggestion');
+        } else if (section.title.includes('问题') || section.title.includes('不足')) {
+            sectionDiv.classList.add('section-warning');
+        }
 
-    // 自动滚动到底部
-    outputDiv.scrollTop = outputDiv.scrollHeight;
-}
+        // 添加图标到标题
+        let icon = 'bi-bar-chart-line';
+        if (section.title.includes('建议')) icon = 'bi-lightbulb';
+        else if (section.title.includes('问题')) icon = 'bi-exclamation-triangle';
+        else if (section.title.includes('趋势')) icon = 'bi-graph-up';
 
-// 添加打字光标
-function addTypingCursor(container) {
-    // 移除旧光标
-    if (typingCursor && typingCursor.parentNode) {
-        typingCursor.parentNode.removeChild(typingCursor);
-    }
+        // 渲染Markdown为HTML
+        const contentHtml = marked.parse(section.content);
 
-    // 创建新光标
-    typingCursor = document.createElement('span');
-    typingCursor.className = 'typing-cursor';
-    container.appendChild(typingCursor);
-}
-
-// 创建章节元素
-function createSectionElement(section, container) {
-    const sectionDiv = document.createElement('div');
-    sectionDiv.className = 'analysis-section';
-
-    // 根据章节类型添加颜色标识
-    if (section.title.includes('趋势') || section.title.includes('发展')) {
-        sectionDiv.classList.add('section-trend');
-    } else if (section.title.includes('建议') || section.title.includes('改进')) {
-        sectionDiv.classList.add('section-suggestion');
-    } else if (section.title.includes('问题') || section.title.includes('不足')) {
-        sectionDiv.classList.add('section-warning');
-    }
-
-    // 添加图标到标题
-    let icon = 'bi-bar-chart-line';
-    if (section.title.includes('建议')) icon = 'bi-lightbulb';
-    else if (section.title.includes('问题')) icon = 'bi-exclamation-triangle';
-    else if (section.title.includes('趋势')) icon = 'bi-graph-up';
-
-    // 渲染Markdown为HTML
-    const contentHtml = marked.parse(section.content);
-
-    sectionDiv.innerHTML = `
+        sectionDiv.innerHTML = `
         <h3><i class="bi ${icon}"></i> ${escapeHtml(section.title)}</h3>
         ${contentHtml}
     `;
 
-    container.appendChild(sectionDiv);
-}
+        container.appendChild(sectionDiv);
+    }
 
-// 更新章节内容（用于流式更新最后一个章节）
-function updateSectionContent(sectionDiv, section) {
-    const h3Element = sectionDiv.querySelector('h3');
-    if (!h3Element) return;
+    // 更新章节内容（用于流式更新最后一个章节）
+    function updateSectionContent(sectionDiv, section) {
+        const h3Element = sectionDiv.querySelector('h3');
+        if (!h3Element) return;
 
-    // 保留标题，更新内容
-    const titleHtml = h3Element.outerHTML;
-    const contentHtml = marked.parse(section.content);
-    sectionDiv.innerHTML = titleHtml + contentHtml;
-}
+        // 保留标题，更新内容
+        const titleHtml = h3Element.outerHTML;
+        const contentHtml = marked.parse(section.content);
+        sectionDiv.innerHTML = titleHtml + contentHtml;
+    }
 
-// 解析Markdown为章节
-function parseMarkdownSections(markdown) {
-    const sections = [];
-    const lines = markdown.split('\n');
-    let currentSection = null;
+    // 解析Markdown为章节
+    function parseMarkdownSections(markdown) {
+        const sections = [];
+        const lines = markdown.split('\n');
+        let currentSection = null;
 
-    for (let line of lines) {
-        // 检测### 三级标题作为章节分隔
-        if (line.trim().startsWith('### ')) {
-            // 保存上一个章节
-            if (currentSection) {
-                sections.push(currentSection);
+        for (let line of lines) {
+            // 检测### 三级标题作为章节分隔
+            if (line.trim().startsWith('### ')) {
+                // 保存上一个章节
+                if (currentSection) {
+                    sections.push(currentSection);
+                }
+
+                // 开始新章节
+                currentSection = {
+                    title: line.replace('### ', '').trim(),
+                    content: ''
+                };
+            } else if (currentSection) {
+                // 追加内容到当前章节
+                currentSection.content += line + '\n';
             }
-
-            // 开始新章节
-            currentSection = {
-                title: line.replace('### ', '').trim(),
-                content: ''
-            };
-        } else if (currentSection) {
-            // 追加内容到当前章节
-            currentSection.content += line + '\n';
         }
+
+        // 保存最后一个章节
+        if (currentSection) {
+            sections.push(currentSection);
+        }
+
+        return sections;
     }
 
-    // 保存最后一个章节
-    if (currentSection) {
-        sections.push(currentSection);
+    // HTML转义函数
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
-    return sections;
-}
+    // 处理分析完成
+    function handleComplete() {
+        console.log('🎉 分析完成');
+        isAnalysisComplete = true;
 
-// HTML转义函数
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+        // 清除待处理的渲染任务
+        if (renderTimeout) {
+            clearTimeout(renderTimeout);
+            renderTimeout = null;
+        }
 
-// 处理分析完成
-function handleComplete() {
-    console.log('🎉 分析完成');
-    isAnalysisComplete = true;
+        // 最后一次渲染，确保所有内容都显示
+        renderMarkdownIncremental();
 
-    // 清除待处理的渲染任务
-    if (renderTimeout) {
-        clearTimeout(renderTimeout);
-        renderTimeout = null;
+        // 移除光标
+        if (typingCursor && typingCursor.parentNode) {
+            typingCursor.parentNode.removeChild(typingCursor);
+            typingCursor = null;
+        }
+
+        // 更新状态徽章
+        const statusBadge = document.getElementById('analysis-status-badge');
+        if (statusBadge) {
+            // 检查是否是"正在生成"状态（需要刷新）
+            const outputDiv = document.getElementById('analysis-output');
+            if (outputDiv && outputDiv.textContent.includes('正在生成') || outputDiv.textContent.includes('生成中')) {
+                statusBadge.className = 'badge badge-info';
+                statusBadge.innerHTML = '<i class="bi bi-arrow-clockwise"></i> 需要刷新';
+
+                // 显示刷新按钮
+                const refreshBtn = document.getElementById('refresh-analysis-btn');
+                if (refreshBtn) {
+                    refreshBtn.style.display = 'inline-block';
+                }
+            } else {
+                statusBadge.className = 'badge badge-success';
+                statusBadge.innerHTML = '<i class="bi bi-check-circle-fill"></i> 已完成';
+            }
+        }
+
+        // 隐藏进度条
+        const progressContainer = document.getElementById('analysis-progress');
+        if (progressContainer) {
+            progressContainer.style.display = 'none';
+        }
+
+        console.log('✅ 流式分析已完成');
     }
 
-    // 最后一次渲染，确保所有内容都显示
-    renderMarkdownIncremental();
-
-    // 移除光标
-    if (typingCursor && typingCursor.parentNode) {
-        typingCursor.parentNode.removeChild(typingCursor);
-        typingCursor = null;
+    // 处理错误
+    function handleError(message) {
+        console.error('❌ 收到错误:', message);
+        showError(message);
     }
 
-    // 更新状态徽章
-    const statusBadge = document.getElementById('analysis-status-badge');
-    if (statusBadge) {
-        // 检查是否是"正在生成"状态（需要刷新）
+    // 显示错误提示
+    function showError(message) {
         const outputDiv = document.getElementById('analysis-output');
-        if (outputDiv && outputDiv.textContent.includes('正在生成') || outputDiv.textContent.includes('生成中')) {
-            statusBadge.className = 'badge badge-info';
-            statusBadge.innerHTML = '<i class="bi bi-arrow-clockwise"></i> 需要刷新';
-
-            // 显示刷新按钮
-            const refreshBtn = document.getElementById('refresh-analysis-btn');
-            if (refreshBtn) {
-                refreshBtn.style.display = 'inline-block';
-            }
-        } else {
-            statusBadge.className = 'badge badge-success';
-            statusBadge.innerHTML = '<i class="bi bi-check-circle-fill"></i> 已完成';
-        }
-    }
-
-    // 隐藏进度条
-    const progressContainer = document.getElementById('analysis-progress');
-    if (progressContainer) {
-        progressContainer.style.display = 'none';
-    }
-
-    console.log('✅ 流式分析已完成');
-}
-
-// 处理错误
-function handleError(message) {
-    console.error('❌ 收到错误:', message);
-    showError(message);
-}
-
-// 显示错误提示
-function showError(message) {
-    const outputDiv = document.getElementById('analysis-output');
-    if (outputDiv) {
-        outputDiv.innerHTML = `
+        if (outputDiv) {
+            outputDiv.innerHTML = `
             <div class="alert alert-danger">
                 <i class="bi bi-exclamation-triangle-fill"></i> ${message}
             </div>
         `;
+        }
+
+        const statusBadge = document.getElementById('analysis-status-badge');
+        if (statusBadge) {
+            statusBadge.className = 'badge badge-danger';
+            statusBadge.innerHTML = '<i class="bi bi-x-circle-fill"></i> 错误';
+        }
     }
 
-    const statusBadge = document.getElementById('analysis-status-badge');
-    if (statusBadge) {
-        statusBadge.className = 'badge badge-danger';
-        statusBadge.innerHTML = '<i class="bi bi-x-circle-fill"></i> 错误';
-    }
-}
-
-// 页面卸载时无需手动清理，fetch会自动处理
-window.addEventListener('beforeunload', function() {
-    console.log('🔌 页面卸载');
-});
+    // 页面卸载时无需手动清理，fetch会自动处理
+    window.addEventListener('beforeunload', function () {
+        console.log('🔌 页面卸载');
+    });
 </script>
 {% endblock %}

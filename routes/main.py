@@ -301,15 +301,24 @@ def home():
         print(f"班级平均代码可读性: {class_readability_score}")
         print(f"JSON数据: {json.dumps(skills_data)}")
         
-        # 计算学生已提交的作业
-        submitted_assignments = [sub.assignment_id for sub in submissions]
-        
+        # --- 贝叶斯权重评估：计算综合能力成熟度指标 ---
+        # 权重分配：算法 40%, 功能实现 30%, 代码风格 10%, 可读性 10%, 效率优化 10%
+        maturity_score = (
+            float(algorithm_score) * 0.4 +
+            float(functionality_score) * 0.3 +
+            float(style_score) * 0.1 +
+            float(readability_score) * 0.1 +
+            float(efficiency_score) * 0.1
+        )
+        maturity_score = round(maturity_score, 1)
+
         # 准备渲染数据
         context = {
             'user': user,
             'assignments_count': assignments_count,
             'submissions_count': submissions_count,
             'average_score': average_score,
+            'maturity_score': maturity_score,  # 新增成熟度指标
             'recent_assignments': recent_assignments,
             'ability_analysis': ability_analysis,
             'submissions': submissions,
@@ -759,9 +768,40 @@ def profile():
 @main.route('/user_profile/<string:user_username>')
 @login_required
 def user_profile(user_username):
-    """查看指定用户的信息"""
+    """查看指定用户的信息（重构为：代码能力进化视图）"""
     user = User.query.filter_by(username=user_username).first_or_404()
-    return render_template('sprofile.html', user=user)
+    
+    # 仅允许学生查看自己的，或者教师/管理员查看
+    if not (current_user.is_admin or current_user.is_teacher or current_user.username == user_username):
+        flash('您没有权限查看该用户信息', 'danger')
+        return redirect(url_for('main.home'))
+        
+    # 获取最近 10 条提交记录，用于详情页展示 AI 批注
+    recent_submissions = Submission.query.filter_by(student_id=user.student_id)\
+        .order_by(Submission.submitted_at.desc()).limit(10).all()
+        
+    # 计算综合成熟度指标（与首页一致）
+    ability_scores = user.get_ability_scores()
+    maturity_score = (
+        ability_scores.get('algorithm', 60) * 0.4 +
+        ability_scores.get('functionality', 60) * 0.3 +
+        ability_scores.get('style', 60) * 0.1 +
+        ability_scores.get('readability', 60) * 0.1 +
+        ability_scores.get('efficiency', 60) * 0.1
+    )
+    maturity_score = round(maturity_score, 1)
+    
+    # 准备技能数据
+    skills_data = {
+        'student': {k: float(v) for k, v in ability_scores.items()},
+        'class_average': {k: float(v) for k, v in User.get_class_average_scores().items()}
+    }
+    
+    return render_template('sprofile.html', 
+                          user=user, 
+                          recent_submissions=recent_submissions,
+                          maturity_score=maturity_score,
+                          skills_data_json=json.dumps(skills_data))
 
 @main.route('/debug_session')
 def debug_session():
