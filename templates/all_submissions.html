@@ -7,24 +7,24 @@
     .filters-card {
         margin-bottom: 2rem;
     }
-    
+
     .filter-form {
         display: flex;
         flex-wrap: wrap;
         gap: 1rem;
         align-items: flex-end;
     }
-    
+
     .filter-group {
         flex: 1;
         min-width: 200px;
     }
-    
+
     .filter-buttons {
         display: flex;
         gap: 0.5rem;
     }
-    
+
     .score-badge {
         padding: 0.35em 0.65em;
         font-size: 0.75em;
@@ -32,22 +32,22 @@
         border-radius: 0.375rem;
         white-space: nowrap;
     }
-    
+
     .score-high {
         background-color: #10b981;
         color: white;
     }
-    
+
     .score-medium {
         background-color: #f59e0b;
         color: white;
     }
-    
+
     .score-low {
         background-color: #ef4444;
         color: white;
     }
-    
+
     .ai-badge {
         background-color: #ede9fe;
         color: #6d28d9;
@@ -57,30 +57,30 @@
         border-radius: 0.375rem;
         white-space: nowrap;
     }
-    
+
     .data-table {
         margin-bottom: 2rem;
     }
-    
+
     .data-table th {
         white-space: nowrap;
     }
-    
+
     .student-id {
         font-family: monospace;
         font-weight: 600;
     }
-    
+
     .action-buttons {
         display: flex;
         gap: 0.5rem;
     }
-    
+
     .submit-time {
         white-space: nowrap;
         font-size: 0.875rem;
     }
-    
+
     .empty-results {
         padding: 3rem;
         text-align: center;
@@ -88,13 +88,13 @@
         border-radius: 0.5rem;
         border: 1px dashed #d1d5db;
     }
-    
+
     .empty-results i {
         font-size: 3rem;
         color: #9ca3af;
         margin-bottom: 1rem;
     }
-    
+
     .empty-results p {
         color: #4b5563;
         font-size: 1.1rem;
@@ -104,9 +104,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1 class="page-title">所有提交记录</h1>
-    <p class="page-subtitle">查看和管理学生提交记录</p>
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="page-title">所有提交记录</h1>
+        <p class="page-subtitle">查看和管理学生提交记录</p>
+    </div>
+    <a href="{{ url_for('main.admin_dashboard') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回仪表盘
+    </a>
 </div>
 
 <div class="card filters-card">
@@ -120,37 +125,39 @@
                 <select name="student_id" id="student_id" class="form-select">
                     <option value="">所有学生</option>
                     {% for student in students %}
-                    <option value="{{ student.student_id }}" {% if filters.student_id == student.student_id %}selected{% endif %}>
+                    <option value="{{ student.student_id }}" {% if filters.student_id==student.student_id %}selected{%
+                        endif %}>
                         {{ student.username }} ({{ student.student_id }})
                     </option>
                     {% endfor %}
                 </select>
             </div>
-            
+
             <div class="filter-group">
                 <label for="assignment_id" class="form-label">作业</label>
                 <select name="assignment_id" id="assignment_id" class="form-select">
                     <option value="">所有作业</option>
                     {% for assignment in assignments %}
-                    <option value="{{ assignment.id }}" {% if filters.assignment_id|string == assignment.id|string %}selected{% endif %}>
+                    <option value="{{ assignment.id }}" {% if filters.assignment_id|string==assignment.id|string
+                        %}selected{% endif %}>
                         {{ assignment.title }}
                     </option>
                     {% endfor %}
                 </select>
             </div>
-            
+
             <div class="filter-group">
                 <label for="min_score" class="form-label">最低分数</label>
-                <input type="number" class="form-control" id="min_score" name="min_score" 
-                       min="0" max="5" step="0.1" value="{{ filters.min_score }}">
+                <input type="number" class="form-control" id="min_score" name="min_score" min="0" max="5" step="0.1"
+                    value="{{ filters.min_score }}">
             </div>
-            
+
             <div class="filter-group">
                 <label for="max_score" class="form-label">最高分数</label>
-                <input type="number" class="form-control" id="max_score" name="max_score" 
-                       min="0" max="5" step="0.1" value="{{ filters.max_score }}">
+                <input type="number" class="form-control" id="max_score" name="max_score" min="0" max="5" step="0.1"
+                    value="{{ filters.max_score }}">
             </div>
-            
+
             <div class="filter-buttons">
                 <button type="submit" class="btn btn-primary">
                     <i class="bi bi-search"></i> 筛选
@@ -188,18 +195,19 @@
                         <td>{{ submission.id }}</td>
                         <td>
                             <span class="student-id">{{ submission.student_id }}</span><br>
-                            <small>{{ user_dict[submission.student_id] if submission.student_id in user_dict else submission.student_id }}</small>
+                            <small>{{ user_dict[submission.student_id] if submission.student_id in user_dict else
+                                submission.student_id }}</small>
                         </td>
                         <td>
                             <strong>{{ submission.assignment.title }}</strong>
                         </td>
                         <td>
                             {% if submission.score >= 4 %}
-                                <span class="score-badge score-high">{{ submission.score }}</span>
+                            <span class="score-badge score-high">{{ submission.score }}</span>
                             {% elif submission.score >= 3 %}
-                                <span class="score-badge score-medium">{{ submission.score }}</span>
+                            <span class="score-badge score-medium">{{ submission.score }}</span>
                             {% else %}
-                                <span class="score-badge score-low">{{ submission.score }}</span>
+                            <span class="score-badge score-low">{{ submission.score }}</span>
                             {% endif %}
                         </td>
                         <td>
@@ -207,19 +215,19 @@
                         </td>
                         <td>
                             {% if submission.ai_feedback %}
-                                <span class="badge ai-badge"><i class="bi bi-check-circle-fill"></i> 有</span>
+                            <span class="badge ai-badge"><i class="bi bi-check-circle-fill"></i> 有</span>
                             {% else %}
-                                <span class="badge badge-secondary"><i class="bi bi-x-circle"></i> 无</span>
+                            <span class="badge badge-secondary"><i class="bi bi-x-circle"></i> 无</span>
                             {% endif %}
                         </td>
                         <td>
                             <div class="action-buttons">
-                                <a href="{{ url_for('assignments.view_submission', submission_id=submission.id) }}" 
-                                   class="btn btn-sm btn-secondary">
+                                <a href="{{ url_for('assignments.view_submission', submission_id=submission.id) }}"
+                                    class="btn btn-sm btn-secondary">
                                     <i class="bi bi-eye"></i> 查看
                                 </a>
-                                <a href="{{ url_for('assignments.download_code', submission_id=submission.id) }}" 
-                                   class="btn btn-sm btn-primary">
+                                <a href="{{ url_for('assignments.download_code', submission_id=submission.id) }}"
+                                    class="btn btn-sm btn-primary">
                                     <i class="bi bi-download"></i> 下载
                                 </a>
                             </div>
@@ -229,7 +237,7 @@
                 </tbody>
             </table>
         </div>
-        
+
         <!-- 分页 -->
         <nav aria-label="分页导航" class="mt-4">
             <ul class="pagination justify-content-center">
@@ -247,30 +255,30 @@
                     <span class="page-link">上一页</span>
                 </li>
                 {% endif %}
-                
+
                 {% for page_num in submissions.iter_pages() %}
-                    {% if page_num %}
-                        {% if page_num == submissions.page %}
-                        <li class="page-item active">
-                            <span class="page-link">{{ page_num }}</span>
-                        </li>
-                        {% else %}
-                        <li class="page-item">
-                            <a class="page-link" href="{{ url_for('assignments.all_submissions', 
+                {% if page_num %}
+                {% if page_num == submissions.page %}
+                <li class="page-item active">
+                    <span class="page-link">{{ page_num }}</span>
+                </li>
+                {% else %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('assignments.all_submissions', 
                                 page=page_num, 
                                 student_id=filters.student_id,
                                 assignment_id=filters.assignment_id,
                                 min_score=filters.min_score,
                                 max_score=filters.max_score) }}">{{ page_num }}</a>
-                        </li>
-                        {% endif %}
-                    {% else %}
-                    <li class="page-item disabled" style="list-style-type: none;">
-                        <span class="page-link">...</span>
-                    </li>
-                    {% endif %}
+                </li>
+                {% endif %}
+                {% else %}
+                <li class="page-item disabled" style="list-style-type: none;">
+                    <span class="page-link">...</span>
+                </li>
+                {% endif %}
                 {% endfor %}
-                
+
                 {% if submissions.has_next %}
                 <li class="page-item">
                     <a class="page-link" href="{{ url_for('assignments.all_submissions', 
@@ -298,4 +306,4 @@
     </a>
 </div>
 {% endif %}
-{% endblock %} 
+{% endblock %}
