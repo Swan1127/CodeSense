@@ -89,13 +89,25 @@
                                 <div id="testcase-list">
                                     <!-- 动态插入用例行 -->
                                 </div>
+                                <!-- 验证测试用例按钮 -->
+                                <div class="mt-3 d-flex align-items-center gap-2">
+                                    <button type="button" class="btn btn-outline-warning" id="btn-validate-cases">
+                                        <span id="validate-spinner" class="spinner-border spinner-border-sm"
+                                            role="status" style="display:none;"></span>
+                                        <i class="bi bi-shield-check" id="validate-icon"></i>
+                                        <span id="validate-btn-text">验证测试用例</span>
+                                    </button>
+                                    <small class="text-muted">AI 将自动生成 2 套解题代码并通过沙箱验证所有用例</small>
+                                </div>
+                                <!-- 验证结果显示区域 -->
+                                <div id="validate-result" class="mt-3" style="display:none;"></div>
                             </div>
                         </div>
 
                         <div class="d-flex justify-content-end">
                             <a href="{{ url_for('assignments.teacher_assignments') }}"
                                 class="btn btn-secondary me-2">取消</a>
-                            <button type="submit" class="btn btn-success">创建作业</button>
+                            <button type="submit" class="btn btn-success" id="btn-submit-assignment">创建作业</button>
                         </div>
                     </form>
                 </div>
@@ -306,7 +318,97 @@
                             row.querySelector('.form-check-input').checked = true;
                         }
                     });
-                    setStatus(`✅ 填充完成！已自动生成 ${parsed.test_cases.length} 个测试用例，请检查后提交。`);
+                    setStatus(`⏳ 已生成 ${parsed.test_cases.length} 个测试用例，正在自动验证期望输出...`);
+
+                    // ── 自动触发验证：AI 生成 2 套代码，取共识输出 ──
+                    try {
+                        const validateResult = document.getElementById('validate-result');
+                        const validateBtn = document.getElementById('btn-validate-cases');
+                        const validateSpinner = document.getElementById('validate-spinner');
+                        const validateIcon = document.getElementById('validate-icon');
+                        const validateBtnText = document.getElementById('validate-btn-text');
+
+                        // 显示验证进度
+                        if (validateBtn) {
+                            validateBtn.disabled = true;
+                            validateSpinner.style.display = 'inline-block';
+                            validateIcon.style.display = 'none';
+                            validateBtnText.textContent = '正在自动验证中...';
+                        }
+                        if (validateResult) {
+                            validateResult.style.display = 'block';
+                            validateResult.innerHTML = '<div class="alert alert-info"><i class="bi bi-robot"></i> AI 正在生成 2 套解题代码并通过沙箱运行验证，预计耗时 30-60 秒...</div>';
+                        }
+
+                        const autoResp = await fetch('/api/auto-validate-testcases', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                description: desc,
+                                test_cases: parsed.test_cases.map(tc => ({
+                                    input_data: tc.input || tc.input_data || '',
+                                    is_public: tc.is_public || false,
+                                }))
+                            })
+                        });
+                        const autoData = await autoResp.json();
+
+                        if (autoData.success && autoData.test_cases) {
+                            // 用验证后的输出替换原始 AI 猜测的输出
+                            const rows = document.querySelectorAll('.testcase-row');
+                            let consensusCount = 0;
+                            autoData.test_cases.forEach(function (vtc, i) {
+                                if (i < rows.length) {
+                                    rows[i].querySelector('.case-output').value = vtc.expected_output;
+                                    if (vtc.consensus) {
+                                        consensusCount++;
+                                        // 标记为已验证（绿色边框）
+                                        rows[i].classList.add('border-success');
+                                        rows[i].style.borderWidth = '2px';
+                                    } else {
+                                        // 标记为需要检查（橙色边框）
+                                        rows[i].classList.add('border-warning');
+                                        rows[i].style.borderWidth = '2px';
+                                    }
+                                }
+                            });
+                            setStatus(`✅ ${autoData.summary}`);
+
+                            // 显示详细结果
+                            if (validateResult) {
+                                let resultHtml = '';
+                                if (consensusCount === autoData.test_cases.length) {
+                                    resultHtml = `<div class="alert alert-success"><i class="bi bi-check-circle-fill"></i> ${autoData.summary}</div>`;
+                                } else {
+                                    resultHtml = `<div class="alert alert-warning"><i class="bi bi-exclamation-triangle-fill"></i> ${autoData.summary}</div>`;
+                                }
+                                // 显示生成的代码
+                                if (autoData.solutions) {
+                                    autoData.solutions.forEach(function (sol) {
+                                        const badge = sol.compiled ? '<span class="badge bg-success">编译成功</span>' : '<span class="badge bg-danger">编译失败</span>';
+                                        resultHtml += `<details class="mb-2"><summary class="small text-muted">解法 #${sol.index} ${badge}</summary><pre class="mt-1 small bg-white p-2 rounded" style="max-height:200px;overflow:auto;">${(sol.code_preview || '').replace(/</g, '&lt;')}</pre></details>`;
+                                    });
+                                }
+                                validateResult.innerHTML = resultHtml;
+                            }
+                        } else {
+                            setStatus(`⚠️ 自动验证未完成：${autoData.message || autoData.summary || '未知错误'}，请手动检查输出。`);
+                            if (validateResult) {
+                                validateResult.innerHTML = `<div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> ${autoData.message || autoData.summary}</div>`;
+                            }
+                        }
+
+                        // 恢复验证按钮
+                        if (validateBtn) {
+                            validateBtn.disabled = false;
+                            validateSpinner.style.display = 'none';
+                            validateIcon.style.display = 'inline';
+                            validateBtnText.textContent = '重新验证测试用例';
+                        }
+                    } catch (autoErr) {
+                        console.error('自动验证出错:', autoErr);
+                        setStatus(`⚠️ 自动验证出错: ${autoErr.message}，测试用例已填充但未验证。`);
+                    }
                 } else {
                     setStatus('✅ 填充完成！请检查并确认内容后提交。');
                 }
@@ -322,6 +424,115 @@
                 waitMessage.style.display = 'none';
             }
         });
+    });
+
+    // ── 测试用例验证 ────────────────────────────────────────────────
+    function collectTestCases() {
+        const rows = document.querySelectorAll('.testcase-row');
+        const cases = [];
+        rows.forEach(function (row) {
+            cases.push({
+                input_data: row.querySelector('.case-input').value,
+                expected_output: row.querySelector('.case-output').value,
+                is_public: row.querySelector('.form-check-input').checked,
+            });
+        });
+        return cases;
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const validateBtn = document.getElementById('btn-validate-cases');
+        const validateSpinner = document.getElementById('validate-spinner');
+        const validateIcon = document.getElementById('validate-icon');
+        const validateBtnText = document.getElementById('validate-btn-text');
+        const validateResult = document.getElementById('validate-result');
+
+        if (validateBtn) {
+            validateBtn.addEventListener('click', async function () {
+                const description = document.getElementById('assignment-description').value;
+                const cases = collectTestCases();
+
+                if (!description.trim()) {
+                    alert('请先填写作业描述');
+                    return;
+                }
+                if (cases.length === 0) {
+                    alert('请先添加至少一个测试用例');
+                    return;
+                }
+
+                // 显示加载状态
+                validateBtn.disabled = true;
+                validateSpinner.style.display = 'inline-block';
+                validateIcon.style.display = 'none';
+                validateBtnText.textContent = '正在生成验证代码并运行沙箱...';
+                validateResult.style.display = 'block';
+                validateResult.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> AI 正在生成解题代码并在沙箱中运行验证，预计耗时 30-60 秒...</div>';
+
+                try {
+                    const resp = await fetch('/api/auto-validate-testcases', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            description: description,
+                            test_cases: cases.map(c => ({
+                                input_data: c.input_data,
+                                is_public: c.is_public,
+                            }))
+                        })
+                    });
+                    const data = await resp.json();
+
+                    if (!data.success) {
+                        validateResult.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.message}</div>`;
+                        return;
+                    }
+
+                    // 用验证输出更新表单
+                    const rows = document.querySelectorAll('.testcase-row');
+                    let consensusCount = 0;
+                    if (data.test_cases) {
+                        data.test_cases.forEach(function (vtc, i) {
+                            if (i < rows.length) {
+                                rows[i].querySelector('.case-output').value = vtc.expected_output;
+                                rows[i].classList.remove('border-success', 'border-warning');
+                                if (vtc.consensus) {
+                                    consensusCount++;
+                                    rows[i].classList.add('border-success');
+                                    rows[i].style.borderWidth = '2px';
+                                } else {
+                                    rows[i].classList.add('border-warning');
+                                    rows[i].style.borderWidth = '2px';
+                                }
+                            }
+                        });
+                    }
+
+                    // 构建结果 HTML
+                    let html = '';
+                    if (consensusCount === (data.test_cases || []).length) {
+                        html += `<div class="alert alert-success"><i class="bi bi-check-circle-fill"></i> ${data.summary}</div>`;
+                    } else {
+                        html += `<div class="alert alert-warning"><i class="bi bi-exclamation-triangle-fill"></i> ${data.summary}</div>`;
+                    }
+                    if (data.solutions) {
+                        data.solutions.forEach(function (sol) {
+                            const badge = sol.compiled ? '<span class="badge bg-success">编译成功</span>' : '<span class="badge bg-danger">编译失败</span>';
+                            html += `<details class="mb-2"><summary class="small text-muted">解法 #${sol.index} ${badge}</summary><pre class="mt-1 small bg-white p-2 rounded" style="max-height:200px;overflow:auto;">${(sol.code_preview || '').replace(/</g, '&lt;')}</pre></details>`;
+                        });
+                    }
+                    validateResult.innerHTML = html;
+
+                } catch (err) {
+                    validateResult.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> 验证请求失败: ${err.message}</div>`;
+                } finally {
+                    validateBtn.disabled = false;
+                    validateSpinner.style.display = 'none';
+                    validateIcon.style.display = 'inline';
+                    validateBtnText.textContent = '重新验证测试用例';
+                }
+            });
+        }
     });
 
     // ── 测试用例管理 ────────────────────────────────────────────────

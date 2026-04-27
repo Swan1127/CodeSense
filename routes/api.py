@@ -1121,7 +1121,129 @@ def stream_ability_analysis():
         }
     )
 
-# -- Test Case Management API --
+# -- Test Case Validation & Management API --
+
+@api.route('/validate-testcases', methods=['POST'])
+@login_required
+def validate_testcases_api():
+    """验证 AI 生成的测试用例是否正确：生成多套解题代码并沙箱验证"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '请求数据为空'}), 400
+
+        description = data.get('description', '')
+        raw_cases = data.get('test_cases', [])
+        num_solutions = data.get('num_solutions', 2)
+
+        if not description.strip():
+            return jsonify({'success': False, 'message': '题目描述不能为空'}), 400
+
+        if not raw_cases or len(raw_cases) == 0:
+            return jsonify({'success': False, 'message': '至少需要 1 个测试用例'}), 400
+
+        # 将前端格式转换为沙箱所需格式
+        test_cases = []
+        for idx, tc in enumerate(raw_cases):
+            test_cases.append({
+                'id': idx + 1,
+                'input_data': tc.get('input_data', tc.get('input', '')),
+                'expected_output': tc.get('expected_output', tc.get('output', '')),
+                'is_public': tc.get('is_public', False),
+            })
+
+        # 调用验证器
+        from utils.validate_testcases import validate_test_cases
+        result = validate_test_cases(
+            description=description,
+            test_cases=test_cases,
+            num_solutions=min(num_solutions, 3)  # 最多 3 套
+        )
+
+        return jsonify({
+            'success': True,
+            'valid': result['valid'],
+            'summary': result['summary'],
+            'solutions': [
+                {
+                    'index': s['index'],
+                    'code_preview': s['code'][:500] + ('...' if len(s['code']) > 500 else ''),
+                    'passed': s['passed'],
+                    'total': s['total'],
+                    'status': s['status'],
+                    'compile_error': s['compile_error'],
+                    'details': [
+                        {
+                            'case_id': d.get('case_id', ''),
+                            'passed': d.get('passed', False),
+                            'actual_output': d.get('actual_output', '')[:200],
+                            'expected_output': d.get('expected_output', '')[:200],
+                            'error': d.get('error', ''),
+                        }
+                        for d in s.get('details', [])
+                    ]
+                }
+                for s in result['solutions']
+            ]
+        })
+
+    except Exception as e:
+        print(f"测试用例验证失败: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'验证过程出错: {str(e)}'}), 500
+
+
+@api.route('/auto-validate-testcases', methods=['POST'])
+@login_required
+def auto_validate_testcases_api():
+    """自动生成期望输出：生成 2 套解题代码，取共识输出作为答案"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '请求数据为空'}), 400
+
+        description = data.get('description', '')
+        raw_cases = data.get('test_cases', [])
+
+        if not description.strip():
+            return jsonify({'success': False, 'message': '题目描述不能为空'}), 400
+
+        if not raw_cases:
+            return jsonify({'success': False, 'message': '至少需要 1 个测试用例输入'}), 400
+
+        # 转为统一格式
+        test_inputs = []
+        for tc in raw_cases:
+            test_inputs.append({
+                'input_data': tc.get('input_data', tc.get('input', '')),
+                'is_public': tc.get('is_public', False),
+            })
+
+        from utils.validate_testcases import auto_generate_expected_outputs
+        result = auto_generate_expected_outputs(
+            description=description,
+            test_inputs=test_inputs,
+        )
+
+        return jsonify({
+            'success': result['success'],
+            'summary': result['summary'],
+            'test_cases': result['test_cases'],
+            'solutions': [
+                {
+                    'index': s['index'],
+                    'code_preview': s['code'][:500] + ('...' if len(s['code']) > 500 else '') if s['code'] else '',
+                    'compiled': s['compiled'],
+                }
+                for s in result.get('solutions', [])
+            ]
+        })
+
+    except Exception as e:
+        print(f"自动验证测试用例失败: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'验证过程出错: {str(e)}'}), 500
+
 
 @api.route('/assignments/<int:assignment_id>/testcases/batch', methods=['POST'])
 def batch_save_testcases(assignment_id):
