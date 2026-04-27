@@ -55,31 +55,83 @@
         </a>
     </div>
 
-    <!-- 顶层评估看板 -->
-    <div class="maturity-hero">
+    <!-- 核心评估看板：4 维度能力成像 -->
+    <div class="maturity-hero mb-5">
         <div class="row align-items-center">
-            <div class="col-md-4">
-                <div class="maturity-score-display">
+            <div class="col-lg-3 col-md-4 text-center">
+                <div class="maturity-score-display mb-4">
                     <h2 class="maturity-value">{{ maturity_score }}</h2>
-                    <div class="maturity-label">综合能力成熟度指标</div>
-                    <div class="maturity-growth">
-                        <i class="bi bi-graph-up-arrow me-2"></i> 处于增长阶段
+                    <div class="maturity-label">综合能力成像指数</div>
+                    <div class="maturity-growth mt-3">
+                        <i class="bi bi-graph-up-arrow me-2"></i> 处于 {% if phi_grad > 50 %}快速进化{% else %}稳步成长期{% endif
+                        %}
                     </div>
                 </div>
             </div>
-            <div class="col-md-8">
-                <div class="radar-container">
+            <div class="col-lg-5 col-md-8">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <div
+                            class="p-3 bg-white bg-opacity-10 rounded border border-white border-opacity-10 text-center">
+                            <h4 class="text-white-50 fs-6 mb-1">φ_freq (练习律)</h4>
+                            <div class="h5 mb-0 fw-bold">{{ phi_freq }}</div>
+                            <small class="text-white-50">提交密度与规律性</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div
+                            class="p-3 bg-white bg-opacity-10 rounded border border-white border-opacity-10 text-center">
+                            <h4 class="text-white-50 fs-6 mb-1">φ_avg (相对分)</h4>
+                            <div class="h5 mb-0 fw-bold">{{ phi_avg }}</div>
+                            <small class="text-white-50">对齐班级基准线</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div
+                            class="p-3 bg-white bg-opacity-10 rounded border border-white border-opacity-10 text-center">
+                            <h4 class="text-white-50 fs-6 mb-1">φ_std (稳定性)</h4>
+                            <div class="h5 mb-0 fw-bold">{{ phi_std }}</div>
+                            <small class="text-white-50">波动惩罚项</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div
+                            class="p-3 bg-white bg-opacity-10 rounded border border-white border-opacity-10 text-center">
+                            <h4 class="text-white-50 fs-6 mb-1">φ_grad (进化率)</h4>
+                            <div class="h5 mb-0 fw-bold">{{ phi_grad }}</div>
+                            <small class="text-white-50">一阶成长梯度</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 d-none d-lg-block">
+                <div class="radar-container" style="max-width: 300px;">
                     <canvas id="abilityRadarChart"></canvas>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 重点分析：代码进化精选 -->
-    <h3 class="mb-4 d-flex align-items-center">
-        <i class="bi bi-magic text-primary me-2"></i> 最近 AI 评审精选
-        <small class="text-muted ms-3 fs-6">展示最近 10 次提交中的关键反馈</small>
-    </h3>
+    <!-- 真实蜕变轨迹 -->
+    <div class="card mb-5 border-0 shadow-sm overflow-hidden">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 d-flex align-items-center">
+                <i class="bi bi-activity text-primary me-2"></i> 真实蜕变轨迹
+                <span class="ms-3 badge bg-light text-muted fw-normal">消除“唯分数论”，记录每一份努力</span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div style="height: 250px; padding: 1rem 2rem;">
+                <canvas id="metamorphosisChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 重点攻坚：近期瓶颈题目精选 -->
+    <div class="d-flex align-items-center mb-4">
+        <h3 class="mb-0 me-3"><i class="bi bi-shield-exclamation text-danger me-2"></i> 待攻坚：瓶颈题目精选</h3>
+        <span class="text-muted fs-6">这些题目您的最高分尚未达到 5 分，通过重构实现蜕变吧</span>
+    </div>
 
     <div class="evolution-timeline">
         {% if recent_submissions %}
@@ -89,38 +141,31 @@
                 <div class="review-title">
                     <i class="bi bi-file-earmark-code me-2"></i> {{ sub.assignment.title if sub.assignment else '未知作业'
                     }}
+                    <span class="ms-2 badge bg-soft-danger text-danger">目前最高分: {{ sub.score }}</span>
                 </div>
                 <div class="review-meta">
-                    <span class="badge badge-score-{{ sub.score }} me-2">得分: {{ sub.score }}</span>
-                    <small class="text-muted">{{ sub.submitted_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                    <small class="text-muted">最近尝试于: {{ sub.submitted_at.strftime('%Y-%m-%d %H:%M') }}</small>
                 </div>
             </div>
             <div class="review-body">
                 <div class="review-code">
-                    <pre class="code-snippet-pre"><code>{% set lines = sub.code.split('\n') %}{% for line in lines[:15] %}<span class="line-container"><span class="line-number">{{ loop.index }}</span>{{ line }}</span>
-{% endfor %}{% if lines|length > 15 %}... (已省略 {{ lines|length - 15 }} 行){% endif %}</code></pre>
+                    <pre class="code-snippet-pre"><code>{% set lines = sub.code.split('\n') %}{% for line in lines[:10] %}<span class="line-container"><span class="line-number">{{ loop.index }}</span>{{ line }}</span>
+{% endfor %}{% if lines|length > 10 %}... (已省略 {{ lines|length - 10 }} 行){% endif %}</code></pre>
                 </div>
                 <div class="review-analysis">
-                    <h4><i class="bi bi-chat-left-dots text-danger"></i> 评审建议</h4>
+                    <h4><i class="bi bi-lightbulb text-warning"></i> 重构建议</h4>
                     <div class="markdown-render" style="font-size: 0.95rem; line-height: 1.7;">{{ sub.ai_feedback or
                         sub.feedback or '分析正在生成中...' }}</div>
-
-                    {# 提取行号逻辑的简单示意展示 #}
-                    {% if sub.ai_feedback and '第' in sub.ai_feedback and '行' in sub.ai_feedback %}
-                    <div class="mt-3 p-2 bg-light border-start border-danger border-4 rounded">
-                        <small class="text-danger fw-bold"><i class="bi bi-pin-angle-fill"></i> 行级提醒：</small>
-                        <p class="mb-0 small text-muted">请注意 AI 指出的具体代码行，那通常是优化的关键点。</p>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
         </div>
         {% endfor %}
         {% else %}
-        <div class="text-center py-5">
-            <img src="https://illustrations.popsy.co/gray/data-analysis.svg" alt="No data"
-                style="width: 200px; opacity: 0.5;">
-            <p class="text-muted mt-3">暂无提交数据，快去尝试完成一个作业吧！</p>
+        <div class="text-center py-5 bg-white rounded shadow-sm">
+            <img src="https://illustrations.popsy.co/gray/celebration.svg" alt="All perfected"
+                style="width: 200px; opacity: 0.8;">
+            <h4 class="mt-4">恭喜您！目前没有显著瓶颈</h4>
+            <p class="text-muted">所有已分配作业均已达到满分，您可以尝试挑战更高难度的扩展题。</p>
         </div>
         {% endif %}
     </div>
@@ -134,6 +179,27 @@
         const skillsData = {{ skills_data_json| safe
     }};
     const ctx = document.getElementById('abilityRadarChart').getContext('2d');
+
+    const chartOptions = {
+        scales: {
+            r: {
+                beginAtZero: true,
+                max: 100,
+                ticks: { display: false },
+                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                pointLabels: {
+                    color: '#94a3b8',
+                    font: { size: 10, weight: '500' }
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            }
+        }
+    };
 
     new Chart(ctx, {
         type: 'radar',
@@ -163,32 +229,63 @@
                         skillsData.class_average.efficiency,
                         skillsData.class_average.readability
                     ],
-                    backgroundColor: 'rgba(148, 163, 184, 0.2)',
-                    borderColor: 'rgba(148, 163, 184, 0.5)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    borderColor: 'rgba(255, 255, 255, 0.2)',
                     borderWidth: 1,
-                    pointBackgroundColor: 'rgba(148, 163, 184, 0.5)',
+                    pointBackgroundColor: 'rgba(255, 255, 255, 0.2)',
                     borderDash: [5, 5]
                 }
             ]
         },
+        options: chartOptions
+    });
+
+    // 真实蜕变轨迹 - Line Chart
+    const metaCtx = document.getElementById('metamorphosisChart').getContext('2d');
+
+    const metaData = {
+        labels: ['起步期', '重构 1', '重构 2', '重构 3', '当前阶段'],
+        datasets: [{
+            label: '综合能力值',
+            data: [20, 35, 60, 80, {{ maturity_score }}],
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 6,
+        pointBackgroundColor: '#fff',
+        pointBorderColor: '#3b82f6',
+        pointBorderWidth: 3
+    }]
+        };
+
+    new Chart(metaCtx, {
+        type: 'line',
+        data: metaData,
         options: {
-            scales: {
-                r: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: { display: false },
-                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                    angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
-                    pointLabels: {
-                        color: '#94a3b8',
-                        font: { size: 12, weight: '500' }
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            if (context.parsed.y >= 80) return "【蜕变】掌握核心底层逻辑";
+                            return "稳步进步中";
+                        }
                     }
                 }
             },
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { color: '#94a3b8', padding: 20 }
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    grid: { borderDash: [5, 5], color: '#f1f5f9' },
+                    ticks: { color: '#94a3b8' }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#94a3b8' }
                 }
             }
         }

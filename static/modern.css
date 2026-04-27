@@ -790,3 +790,28 @@ a:hover {
         border-bottom: 1px solid #e2e8f0;
     }
 }
+
+/* ==========================================================================
+   Soft UI & Badge Colors
+   ========================================================================== */
+.bg-soft-danger {
+    background-color: #fef2f2 !important;
+    color: #ef4444 !important;
+}
+
+.bg-soft-success {
+    background-color: #f0fdf4 !important;
+    color: #22c55e !important;
+}
+
+.bg-soft-warning {
+    background-color: #fffbeb !important;
+    color: #f59e0b !important;
+}
+
+.badge-soft-pill {
+    padding: 0.35rem 0.75rem;
+    font-weight: 600;
+    font-size: 0.75rem;
+    border-radius: 50rem;
+}

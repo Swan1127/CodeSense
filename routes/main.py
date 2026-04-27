@@ -301,16 +301,60 @@ def home():
         print(f"班级平均代码可读性: {class_readability_score}")
         print(f"JSON数据: {json.dumps(skills_data)}")
         
-        # --- 贝叶斯权重评估：计算综合能力成熟度指标 ---
-        # 权重分配：算法 40%, 功能实现 30%, 代码风格 10%, 可读性 10%, 效率优化 10%
-        maturity_score = (
-            float(algorithm_score) * 0.4 +
-            float(functionality_score) * 0.3 +
-            float(style_score) * 0.1 +
-            float(readability_score) * 0.1 +
-            float(efficiency_score) * 0.1
-        )
-        maturity_score = round(maturity_score, 1)
+        # --- 深度评估：4 核心维度能力成像 (Score_total = Σ w_i * φ_i) ---
+        all_subs = Submission.query.filter_by(student_id=student_id).order_by(Submission.submitted_at.asc()).all()
+        
+        # 1. φ_avg (相对得分): 对齐班级基准线的平均表现
+        # 我们使用现有的平均分与班级平均分的比值（封顶 1.0）
+        relative_baseline = 1.0
+        if class_averages and class_name in class_averages:
+            class_avg_all = sum(class_averages[class_name].values()) / 5
+            student_avg_all = (float(algorithm_score) + float(style_score) + float(functionality_score) + 
+                               float(efficiency_score) + float(readability_score)) / 5
+            relative_baseline = min(1.2, student_avg_all / class_avg_all) if class_avg_all > 0 else 1.0
+        phi_avg = relative_baseline * 80  # 基准分占 80
+
+        # 2. φ_freq (提交密度): 衡量练习规律性
+        phi_freq = 0
+        if all_subs:
+            first_sub = all_subs[0].submitted_at
+            now_time = datetime.datetime.now()
+            days_diff = (now_time - first_sub).days + 1
+            submissions_per_day = len(all_subs) / days_diff
+            # 这里的“规律性”简单化：每天提交一次为理想 (1.0)
+            phi_freq = min(100, submissions_per_day * 100)
+
+        # 3. φ_std (稳定性): 惩罚项，检测稳定性偏离
+        phi_std = 0
+        if len(all_subs) > 1:
+            scores = [s.score for s in all_subs if s.score is not None]
+            if scores:
+                import statistics
+                std_dev = statistics.stdev(scores) if len(scores) > 1 else 0
+                # 稳定性惩罚：标准差越大分数越低（0-5 范围，标准差 1 以上开始惩罚）
+                phi_std = max(0, 100 - (std_dev * 20))
+        else:
+            phi_std = 100 if all_subs else 0
+
+        # 4. φ_grad (进步梯度): 一阶导数逻辑，计算成长斜率
+        phi_grad = 0
+        if len(all_subs) >= 4:
+            first_half = all_subs[:len(all_subs)//2]
+            second_half = all_subs[len(all_subs)//2:]
+            avg_init = sum(s.score for s in first_half if s.score)/len(first_half)
+            avg_recent = sum(s.score for s in second_half if s.score)/len(second_half)
+            growth = avg_recent - avg_init
+            # 将 -5 到 5 的增长映射到 0-100 (0 增长为 50)
+            phi_grad = min(100, max(0, 50 + growth * 10))
+        else:
+            phi_grad = 50 # 基础评价
+
+        # 综合成熟度指标：加权计算
+        maturity_score = (phi_avg * 0.4 + phi_grad * 0.3 + phi_freq * 0.15 + phi_std * 0.15)
+        maturity_score = round(min(100, maturity_score), 1)
+
+        # 计算学生已提交的作业 ID 集合（用于前端高亮已完成任务）
+        submitted_assignments = [sub.assignment_id for sub in submissions]
 
         # 准备渲染数据
         context = {
@@ -318,11 +362,11 @@ def home():
             'assignments_count': assignments_count,
             'submissions_count': submissions_count,
             'average_score': average_score,
-            'maturity_score': maturity_score,  # 新增成熟度指标
-            'recent_assignments': recent_assignments,
-            'ability_analysis': ability_analysis,
-            'submissions': submissions,
-            'submitted_assignments': submitted_assignments,
+            'maturity_score': maturity_score,
+            'phi_avg': round(phi_avg, 1),
+            'phi_freq': round(phi_freq, 1),
+            'phi_std': round(phi_std, 1),
+            'phi_grad': round(phi_grad, 1),
             # 雷达图数据
             'algorithm_score': float(algorithm_score),
             'style_score': float(style_score),
@@ -776,31 +820,74 @@ def user_profile(user_username):
         flash('您没有权限查看该用户信息', 'danger')
         return redirect(url_for('main.home'))
         
-    # 获取最近 10 条提交记录，用于详情页展示 AI 批注
-    recent_submissions = Submission.query.filter_by(student_id=user.student_id)\
-        .order_by(Submission.submitted_at.desc()).limit(10).all()
-        
-    # 计算综合成熟度指标（与首页一致）
+    # 获取瓶颈作业：寻找那些最高分未达到 5 分的题目
+    # 我们需要按题目分组，找出每道题的最高分
+    all_student_subs = Submission.query.filter_by(student_id=user.student_id).all()
+    assignment_stats = {}
+    for sub in all_student_subs:
+        aid = sub.assignment_id
+        if aid not in assignment_stats or sub.score > assignment_stats[aid]['max_score']:
+            assignment_stats[aid] = {'max_score': sub.score, 'best_sub': sub}
+            
+    # 筛选出未满分的瓶颈题目（最高分 < 5）
+    bottleneck_aids = [aid for aid, stats in assignment_stats.items() if stats['max_score'] < 5]
+    
+    # 获取这些瓶颈题目中最新的提交记录，作为“评审精选”展示
+    recent_submissions = []
+    if bottleneck_aids:
+        # 按作业排序，取最新相关提交
+        for aid in bottleneck_aids[:10]: # 最多展示 10 个瓶颈
+            recent_submissions.append(assignment_stats[aid]['best_sub'])
+            
+    # 计算综合成熟度指标（4 核心维度，逻辑与首页一致）
+    all_subs_sorted = sorted(all_student_subs, key=lambda x: x.submitted_at)
     ability_scores = user.get_ability_scores()
-    maturity_score = (
-        ability_scores.get('algorithm', 60) * 0.4 +
-        ability_scores.get('functionality', 60) * 0.3 +
-        ability_scores.get('style', 60) * 0.1 +
-        ability_scores.get('readability', 60) * 0.1 +
-        ability_scores.get('efficiency', 60) * 0.1
-    )
-    maturity_score = round(maturity_score, 1)
+    
+    # 简化版 4 指标计算以便详情页展示
+    class_averages = User.get_class_average_scores()
+    st_class_avg = class_averages.get(user.class_name, {})
+    
+    # φ_avg
+    student_avg_val = sum(ability_scores.values()) / 5
+    class_avg_val = sum(st_class_avg.values()) / 5 if st_class_avg else 60
+    phi_avg = min(1.2, student_avg_val / class_avg_val) * 80 if class_avg_val > 0 else 80
+    
+    # φ_freq
+    phi_freq = 0
+    if all_subs_sorted:
+        days = (datetime.datetime.now() - all_subs_sorted[0].submitted_at).days + 1
+        phi_freq = min(100, (len(all_subs_sorted) / days) * 100)
+        
+    # φ_std
+    phi_std = 100
+    if len(all_subs_sorted) > 1:
+        import statistics
+        scores = [s.score for s in all_subs_sorted if s.score is not None]
+        phi_std = max(0, 100 - (statistics.stdev(scores) * 20)) if len(scores) > 1 else 100
+        
+    # φ_grad
+    phi_grad = 50
+    if len(all_subs_sorted) >= 4:
+        growth = (sum(s.score for s in all_subs_sorted[len(all_subs_sorted)//2:]) / (len(all_subs_sorted)//2)) - \
+                 (sum(s.score for s in all_subs_sorted[:len(all_subs_sorted)//2]) / (len(all_subs_sorted)//2))
+        phi_grad = min(100, max(0, 50 + growth * 10))
+
+    maturity_score = round(min(100, (phi_avg * 0.4 + phi_grad * 0.3 + phi_freq * 0.15 + phi_std * 0.15)), 1)
     
     # 准备技能数据
     skills_data = {
         'student': {k: float(v) for k, v in ability_scores.items()},
-        'class_average': {k: float(v) for k, v in User.get_class_average_scores().items()}
+        'class_average': {k: float(v) for k, v in st_class_avg.items()}
     }
     
     return render_template('sprofile.html', 
                           user=user, 
                           recent_submissions=recent_submissions,
                           maturity_score=maturity_score,
+                          phi_avg=round(phi_avg, 1),
+                          phi_freq=round(phi_freq, 1),
+                          phi_std=round(phi_std, 1),
+                          phi_grad=round(phi_grad, 1),
                           skills_data_json=json.dumps(skills_data))
 
 @main.route('/debug_session')
