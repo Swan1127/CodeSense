@@ -163,7 +163,7 @@
                             {% if assignment.due_date %}
                             {% set total_seconds = (assignment.due_date - assignment.created_time).total_seconds() if
                             assignment.created_time else 86400 * 7 %}
-                            {% set remaining_seconds = (assignment.due_date - now).total_seconds() %}
+                            {% set remaining_seconds = (assignment.due_date - current_time).total_seconds() %}
 
                             {% if remaining_seconds > 0 %}
                             {% set progress = (remaining_seconds / total_seconds * 100) | round | int %}

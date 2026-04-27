@@ -264,7 +264,7 @@ def create_app(config_name='default'):
     @app.context_processor
     def inject_now():
         from datetime import datetime as dt_now
-        return {'now': dt_now.utcnow()}
+        return {'current_time': dt_now.utcnow()}
     
     # 初始化Flask-Session（如果可用）
     if HAS_FLASK_SESSION and Session is not None:
