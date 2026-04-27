@@ -51,7 +51,9 @@ def home():
         student_id = current_user.student_id
         class_name = current_user.class_name
 
-        # 1. 获取分配给该学生班级的作业
+        now = datetime.datetime.now()
+        
+        # 1. 获取分配给该学生班级的作业（基础查询）
         assigned_assignments_query = Assignment.query
         if class_name:
             assigned_assignments_query = assigned_assignments_query.filter(
@@ -61,27 +63,37 @@ def home():
             # 如果没有班级，则没有作业
             assigned_assignments_query = assigned_assignments_query.filter(db.false())
         
-        assigned_assignments = assigned_assignments_query.all()
-        assigned_assignment_ids = [a.id for a in assigned_assignments]
+        # 获取所有分配的作业 ID（用于平均分和提交记录显示）
+        all_assigned_ids = [a.id for a in assigned_assignments_query.all()]
 
-        # 2. 基于已分配的作业重新计算统计数据
-        assignments_count = len(assigned_assignment_ids)
+        # 过滤出当前有效的作业（未过截止日期的或无截至日期的）
+        active_assignments = assigned_assignments_query.filter(
+            (Assignment.due_date >= now) | (Assignment.due_date.is_(None))
+        ).all()
+        active_assignment_ids = [a.id for a in active_assignments]
 
-        # 筛选只针对已分配作业的提交
-        submissions_query = Submission.query.filter(
+        # 2. 基于有效作业重新计算首页展示统计数据
+        # “我的作业”显示当前有效作业的总数
+        assignments_count = len(active_assignment_ids)
+
+        # “已提交”显示在有效作业范围内已经提交过的独立题目数量（即已完成的任务数）
+        submissions_count = db.session.query(func.count(func.distinct(Submission.assignment_id))).filter(
             Submission.student_id == student_id,
-            Submission.assignment_id.in_(assigned_assignment_ids)
-        )
-        
-        submissions_count = submissions_query.count()
+            Submission.assignment_id.in_(active_assignment_ids)
+        ).scalar() or 0
 
+        # 平均得分的计算范围仍保留为所有已分配给该学生的作业，以反映整体表现
         average_score_query = db.session.query(func.avg(Submission.score)).filter(
             Submission.student_id == student_id,
-            Submission.assignment_id.in_(assigned_assignment_ids)
+            Submission.assignment_id.in_(all_assigned_ids)
         ).scalar()
         average_score = average_score_query if average_score_query else 0
 
-        # 3. 获取用于显示的提交记录（也需要筛选）
+        # 3. 获取用于显示的提交记录（历史记录不加过滤，让学生可以查看过去的所有提交）
+        submissions_query = Submission.query.filter(
+            Submission.student_id == student_id,
+            Submission.assignment_id.in_(all_assigned_ids)
+        )
         submissions = submissions_query.order_by(Submission.submitted_at.desc()).all()
         
 
