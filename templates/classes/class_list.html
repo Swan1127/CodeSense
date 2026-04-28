@@ -103,6 +103,10 @@
                         <i class="bi bi-bar-chart"></i> 班级对比
                     </a>
                     {% if session.get('usertype') == '管理员' %}
+                    <button type="button" class="btn btn-success" data-bs-toggle="modal"
+                        data-bs-target="#addClassModal">
+                        <i class="bi bi-plus-circle"></i> 添加班级
+                    </button>
                     <a href="{{ url_for('main.admin_dashboard') }}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> 返回仪表盘
                     </a>
@@ -214,6 +218,66 @@
         {% endfor %}
     </div>
 </div>
+
+{% if session.get('usertype') == '管理员' %}
+<!-- 添加班级 Modal (放置在容器外部防止 z-index 冲突) -->
+<div class="modal fade" id="addClassModal" tabindex="-1" aria-labelledby="addClassModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addClassModalLabel"><i class="bi bi-plus-circle text-success"></i> 添加新班级
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('classes.add_class') }}" method="POST">
+                <!-- CSRF Token 一般在 Flask-WTF 中需要，如果是手动 Form 并且没有单独定义 WTForm，可以通过其他方式加。 
+                     但本项目全局好像很多自定义 form 没有 csrf 字段，我们仅添加必需字段 -->
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="className" class="form-label fw-bold">班级名称 <span
+                                class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="className" name="name" required
+                            placeholder="如：软件工程24-1班">
+                    </div>
+                    <div class="mb-3">
+                        <label for="classGrade" class="form-label fw-bold">年级</label>
+                        <input type="text" class="form-control" id="classGrade" name="grade" placeholder="如：2024">
+                    </div>
+                    <div class="mb-3">
+                        <label for="classMajor" class="form-label fw-bold">所属专业</label>
+                        <input type="text" class="form-control" id="classMajor" name="major" placeholder="如：计算机科学与技术">
+                    </div>
+                    <div class="mb-3">
+                        <label for="classTeacher" class="form-label fw-bold">分配教师 (可选)</label>
+                        <select class="form-select" id="classTeacher" name="teacher_id">
+                            <option value="">-- 暂不分配 --</option>
+                            {% for teacher in teachers %}
+                            <option value="{{ teacher.student_id }}">
+                                {{ teacher.full_name or teacher.username }} ({{ teacher.student_id }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-success">确认添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+    // 强制将 Modal 挂载到 body 上，避免任何 z-index 穿透问题
+    document.addEventListener('DOMContentLoaded', function () {
+        var addClassModal = document.getElementById('addClassModal');
+        if (addClassModal) {
+            document.body.appendChild(addClassModal);
+        }
+    });
+</script>
+{% endif %}
+
 {% endblock %}
 
 {% block extra_js %}

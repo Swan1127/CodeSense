@@ -39,12 +39,18 @@ def class_list():
     
     overall_avg_score = total_weighted_score / total_students if total_students > 0 else 0
     
+    # 为管理员加载可用教师列表供添加班级使用
+    teachers = []
+    if current_user.is_admin:
+        teachers = User.query.filter_by(usertype='教师').all()
+        
     return render_template('classes/class_list.html', 
                          class_data=class_data,
                          total_classes=len(all_classes),
                          total_students=total_students,
                          total_submissions_overall=total_submissions,
-                         overall_avg_score=overall_avg_score)
+                         overall_avg_score=overall_avg_score,
+                         teachers=teachers)
 
 @classes.route('/<int:class_id>')
 @login_required
@@ -182,6 +188,42 @@ def sync_classes():
         flash(f'同步失败: {str(e)}', 'error')
     
     return redirect(url_for('classes.class_list'))
+
+@classes.route('/add', methods=['POST'])
+@login_required
+@admin_required
+def add_class():
+    """添加新班级 (管理员专属)"""
+    name = request.form.get('name')
+    grade = request.form.get('grade')
+    major = request.form.get('major')
+    teacher_id = request.form.get('teacher_id')
+    
+    if not name:
+        flash('班级名称不能为空', 'danger')
+        return redirect(url_for('classes.class_list'))
+        
+    # 检查重名
+    if Class.query.filter_by(name=name).first():
+        flash(f'班级 "{name}" 已存在', 'danger')
+        return redirect(url_for('classes.class_list'))
+        
+    try:
+        new_class = Class(
+            name=name,
+            grade=grade,
+            major=major,
+            teacher_id=teacher_id if teacher_id else None
+        )
+        db.session.add(new_class)
+        db.session.commit()
+        flash(f'成功添加班级 "{name}"', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'添加班级失败: {str(e)}', 'danger')
+        
+    return redirect(url_for('classes.class_list'))
+
 
 @classes.route('/<int:class_id>/edit', methods=['GET', 'POST'])
 @login_required
