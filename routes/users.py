@@ -238,6 +238,8 @@ def refresh_analysis():
         return jsonify({'status': 'success', 'message': '已启动深度能力分析分析，请稍后刷新页面查看结果'})
     else:
         return jsonify({'status': 'info', 'message': '分析任务正在处理中，请稍候'})
+
+@users.route('/edit_profile', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
     """编辑个人资料"""
