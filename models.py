@@ -94,9 +94,10 @@ class Class(db.Model):
     @staticmethod
     def sync_from_users():
         """从用户数据同步班级信息"""
-        # 获取所有不同的班级名称
+        # 获取所有不同的班级名称（仅限学生）
         class_names = db.session.query(User.class_name)\
                      .filter(User.class_name.isnot(None))\
+                     .filter(User.usertype == '学生')\
                      .distinct().all()
         
         for (class_name,) in class_names:
@@ -116,16 +117,22 @@ class Class(db.Model):
         
         db.session.commit()
         
-        # 更新班级统计信息
+        # 清理旧的无用伪造班级数据（比如“教师”、“管理员”这些由于以前错误逻辑被同步进来的空班级）
         classes = Class.query.all()
         for cls in classes:
+            # 如果这是名为“教师”、“管理员”、“管理部门”的班级，且班级里确实没有真正的学生，就删掉它
+            real_students_count = cls.students.filter_by(usertype='学生').count()
+            if real_students_count == 0 or cls.name in ['教师', '管理员', '管理部门']:
+                db.session.delete(cls)
+                continue
+                
             stats = cls.get_statistics()
             cls.student_count = stats['student_count']
             cls.avg_score = stats['avg_score']
             cls.total_submissions = stats['total_submissions']
         
         db.session.commit()
-        return len(classes)
+        return len(Class.query.all())
 
 
 class User(db.Model, UserMixin):  # 添加UserMixin继承
