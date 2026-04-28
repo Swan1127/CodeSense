@@ -75,14 +75,63 @@ def class_detail(class_id):
                           .order_by(desc(User.user_ascore))\
                           .paginate(page=page, per_page=per_page, error_out=False)
     
-    # 获取作业进度
-    assignment_progress = cls.get_assignment_progress()
+    # 获取作业进度 (支持分页)
+    assign_page = request.args.get('assign_page', 1, type=int)
+    assignment_progress = cls.get_assignment_progress(page=assign_page, per_page=10)
     
     return render_template('classes/class_detail.html',
                          cls=cls,
                          stats=stats,
                          students=students,
-                         assignment_progress=assignment_progress)
+                         assignment_progress=assignment_progress['items'],
+                         assignment_pagination=assignment_progress['pagination'])
+
+@classes.route('/<int:class_id>/assignment/<int:assignment_id>')
+@login_required
+@admin_or_teacher_required
+def class_assignment_detail(class_id, assignment_id):
+    """查看某班级在特定作业上的所有学生答题情况"""
+    cls = Class.query.get_or_404(class_id)
+    assignment = Assignment.query.get_or_404(assignment_id)
+
+    # 权限检查
+    if not current_user.is_admin and cls.teacher_id != current_user.student_id:
+        flash('您没有权限访问此班级详情', 'danger')
+        return redirect(url_for('classes.class_list'))
+
+    # 获取分页学生
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    
+    students_query = cls.students.filter_by(usertype='学生').order_by(desc(User.user_ascore))
+    students_paginated = students_query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    student_records = []
+    
+    for student in students_paginated.items:
+        # 获取该学生在这个作业下的最高得分提交（也可以根据需要改成最新提交）
+        best_submission = Submission.query.filter_by(
+            student_id=student.student_id, 
+            assignment_id=assignment.id
+        ).order_by(Submission.score.desc()).first()
+        
+        # 获取总提交次数
+        submit_count = Submission.query.filter_by(
+            student_id=student.student_id, 
+            assignment_id=assignment.id
+        ).count()
+        
+        student_records.append({
+            'student': student,
+            'best_submission': best_submission,
+            'submit_count': submit_count
+        })
+
+    return render_template('classes/class_assignment_stats.html',
+                           cls=cls,
+                           assignment=assignment,
+                           student_records=student_records,
+                           pagination=students_paginated)
 
 @classes.route('/compare')
 @login_required

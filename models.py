@@ -68,13 +68,17 @@ class Class(db.Model):
                            .order_by(User.user_ascore.desc())\
                            .limit(limit).all()
     
-    def get_assignment_progress(self):
-        """获取班级作业完成进度"""
-        # 获取所有作业 - 使用当前模块避免循环导入
-        assignments = Assignment.query.all()
-        progress = []
+    def get_assignment_progress(self, page=1, per_page=10):
+        """获取班级作业完成进度 (分页形式)"""
+        # 仅获取指派给当前班级的作业
+        # 注意: target_classes格式类似 '软件工程24-1班,测试班级'
+        assignments_query = Assignment.query.filter(Assignment.target_classes.contains(self.name))
         
-        for assignment in assignments:
+        # 分页
+        pagination = assignments_query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        progress = []
+        for assignment in pagination.items:
             # 计算该作业的班级完成情况
             completed = db.session.query(Submission).join(User)\
                        .filter(User.class_name == self.name,
@@ -89,7 +93,10 @@ class Class(db.Model):
                 'progress_rate': round(completed / total * 100, 1) if total > 0 else 0
             })
         
-        return progress
+        return {
+            'items': progress,
+            'pagination': pagination
+        }
     
     @staticmethod
     def sync_from_users():

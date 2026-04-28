@@ -141,7 +141,12 @@
         {% for item in assignment_progress %}
         <div class="progress-item">
             <div class="progress-header">
-                <span>{{ item.assignment.title }}</span>
+                <span>
+                    <a href="{{ url_for('classes.class_assignment_detail', class_id=cls.id, assignment_id=item.assignment.id) }}"
+                        class="text-decoration-none font-weight-bold">
+                        {{ item.assignment.title }}
+                    </a>
+                </span>
                 <span>{{ item.completed }}/{{ item.total }} ({{ item.progress_rate }}%)</span>
             </div>
             <div class="progress">
@@ -149,6 +154,45 @@
             </div>
         </div>
         {% endfor %}
+
+        <!-- 作业进度分页 -->
+        {% if assignment_pagination and assignment_pagination.pages > 1 %}
+        <nav aria-label="作业进度分页" class="mt-4">
+            <ul class="pagination justify-content-center pagination-sm">
+                {% if assignment_pagination.has_prev %}
+                <li class="page-item">
+                    <a class="page-link"
+                        href="{{ url_for('classes.class_detail', class_id=cls.id, assign_page=assignment_pagination.prev_num) }}">上一页</a>
+                </li>
+                {% endif %}
+
+                {% for p in assignment_pagination.iter_pages() %}
+                {% if p %}
+                {% if p == assignment_pagination.page %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% else %}
+                <li class="page-item"><a class="page-link"
+                        href="{{ url_for('classes.class_detail', class_id=cls.id, assign_page=p) }}">{{ p }}</a></li>
+                {% endif %}
+                {% else %}
+                <li class="page-item disabled"><span class="page-link">…</span></li>
+                {% endif %}
+                {% endfor %}
+
+                {% if assignment_pagination.has_next %}
+                <li class="page-item">
+                    <a class="page-link"
+                        href="{{ url_for('classes.class_detail', class_id=cls.id, assign_page=assignment_pagination.next_num) }}">下一页</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="progress-card text-center py-4">
+        <i class="bi bi-file-earmark-code" style="font-size: 3rem; color: #ddd;"></i>
+        <p class="text-muted mt-2">暂无已分配的作业</p>
     </div>
     {% endif %}
 
