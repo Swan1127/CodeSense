@@ -865,7 +865,7 @@ def teacher_assignments():
                 assigned_to_my_classes.append(cls_name)
         assignment.assigned_to_my_classes = assigned_to_my_classes
 
-    return render_template('teacher_assignments.html', assignments=teacher_assignments)
+    return render_template('teacher_assignments.html', assignments=teacher_assignments, current_time=datetime.utcnow())
 
 
 @assignments.route('/assign/<int:assignment_id>', methods=['GET', 'POST'])
