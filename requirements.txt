@@ -9,6 +9,8 @@ cryptography==41.0.3
 Werkzeug==2.2.3
 numpy>=1.24.0
 pandas>=1.5.0
+openpyxl>=3.0.10
+python-docx>=0.8.11
 python-dotenv==1.0.0
 marshmallow==3.19.0
 gunicorn==20.1.0
