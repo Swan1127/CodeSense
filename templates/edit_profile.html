@@ -80,7 +80,16 @@
 {% block content %}
 <div class="edit-profile-container">
     <div class="edit-profile-header">
-        <h1>编辑个人资料</h1>
+        {% if current_user.usertype == '管理员' %}
+        <h1><i class="bi bi-shield-lock" style="color: #ffc107;"></i> 系统管理员设置</h1>
+        <p class="text-muted">管理您的超级管理员个人凭据</p>
+        {% elif current_user.usertype == '教师' %}
+        <h1><i class="bi bi-person-workspace" style="color: #0dcaf0;"></i> 教师资料中心</h1>
+        <p class="text-muted">完善您的基本身份标识</p>
+        {% else %}
+        <h1><i class="bi bi-person-lines-fill"></i> 编辑个人资料</h1>
+        <p class="text-muted">完善您的基本信息和所属班级</p>
+        {% endif %}
     </div>
 
     <form method="POST">
@@ -110,6 +119,7 @@
             {% endif %}
         </div>
 
+        {% if current_user.usertype == '学生' %}
         <div class="form-group">
             {{ form.class_name.label }}
             {{ form.class_name(class="form-control") }}
@@ -121,17 +131,18 @@
             </div>
             {% endif %}
         </div>
+        {% endif %}
 
         {{ form.submit(class="btn-submit") }}
     </form>
 
     {% if session.get('usertype') == '教师' %}
     <a href="{{ url_for('main.teacher_dashboard') }}" class="back-link">
-        <i class="bi bi-arrow-left"></i> 返回个人中心
+        <i class="bi bi-arrow-left"></i> 返回控制板
     </a>
     {% elif session.get('usertype') == '管理员' %}
     <a href="{{ url_for('main.admin_dashboard') }}" class="back-link">
-        <i class="bi bi-arrow-left"></i> 返回控制台
+        <i class="bi bi-arrow-left"></i> 返回控制板
     </a>
     {% else %}
     <a href="{{ url_for('main.home') }}" class="back-link">
