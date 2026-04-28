@@ -507,6 +507,12 @@
             }, true);
         });
 
+        // 将Modal移动到body的最末尾，彻底避免任何父级元素的 z-index 或 transform 引起的穿透叠加问题
+        var modalEl = document.getElementById('batchImportModal');
+        if (modalEl) {
+            document.body.appendChild(modalEl);
+        }
+
         // 创建菜单容器，添加到body末尾
         var portalMenu = document.createElement('div');
         portalMenu.className = 'portal-dropdown-menu';
