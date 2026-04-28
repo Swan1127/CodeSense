@@ -1,0 +1,49 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - list [ref=e8]:
+        - listitem [ref=e9]:
+          - link " 首页" [ref=e10] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e11]: 
+            - text: 首页
+        - listitem [ref=e12]:
+          - link " 班级管理" [ref=e13] [cursor=pointer]:
+            - /url: /classes/
+            - generic [ref=e14]: 
+            - text: 班级管理
+        - listitem [ref=e15]:
+          - link " 作业管理" [ref=e16] [cursor=pointer]:
+            - /url: /assignments
+            - generic [ref=e17]: 
+            - text: 作业管理
+        - listitem [ref=e18]:
+          - link " 用户管理" [ref=e19] [cursor=pointer]:
+            - /url: /users
+            - generic [ref=e20]: 
+            - text: 用户管理
+      - generic [ref=e22]:
+        - generic [ref=e23] [cursor=pointer]:
+          - generic [ref=e24]: a
+          - generic [ref=e25]: admin
+          - generic [ref=e26]: 
+        - list [ref=e31]:
+          - listitem [ref=e32]:
+            - link " 个人资料" [ref=e33] [cursor=pointer]:
+              - /url: /profile
+              - generic [ref=e34]: 
+              - text: 个人资料
+          - listitem [ref=e35]:
+            - separator [ref=e36]
+          - listitem [ref=e37]:
+            - link " 退出登录" [ref=e38] [cursor=pointer]:
+              - /url: /logout
+              - generic [ref=e39]: 
+              - text: 退出登录
+  - main [ref=e27]
+  - contentinfo [ref=e28]:
+    - generic [ref=e30]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

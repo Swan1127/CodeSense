@@ -89,7 +89,8 @@
             <ul class="navbar-nav">
                 {% if session.get('login') %}
                 <li><a href="{{ url_for('main.home') }}"
-                        class="navbar-link {% if request.path == url_for('main.home') %}active{% endif %}">首页</a></li>
+                        class="navbar-link {% if request.path == url_for('main.home') or 'dashboard' in request.path or request.path == '/' %}active{% endif %}">首页</a>
+                </li>
 
                 {# Student Links #}
                 {% if session.get('usertype') == '学生' %}
@@ -97,7 +98,7 @@
                         class="navbar-link {% if 'student_assignments' in request.path %}active{% endif %}">我的作业</a>
                 </li>
                 <li><a href="{{ url_for('users.view_submissions') }}"
-                        class="navbar-link {% if 'submissions' in request.path %}active{% endif %}">提交记录</a></li>
+                        class="navbar-link {% if 'submission' in request.path %}active{% endif %}">提交记录</a></li>
                 {% endif %}
 
                 {# Teacher Links #}
@@ -105,13 +106,15 @@
                 <li><a href="{{ url_for('classes.class_list') }}"
                         class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
                 <li><a href="{{ url_for('assignments.teacher_assignments') }}"
-                        class="navbar-link {% if 'assignments' in request.path %}active{% endif %}">作业管理</a></li>
+                        class="navbar-link {% if 'assignments' in request.path or request.path == '/teacher' %}active{% endif %}">作业管理</a>
+                </li>
                 {% endif %}
 
                 {# Admin Links #}
                 {% if session.get('usertype') == '管理员' %}
                 <li><a href="{{ url_for('assignments.manage_assignments') }}"
-                        class="navbar-link {% if 'assignments' in request.path %}active{% endif %}">作业管理</a></li>
+                        class="navbar-link {% if 'assignments' in request.path or request.path == '/assignments' %}active{% endif %}">作业管理</a>
+                </li>
                 <li><a href="{{ url_for('users.manage_users') }}"
                         class="navbar-link {% if 'users' in request.path %}active{% endif %}">用户管理</a></li>
                 <li><a href="{{ url_for('classes.class_list') }}"

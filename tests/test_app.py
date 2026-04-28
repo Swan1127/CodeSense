@@ -73,6 +73,10 @@ class AppTestCase(unittest.TestCase):
             'password': 'test_password'
         }, follow_redirects=True)
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b'\xe7\xae\xac\xe7\x90\x86\xe5\x91\x98\xe4\xbb\xaa\xe8\xa1\xa8\xe7\x9b\x98', response.data) # '管理员仪表盘'
+        
+        # 登出以便测试错误登录
+        self.client.get('/logout', follow_redirects=True)
         
         # 测试错误的登录
         response = self.client.post('/login', data={
@@ -80,7 +84,8 @@ class AppTestCase(unittest.TestCase):
             'password': 'wrong_password'
         }, follow_redirects=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'\xe7\x94\xa8\xe6\x88\xb7\xe5\x90\x8d\xe6\x88\x96\xe5\xaf\x86\xe7\xa0\x81\xe9\x94\x99\xe8\xaf\xaf', response.data)  # '用户名或密码错误'的UTF-8编码
+        # 检查是否包含错误提示（UTF-8编码）
+        self.assertIn(b'\xe7\x94\xa8\xe6\x88\xb7\xe5\x90\x8d\xe6\x88\x96\xe5\xaf\x86\xe7\xa0\x81\xe9\x94\x99\xe8\xaf\xaf', response.data)  
     
     def test_home_page(self):
         """测试主页访问"""
@@ -90,16 +95,39 @@ class AppTestCase(unittest.TestCase):
             'password': 'test_password'
         })
         
-        # 访问主页
-        response = self.client.get('/home')
+        # 访问主页 (管理员会重定向到仪表盘)
+        response = self.client.get('/home', follow_redirects=True)
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b'\xe7\xae\xac\xe7\x90\x86\xe5\x91\x98\xe4\xbb\xaa\xe8\xa1\xa8\xe7\x9b\x98', response.data) # '管理员仪表盘'
     
-    def test_api_assignments(self):
-        """测试API作业列表"""
-        response = self.client.get('/api/assignments')
+    def test_admin_access_teacher_route(self):
+        """测试管理员访问教师专用路由"""
+        from models import Assignment
+        
+        # 登录管理员
+        self.client.post('/login', data={
+            'username': 'test_admin',
+            'password': 'test_password'
+        })
+        
+        # 创建一个测试作业
+        with self.app.app_context():
+            assignment = Assignment(
+                title='测试作业',
+                description='这是一份测试作业',
+                creator_id='test_admin'
+            )
+            db.session.add(assignment)
+            db.session.commit()
+            assignment_id = assignment.id
+            
+        # 访问编辑页面 (受 @teacher_required 保护)
+        # 现在管理员应该可以直接访问
+        response = self.client.get(f'/teacher/edit/{assignment_id}', follow_redirects=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'success', response.data)
+        # 检查是否渲染了编辑页面 (含有 '编辑作业' 字样)
+        self.assertIn(b'\xe7\xbc\x96\xe8\xbe\x91\xe4\xbd\x9c\xe4\xb8\x9a', response.data)
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

@@ -1,0 +1,244 @@
+- generic [ref=e2]:
+  - heading "BuildError" [level=1] [ref=e3]
+  - paragraph [ref=e5] [cursor=pointer]: "werkzeug.routing.exceptions.BuildError: Could not build url for endpoint 'users.user_list'. Did you mean 'users.manage_users' instead?"
+  - heading "Traceback (most recent call last)" [level=2] [ref=e6] [cursor=pointer]:
+    - text: Traceback
+    - emphasis [ref=e7]: (most recent call last)
+  - generic [ref=e8]:
+    - heading [level=3]
+    - list [ref=e9]:
+      - listitem [ref=e10]:
+        - generic [ref=e11]:
+          - heading "File \"e:\\CodeSense\\源代码\\routes\\main.py\", line 521, in admin_dashboard" [level=4] [ref=e12]:
+            - text: File "e:\CodeSense\源代码\routes\main.py", line
+            - emphasis [ref=e13]: "521"
+            - text: ", in"
+            - code [ref=e14]: admin_dashboard
+          - generic [ref=e16]: return render_template('admin_dashboard.html',
+      - listitem [ref=e17]:
+        - generic [ref=e18]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\templating.py\", line 147, in render_template" [level=4] [ref=e19]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\templating.py", line
+            - emphasis [ref=e20]: "147"
+            - text: ", in"
+            - code [ref=e21]: render_template
+          - generic [ref=e23]: return _render(app, template, context)
+      - listitem [ref=e24]:
+        - generic [ref=e25]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\templating.py\", line 130, in _render" [level=4] [ref=e26]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\templating.py", line
+            - emphasis [ref=e27]: "130"
+            - text: ", in"
+            - code [ref=e28]: _render
+          - generic [ref=e30]: rv = template.render(context)
+      - listitem [ref=e31]:
+        - generic [ref=e32]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\jinja2\\environment.py\", line 1295, in render" [level=4] [ref=e33]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\jinja2\environment.py", line
+            - emphasis [ref=e34]: "1295"
+            - text: ", in"
+            - code [ref=e35]: render
+          - generic [ref=e37]: self.environment.handle_exception()
+      - listitem [ref=e38]:
+        - generic [ref=e39]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\jinja2\\environment.py\", line 942, in handle_exception" [level=4] [ref=e40]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\jinja2\environment.py", line
+            - emphasis [ref=e41]: "942"
+            - text: ", in"
+            - code [ref=e42]: handle_exception
+          - generic [ref=e44]: raise rewrite_traceback_stack(source=source)
+      - listitem [ref=e45]:
+        - generic [ref=e46]:
+          - heading "File \"e:\\CodeSense\\源代码\\templates\\admin_dashboard.html\", line 1, in top-level template code" [level=4] [ref=e47]:
+            - text: File "e:\CodeSense\源代码\templates\admin_dashboard.html", line
+            - emphasis [ref=e48]: "1"
+            - text: ", in"
+            - code [ref=e49]: top-level template code
+          - generic [ref=e51]: "{% extends \"layout.html\" %}"
+      - listitem [ref=e52]:
+        - generic [ref=e53]:
+          - heading "File \"e:\\CodeSense\\源代码\\templates\\layout.html\", line 96, in top-level template code" [level=4] [ref=e54]:
+            - text: File "e:\CodeSense\源代码\templates\layout.html", line
+            - emphasis [ref=e55]: "96"
+            - text: ", in"
+            - code [ref=e56]: top-level template code
+          - generic [ref=e58]: "href=\"{{ url_for('users.user_list') }}\">"
+      - listitem [ref=e59]:
+        - generic [ref=e60]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 2034, in url_for" [level=4] [ref=e61]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e62]: "2034"
+            - text: ", in"
+            - code [ref=e63]: url_for
+          - generic [ref=e65]: return self.handle_url_build_error(error, endpoint, values)
+      - listitem [ref=e66]:
+        - generic [ref=e67]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 2023, in url_for" [level=4] [ref=e68]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e69]: "2023"
+            - text: ", in"
+            - code [ref=e70]: url_for
+          - generic [ref=e72]: "rv = url_adapter.build( # type: ignore[union-attr]"
+      - listitem [ref=e73]:
+        - generic [ref=e74]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\werkzeug\\routing\\map.py\", line 917, in build" [level=4] [ref=e75]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\werkzeug\routing\map.py", line
+            - emphasis [ref=e76]: "917"
+            - text: ", in"
+            - code [ref=e77]: build
+          - generic [ref=e79]: raise BuildError(endpoint, values, method, self)
+      - listitem [ref=e80]:
+        - generic [ref=e81]: "During handling of the above exception, another exception occurred:"
+      - listitem [ref=e82]:
+        - generic [ref=e83]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 2551, in __call__" [level=4] [ref=e84]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e85]: "2551"
+            - text: ", in"
+            - code [ref=e86]: __call__
+          - generic [ref=e88]: return self.wsgi_app(environ, start_response)
+      - listitem [ref=e89]:
+        - generic [ref=e90]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 2531, in wsgi_app" [level=4] [ref=e91]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e92]: "2531"
+            - text: ", in"
+            - code [ref=e93]: wsgi_app
+          - generic [ref=e95]: response = self.handle_exception(e)
+      - listitem [ref=e96]:
+        - generic [ref=e97]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 2528, in wsgi_app" [level=4] [ref=e98]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e99]: "2528"
+            - text: ", in"
+            - code [ref=e100]: wsgi_app
+          - generic [ref=e102]: response = self.full_dispatch_request()
+      - listitem [ref=e103]:
+        - generic [ref=e104]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 1825, in full_dispatch_request" [level=4] [ref=e105]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e106]: "1825"
+            - text: ", in"
+            - code [ref=e107]: full_dispatch_request
+          - generic [ref=e109]: rv = self.handle_user_exception(e)
+      - listitem [ref=e110]:
+        - generic [ref=e111]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 1823, in full_dispatch_request" [level=4] [ref=e112]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e113]: "1823"
+            - text: ", in"
+            - code [ref=e114]: full_dispatch_request
+          - generic [ref=e116]: rv = self.dispatch_request()
+      - listitem [ref=e117]:
+        - generic [ref=e118]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 1799, in dispatch_request" [level=4] [ref=e119]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e120]: "1799"
+            - text: ", in"
+            - code [ref=e121]: dispatch_request
+          - generic [ref=e123]: return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+      - listitem [ref=e124]:
+        - generic [ref=e125]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask_login\\utils.py\", line 290, in decorated_view" [level=4] [ref=e126]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask_login\utils.py", line
+            - emphasis [ref=e127]: "290"
+            - text: ", in"
+            - code [ref=e128]: decorated_view
+          - generic [ref=e130]: return current_app.ensure_sync(func)(*args, **kwargs)
+      - listitem [ref=e131]:
+        - generic [ref=e132]:
+          - heading "File \"e:\\CodeSense\\源代码\\routes\\main.py\", line 562, in admin_dashboard" [level=4] [ref=e133]:
+            - text: File "e:\CodeSense\源代码\routes\main.py", line
+            - emphasis [ref=e134]: "562"
+            - text: ", in"
+            - code [ref=e135]: admin_dashboard
+          - generic [ref=e137]: return render_template('admin_dashboard.html',
+      - listitem [ref=e138]:
+        - generic [ref=e139]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\templating.py\", line 147, in render_template" [level=4] [ref=e140]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\templating.py", line
+            - emphasis [ref=e141]: "147"
+            - text: ", in"
+            - code [ref=e142]: render_template
+          - generic [ref=e144]: return _render(app, template, context)
+      - listitem [ref=e145]:
+        - generic [ref=e146]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\templating.py\", line 130, in _render" [level=4] [ref=e147]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\templating.py", line
+            - emphasis [ref=e148]: "130"
+            - text: ", in"
+            - code [ref=e149]: _render
+          - generic [ref=e151]: rv = template.render(context)
+      - listitem [ref=e152]:
+        - generic [ref=e153]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\jinja2\\environment.py\", line 1295, in render" [level=4] [ref=e154]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\jinja2\environment.py", line
+            - emphasis [ref=e155]: "1295"
+            - text: ", in"
+            - code [ref=e156]: render
+          - generic [ref=e158]: self.environment.handle_exception()
+      - listitem [ref=e159]:
+        - generic [ref=e160]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\jinja2\\environment.py\", line 942, in handle_exception" [level=4] [ref=e161]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\jinja2\environment.py", line
+            - emphasis [ref=e162]: "942"
+            - text: ", in"
+            - code [ref=e163]: handle_exception
+          - generic [ref=e165]: raise rewrite_traceback_stack(source=source)
+      - listitem [ref=e166]:
+        - generic [ref=e167]:
+          - heading "File \"e:\\CodeSense\\源代码\\templates\\admin_dashboard.html\", line 1, in top-level template code" [level=4] [ref=e168]:
+            - text: File "e:\CodeSense\源代码\templates\admin_dashboard.html", line
+            - emphasis [ref=e169]: "1"
+            - text: ", in"
+            - code [ref=e170]: top-level template code
+          - generic [ref=e172]: "{% extends \"layout.html\" %}"
+      - listitem [ref=e173]:
+        - generic [ref=e174]:
+          - heading "File \"e:\\CodeSense\\源代码\\templates\\layout.html\", line 96, in top-level template code" [level=4] [ref=e175]:
+            - text: File "e:\CodeSense\源代码\templates\layout.html", line
+            - emphasis [ref=e176]: "96"
+            - text: ", in"
+            - code [ref=e177]: top-level template code
+          - generic [ref=e179]: "href=\"{{ url_for('users.user_list') }}\">"
+      - listitem [ref=e180]:
+        - generic [ref=e181]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 2034, in url_for" [level=4] [ref=e182]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e183]: "2034"
+            - text: ", in"
+            - code [ref=e184]: url_for
+          - generic [ref=e186]: return self.handle_url_build_error(error, endpoint, values)
+      - listitem [ref=e187]:
+        - generic [ref=e188]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\flask\\app.py\", line 2023, in url_for" [level=4] [ref=e189]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\flask\app.py", line
+            - emphasis [ref=e190]: "2023"
+            - text: ", in"
+            - code [ref=e191]: url_for
+          - generic [ref=e193]: "rv = url_adapter.build( # type: ignore[union-attr]"
+      - listitem [ref=e194]:
+        - generic [ref=e195]:
+          - heading "File \"E:\\anaconda\\envs\\student-eval\\lib\\site-packages\\werkzeug\\routing\\map.py\", line 917, in build" [level=4] [ref=e196]:
+            - text: File "E:\anaconda\envs\student-eval\lib\site-packages\werkzeug\routing\map.py", line
+            - emphasis [ref=e197]: "917"
+            - text: ", in"
+            - code [ref=e198]: build
+          - generic [ref=e200]: raise BuildError(endpoint, values, method, self)
+    - blockquote [ref=e201]: "werkzeug.routing.exceptions.BuildError: Could not build url for endpoint 'users.user_list'. Did you mean 'users.manage_users' instead?"
+  - generic [ref=e202]:
+    - text: The debugger caught an exception in your WSGI application. You can now look at the traceback which led to the error.
+    - generic [ref=e203]:
+      - paragraph [ref=e204]: To switch between the interactive traceback and the plaintext one, you can click on the "Traceback" headline. From the text traceback you can also create a paste of it. For code execution mouse-over the frame you want to debug and click on the console icon on the right side.
+      - paragraph [ref=e205]: "You can execute arbitrary Python code in the stack frames and there are some extra helpers available for introspection:"
+      - list [ref=e206]:
+        - listitem [ref=e207]:
+          - code [ref=e208]: dump()
+          - text: shows all variables in the frame
+        - listitem [ref=e209]:
+          - code [ref=e210]: dump(obj)
+          - text: dumps all that's known about the object
+  - generic [ref=e211]:
+    - text: Brought to you by
+    - strong [ref=e212]: DON'T PANIC
+    - text: ", your friendly Werkzeug powered traceback interpreter."

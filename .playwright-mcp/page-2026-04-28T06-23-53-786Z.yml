@@ -1,0 +1,130 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - navigation [ref=e8]:
+        - list [ref=e9]:
+          - listitem [ref=e10]:
+            - link " 首页" [ref=e11] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e12]: 
+              - text: 首页
+          - listitem [ref=e13]:
+            - link " 我的作业" [ref=e14] [cursor=pointer]:
+              - /url: /student_assignments
+              - generic [ref=e15]: 
+              - text: 我的作业
+      - generic [ref=e18] [cursor=pointer]:
+        - generic [ref=e19]: s
+        - generic [ref=e20]: student_1
+        - generic [ref=e21]: 
+  - main [ref=e22]:
+    - generic [ref=e24]:
+      - generic [ref=e26]:
+        - heading "CodeSense 酷森思 - 基于机器学习的代码能力评价系统" [level=1] [ref=e27]
+        - paragraph [ref=e28]: 融合智谱GLM-4-Flash大模型与多维度混合式评分机制，打造智能化、全方位的编程能力评估平台
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - generic [ref=e31]: 
+            - text: 智谱GLM-4-Flash
+          - generic [ref=e32]:
+            - generic [ref=e33]: 
+            - text: 混合式评分
+          - generic [ref=e34]:
+            - generic [ref=e35]: 
+            - text: 实时反馈
+          - generic [ref=e36]:
+            - generic [ref=e37]: 
+            - text: 多维度分析
+      - generic [ref=e38]:
+        - generic [ref=e39]:
+          - generic [ref=e41]: 
+          - heading "智能评估引擎" [level=3] [ref=e42]
+          - paragraph [ref=e43]: 采用智谱最新推出的GLM-4-Flash大模型，结合深度学习技术，对代码进行多维度分析与评估。我们的系统不仅能理解代码语法，还能分析算法思路、识别代码模式和评估整体设计思想。
+          - generic [ref=e44]:
+            - generic [ref=e45]: 核心技术优势
+            - paragraph [ref=e46]: GLM-4-Flash大模型拥有1760亿参数，在代码理解与生成方面表现卓越，能够分析最复杂的编程模式和算法实现，为学生提供专业级别的代码评估。
+        - generic [ref=e47]:
+          - generic [ref=e49]: 
+          - heading "多模型混合式评分系统" [level=3] [ref=e50]
+          - paragraph [ref=e51]: 我们创新性地结合了CNN模型、启发式规则评分以及大模型自评分三种技术路线，构建了权重自适应的混合式评分体系。这种多模型融合方法大幅提高了评分的准确性和全面性。
+          - generic [ref=e52]:
+            - generic [ref=e53]: 评分机制详解
+            - list [ref=e54]:
+              - listitem [ref=e55]: CNN模型评分：分析代码结构和质量，识别代码复杂度与规范性
+              - listitem [ref=e56]: 启发式规则评分：基于编程最佳实践，评估算法效率和编码风格
+              - listitem [ref=e57]: 大模型自评分赋权：利用GLM-4-Flash对评分进行智能加权，实现更符合专家评价的综合评分
+        - generic [ref=e58]:
+          - generic [ref=e60]: 
+          - heading "个性化学习指导" [level=3] [ref=e61]
+          - paragraph [ref=e62]: 基于学生的编程能力数据画像，利用智谱GLM-4-Flash生成针对性的学习建议和改进方案。系统能够识别学生的编程思维模式，找出知识盲点，提供定制化的学习路径。
+          - generic [ref=e63]:
+            - generic [ref=e64]: 智能指导特色
+            - paragraph [ref=e65]: 系统会根据学生历史提交分析其能力薄弱点，从算法思维、代码结构、错误处理等多个维度提供针对性建议，并推荐适合的练习题目和学习资源。
+      - generic [ref=e66]:
+        - heading "系统工作流程" [level=2] [ref=e67]
+        - generic [ref=e68]:
+          - generic [ref=e69]:
+            - generic [ref=e70]: "1"
+            - heading "代码提交" [level=3] [ref=e71]
+            - paragraph [ref=e72]: 学生提交编程任务代码，系统支持C++、Python和Java等主流编程语言，并提供语法高亮和自动格式化功能。
+          - generic [ref=e73]:
+            - generic [ref=e74]: "2"
+            - heading "多维度评估" [level=3] [ref=e75]
+            - paragraph [ref=e76]: 系统对提交的代码进行多层次评估，包括功能正确性、代码质量、算法效率、编程风格等方面，全方位分析学生的编程能力。
+          - generic [ref=e77]:
+            - generic [ref=e78]: "3"
+            - heading "智能评分" [level=3] [ref=e79]
+            - paragraph [ref=e80]: 通过CNN模型、启发式规则和GLM-4-Flash大模型的混合评分机制，生成客观公正的评分结果，确保评价的准确性和权威性。
+          - generic [ref=e81]:
+            - generic [ref=e82]: "4"
+            - heading "反馈与建议" [level=3] [ref=e83]
+            - paragraph [ref=e84]: 系统生成详细的代码分析报告，指出代码中的优点和不足，并提供针对性的改进建议和学习资源推荐。
+      - generic [ref=e85]:
+        - heading "核心技术栈" [level=2] [ref=e86]
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - generic [ref=e90]: 
+            - generic [ref=e91]: 智谱GLM-4-Flash
+            - generic [ref=e92]: 最新一代大模型，在代码理解与评估方面表现卓越
+          - generic [ref=e93]:
+            - generic [ref=e95]: 
+            - generic [ref=e96]: CNN评分模型
+            - generic [ref=e97]: 专为代码质量评估训练的深度卷积神经网络
+          - generic [ref=e98]:
+            - generic [ref=e100]: 
+            - generic [ref=e101]: Python
+            - generic [ref=e102]: 系统后端开发与机器学习模型实现
+          - generic [ref=e103]:
+            - generic [ref=e105]: 
+            - generic [ref=e106]: Flask
+            - generic [ref=e107]: 轻量级Web应用框架，提供灵活的API支持
+          - generic [ref=e108]:
+            - generic [ref=e110]: 
+            - generic [ref=e111]: MySQL
+            - generic [ref=e112]: 高性能关系型数据库，存储学生数据与评估结果
+          - generic [ref=e113]:
+            - generic [ref=e115]: 
+            - generic [ref=e116]: TensorFlow
+            - generic [ref=e117]: 构建和训练机器学习模型的开源平台
+      - generic [ref=e118]:
+        - heading "开发团队" [level=2] [ref=e119]
+        - generic [ref=e120]:
+          - generic [ref=e122]: 
+          - heading "沈阳航空航天大学分布式系统研究室" [level=3] [ref=e123]
+          - paragraph [ref=e124]: 致力于计算机科学与技术领域的研究与创新，专注于教育信息化和人工智能应用研究。团队在机器学习、自然语言处理和教育技术领域具有丰富的研究经验，曾主持多项国家级和省部级科研项目。
+          - generic [ref=e125]:
+            - generic [ref=e126]:
+              - generic [ref=e127]: 
+              - generic [ref=e128]: daiyupeng5@gmail.com
+            - generic [ref=e129]:
+              - generic [ref=e130]: 
+              - generic [ref=e131]: "15042774955"
+            - generic [ref=e132]:
+              - generic [ref=e133]: 
+              - generic [ref=e134]: 中国辽宁沈阳道义经济开发区道义南大街37号
+  - contentinfo [ref=e135]:
+    - generic [ref=e137]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

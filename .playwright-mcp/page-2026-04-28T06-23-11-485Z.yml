@@ -1,0 +1,110 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e6]: 
+          - generic [ref=e7]: CodeSense 酷森思
+        - navigation [ref=e8]:
+          - list [ref=e9]:
+            - listitem [ref=e10]:
+              - link " 首页" [ref=e11] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e12]: 
+                - text: 首页
+            - listitem [ref=e13]:
+              - link " 我的作业" [ref=e14] [cursor=pointer]:
+                - /url: /student_assignments
+                - generic [ref=e15]: 
+                - text: 我的作业
+        - generic [ref=e18] [cursor=pointer]:
+          - generic [ref=e19]: s
+          - generic [ref=e20]: student_1
+          - generic [ref=e21]: 
+    - main [ref=e22]:
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26]:
+            - heading "最长公共子序列" [level=1] [ref=e27]
+            - generic [ref=e29]: 
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - generic [ref=e32]: 
+              - text: "截止日期: 2026-04-29 22:30"
+            - generic [ref=e33]:
+              - generic [ref=e34]: 
+              - text: "创建者:"
+            - generic [ref=e35]:
+              - generic [ref=e36]: 
+              - text: "提交人数: 1"
+          - button " 查看作业详情" [ref=e37] [cursor=pointer]:
+            - generic [ref=e38]: 
+            - text: 查看作业详情
+        - generic [ref=e39]:
+          - generic [ref=e41]:
+            - generic [ref=e42]:
+              - generic [ref=e43]:
+                - generic [ref=e45]: C++
+                - generic [ref=e46]:
+                  - button "" [ref=e47] [cursor=pointer]:
+                    - generic [ref=e48]: 
+                  - button "" [ref=e49] [cursor=pointer]:
+                    - generic [ref=e50]: 
+                  - button "" [ref=e51] [cursor=pointer]:
+                    - generic [ref=e52]: 
+              - generic [ref=e53]:
+                - textbox "在此输入C++代码..." [ref=e54]
+                - code [ref=e56]:
+                  - generic [ref=e57]:
+                    - generic [ref=e62]: "1"
+                    - textbox "Editor content;Press Alt+F1 for Accessibility Options." [ref=e69]
+              - generic [ref=e74]:
+                - generic [ref=e75]: 行 1, 列 1
+                - generic [ref=e76]: "总计: 0 字符"
+            - generic [ref=e77]:
+              - link " 返回作业列表" [ref=e78] [cursor=pointer]:
+                - /url: /student_assignments
+                - generic [ref=e79]: 
+                - text: 返回作业列表
+              - button " 提交代码" [ref=e81] [cursor=pointer]:
+                - generic [ref=e82]: 
+                - text: 提交代码
+          - generic [ref=e83]:
+            - generic [ref=e84]:
+              - heading " AI编程助手" [level=5] [ref=e85]:
+                - generic [ref=e86]: 
+                - text: AI编程助手
+              - button "" [ref=e87] [cursor=pointer]:
+                - generic [ref=e88]: 
+            - generic [ref=e90]:
+              - generic [ref=e91]: 🤖
+              - heading "你好！我是AI编程助手" [level=5] [ref=e92]
+              - paragraph [ref=e93]: 我可以帮你：分析代码、提供建议、解答疑问、调试错误
+              - generic [ref=e94]:
+                - button "分析代码" [ref=e95] [cursor=pointer]
+                - button "检查错误" [ref=e96] [cursor=pointer]
+                - button "优化建议" [ref=e97] [cursor=pointer]
+                - button "复杂度分析" [ref=e98] [cursor=pointer]
+            - generic [ref=e100]:
+              - textbox "输入问题或选择快捷问题..." [ref=e101]
+              - button "" [ref=e102] [cursor=pointer]:
+                - generic [ref=e103]: 
+          - generic [ref=e104]:
+            - heading " 提交历史" [level=5] [ref=e106]:
+              - generic [ref=e107]: 
+              - text: 提交历史
+            - generic [ref=e109]:
+              - generic [ref=e110]:
+                - generic [ref=e111]: 04-27 07:49
+                - generic [ref=e113]: 已评估
+              - generic [ref=e116]: 5/5
+              - link "查看详情" [ref=e118] [cursor=pointer]:
+                - /url: /view_submission/317
+    - contentinfo [ref=e119]:
+      - generic [ref=e121]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台
+  - generic [ref=e122]:
+    - alert
+    - alert
+    - complementary
+    - complementary

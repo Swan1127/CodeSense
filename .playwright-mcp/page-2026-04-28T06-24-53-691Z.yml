@@ -1,0 +1,53 @@
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e6]: 
+    - heading "CodeSense 酷森思" [level=1] [ref=e7]
+    - paragraph [ref=e8]: 加入我们，开始你的编程能力提升之旅
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: 
+        - generic [ref=e12]: AI 智能代码评估
+      - generic [ref=e13]:
+        - generic [ref=e14]: 
+        - generic [ref=e15]: 启发式学习引导
+      - generic [ref=e16]:
+        - generic [ref=e17]: 
+        - generic [ref=e18]: 能力成长可视化
+  - generic [ref=e19]:
+    - generic [ref=e20]:
+      - heading "创建账户" [level=2] [ref=e21]
+      - paragraph [ref=e22]: 填写以下信息完成注册
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e26]:
+          - generic [ref=e27]: 用户名
+          - textbox "用户名" [ref=e28]:
+            - /placeholder: 请输入用户名
+        - generic [ref=e30]:
+          - generic [ref=e31]: 姓名
+          - textbox "姓名" [ref=e32]:
+            - /placeholder: 请输入姓名
+      - generic [ref=e33]:
+        - generic [ref=e35]:
+          - generic [ref=e36]: 学号
+          - textbox "学号" [ref=e37]:
+            - /placeholder: 请输入学号
+        - generic [ref=e39]:
+          - generic [ref=e40]: 班级
+          - textbox "班级" [ref=e41]:
+            - /placeholder: 请输入班级
+      - generic [ref=e42]:
+        - generic [ref=e43]: 密码
+        - textbox "密码" [ref=e44]:
+          - /placeholder: 请输入密码 (6-20位)
+      - generic [ref=e45]:
+        - generic [ref=e46]: 确认密码
+        - textbox "确认密码" [ref=e47]:
+          - /placeholder: 请再次输入密码
+      - button " 注册" [ref=e48] [cursor=pointer]:
+        - generic [ref=e49]: 
+        - text: 注册
+    - generic [ref=e50]:
+      - text: 已有账户？
+      - link "立即登录" [ref=e51] [cursor=pointer]:
+        - /url: /login

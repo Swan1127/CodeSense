@@ -1,0 +1,2613 @@
+﻿python : 2026-04-28 15:
+32:49,321 - code_adviso
+r - INFO - 浠ｇ爜寤鸿绯荤粺鏃ュ織
+鍒濆鍖栧畬鎴?
+所在位置 行:1 字符: 1
++ python e:\CodeSense\源
+代码\tests\test_app.py 2>
+&1 | Out-File -Encoding
+ u ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (2026-04-28 15   
+ :3...绯荤粺鏃ュ織鍒濆鍖栧畬    
+鎴?:String) [], Rem    o
+teException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+INFO: =================
+=======================
+==========
+INFO: Flask搴旂敤鏃ュ織绯荤粺鍒濆
+鍖栧畬鎴?
+INFO: 鏃ュ織鐩綍: e:\CodeSe
+nse\婧愪唬鐮乗logs
+INFO: 鏃ュ織绾у埆: DEBUG
+INFO: 搴旂敤妯″紡: 寮€鍙戞ā寮?
+INFO: =================
+=======================
+==========
+INFO: 搴旂敤鍚姩 - 閰嶇疆: dev
+elopment
+INFO: 寮€濮嬪垵濮嬪寲鏁版嵁搴?..
+INFO: 鏁版嵁搴撳垵濮嬪寲瀹屾垚
+INFO: 杩愯鍦?API-only 妯″紡
+锛岃烦杩囨湰鍦版ā鍨嬪姞杞?
+INFO: 璺宠繃缂栫▼鎸囧绯荤粺鍒濆鍖栵
+紙API-only 妯″紡锛?
+INFO: 璺宠繃浠ｇ爜寤鸿绯荤粺鍒濆鍖栵
+紙API-only 妯″紡锛?
+INFO: 鍚姩寮傛浠诲姟澶勭悊鍣紝宸ヤ
+綔绾跨▼鏁? 2
+INFO: 宸ヤ綔绾跨▼ worker-1 宸
+插惎鍔?
+INFO: 宸ヤ綔绾跨▼ worker-2 宸
+插惎鍔?
+INFO: 寮傛浠诲姟绯荤粺宸插惎鍔?
+INFO: 寮傛浠诲姟绯荤粺鍒濆鍖栨垚鍔?
+INFO: Flask搴旂敤瀹屽叏鍒濆鍖栧畬
+鎴愶紝鍑嗗鎺ュ彈璇锋眰
+INFO: -----------------
+-----------------------
+----------
+INFO: 搴旂敤瀹炰緥鍒涘缓鎴愬姛
+INFO: Flask鐗堟湰: Unknown
+INFO: Python鐗堟湰: 3.13.5
+ | packaged by Anaconda
+, Inc. | (main, Jun 12 
+2025, 16:37:03) [MSC v.
+1929 64 bit (AMD64)]
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:751: Deprecat
+ionWarning: ast.Str is 
+deprecated and will be 
+removed in Python 3.14;
+ use ast.Constant inste
+ad
+  parts = parts or [ast
+.Str("")]
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:748: Deprecat
+ionWarning: ast.Str is 
+deprecated and will be 
+removed in Python 3.14;
+ use ast.Constant inste
+ad
+  _convert(elem) if is_
+dynamic else ast.Str(s=
+elem)
+E:\anaconda\Lib\ast.py:
+602: DeprecationWarning
+: Constant.__init__ got
+ an unexpected keyword 
+argument 's'. Support f
+or arbitrary keyword ar
+guments is deprecated a
+nd will be removed in P
+ython 3.15.
+  return Constant(*args
+, **kwargs)
+E:\anaconda\Lib\ast.py:
+602: DeprecationWarning
+: Attribute s is deprec
+ated and will be remove
+d in Python 3.14; use v
+alue instead
+  return Constant(*args
+, **kwargs)
+E:\anaconda\Lib\ast.py:
+602: DeprecationWarning
+: Constant.__init__ mis
+sing 1 required positio
+nal argument: 'value'. 
+This will become an err
+or in Python 3.15.
+  return Constant(*args
+, **kwargs)
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:755: Deprecat
+ionWarning: ast.Str is 
+deprecated and will be 
+removed in Python 3.14;
+ use ast.Constant inste
+ad
+  if isinstance(p, ast.
+Str) and isinstance(ret
+[-1], ast.Str):
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:756: Deprecat
+ionWarning: Attribute s
+ is deprecated and will
+ be removed in Python 3
+.14; use value instead
+  ret[-1] = ast.Str(ret
+[-1].s + p.s)
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:756: Deprecat
+ionWarning: ast.Str is 
+deprecated and will be 
+removed in Python 3.14;
+ use ast.Constant inste
+ad
+  ret[-1] = ast.Str(ret
+[-1].s + p.s)
+e:\CodeSense\婧愪唬鐮乗app.p
+y:93: ResourceWarning: 
+unclosed file <_io.Text
+IOWrapper name='e:\\Cod
+eSense\\婧愪唬鐮乗\logs\\err
+or.log' mode='a' encodi
+ng='utf-8'>
+  app.logger.handlers.c
+lear()
+ResourceWarning: Enable
+ tracemalloc to get the
+ object allocation trac
+eback
+e:\CodeSense\婧愪唬鐮乗app.p
+y:93: ResourceWarning: 
+unclosed file <_io.Text
+IOWrapper name='e:\\Cod
+eSense\\婧愪唬鐮乗\logs\\app
+.log' mode='a' encoding
+='utf-8'>
+  app.logger.handlers.c
+lear()
+ResourceWarning: Enable
+ tracemalloc to get the
+ object allocation trac
+eback
+E:\anaconda\Lib\site-pa
+ckages\sqlalchemy\sql\s
+chema.py:3624: Deprecat
+ionWarning: datetime.da
+tetime.utcnow() is depr
+ecated and scheduled fo
+r removal in a future v
+ersion. Use timezone-aw
+are objects to represen
+t datetimes in UTC: dat
+etime.datetime.now(date
+time.UTC).
+  return util.wrap_call
+able(lambda ctx: fn(), 
+fn)  # type: ignore
+E:\anaconda\Lib\site-pa
+ckages\flask_session\se
+ssions.py:329: Deprecat
+ionWarning: 'session_co
+okie_name' is deprecate
+d and will be removed i
+n Flask 2.3. Use 'SESSI
+ON_COOKIE_NAME' in 'app
+.config' instead.
+  sid = request.cookies
+.get(app.session_cookie
+_name)
+E:\anaconda\Lib\site-pa
+ckages\flask_sqlalchemy
+\extension.py:865: SAWa
+rning: Can't sort table
+s for DROP; an unresolv
+able foreign key depend
+ency exists between tab
+les: classes, users; an
+d backend does not supp
+ort ALTER.  To restore 
+at least a partial sort
+, apply use_alter=True 
+to ForeignKey and Forei
+gnKeyConstraint objects
+ involved in the cycle 
+to mark these as known 
+cycles that will be ign
+ored.
+  getattr(metadata, op_
+name)(bind=engine)
+.e:\CodeSense\婧愪唬鐮乗util
+s\async_tasks.py:65: De
+precationWarning: datet
+ime.datetime.utcnow() i
+s deprecated and schedu
+led for removal in a fu
+ture version. Use timez
+one-aware objects to re
+present datetimes in UT
+C: datetime.datetime.no
+w(datetime.UTC).
+  'created_at': datetim
+e.utcnow(),
+E:\anaconda\Lib\site-pa
+ckages\flask_session\se
+ssions.py:372: Deprecat
+ionWarning: 'session_co
+okie_name' is deprecate
+d and will be removed i
+n Flask 2.3. Use 'SESSI
+ON_COOKIE_NAME' in 'app
+.config' instead.
+  response.set_cookie(a
+pp.session_cookie_name,
+ session_id,
+e:\CodeSense\婧愪唬鐮乗utils
+\async_tasks.py:166: Le
+gacyAPIWarning: The Que
+ry.get() method is cons
+idered legacy as of the
+ 1.x series of SQLAlche
+my and becomes a legacy
+ construct in 2.0. The 
+method is now available
+ as Session.get() (depr
+ecated since: 2.0) (Bac
+kground on SQLAlchemy 2
+.0 at: https://sqlalche
+.me/e/b8d9)
+  user = User.query.get
+(student_id)
+Fe:\CodeSense\婧愪唬鐮乗rout
+es\main.py:303: Depreca
+tionWarning: datetime.d
+atetime.utcnow() is dep
+recated and scheduled f
+or removal in a future 
+version. Use timezone-a
+ware objects to represe
+nt datetimes in UTC: da
+tetime.datetime.now(dat
+etime.UTC).
+  time_diff = datetime.
+datetime.utcnow() - log
+.created_at
+e:\CodeSense\婧愪唬鐮乗app.p
+y:267: DeprecationWarni
+ng: datetime.datetime.u
+tcnow() is deprecated a
+nd scheduled for remova
+l in a future version. 
+Use timezone-aware obje
+cts to represent dateti
+mes in UTC: datetime.da
+tetime.now(datetime.UTC
+).
+  return {'current_time
+': dt_now.utcnow()}
+F
+=======================
+=======================
+=======================
+=
+FAIL: test_home_page (_
+_main__.AppTestCase.tes
+t_home_page)
+娴嬭瘯涓婚〉璁块棶
+-----------------------
+-----------------------
+-----------------------
+-
+Traceback (most recent 
+call last):
+  File "e:\CodeSense\婧愪
+唬鐮乗tests\test_app.py", 
+line 95, in test_home_p
+age
+    self.assertEqual(re
+sponse.status_code, 200
+)
+    ~~~~~~~~~~~~~~~~^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+^
+AssertionError: 302 != 
+200
+
+=======================
+=======================
+=======================
+=
+FAIL: test_login (__mai
+n__.AppTestCase.test_lo
+gin)
+娴嬭瘯鐧诲綍鍔熻兘
+-----------------------
+-----------------------
+-----------------------
+-
+Traceback (most recent 
+call last):
+  File "e:\CodeSense\婧愪
+唬鐮乗tests\test_app.py", 
+line 83, in test_login
+    self.assertIn(b'\xe
+7\x94\xa8\xe6\x88\xb7\x
+e5\x90\x8d\xe6\x88\x96\
+xe5\xaf\x86\xe7\xa0\x81
+\xe9\x94\x99\xe8\xaf\xa
+f', response.data)  # '
+鐢ㄦ埛鍚嶆垨瀵嗙爜閿欒'鐨刄TF-8缂栫爜
+    ~~~~~~~~~~~~~^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^
+鈿狅笍  璀﹀憡: SECRET_KEY 鏈缃紝浣跨敤涓存椂鐢熸垚鐨勫瘑閽ワ紙浠呴檺寮€鍙戠幆澧冿級
+   鐢熶骇鐜璇峰湪 .env 鏂囦欢涓缃?SECRET_KEY
+脳 transformers搴撴湭瀹夎锛孋odeBERT鍔熻兘灏嗕笉鍙敤
+灏嗕娇鐢ㄥ惎鍙戝紡璇勫垎鏂规硶
+姝ｅ湪妫€鏌ョ幆澧冨彉閲忛厤缃?..
+鈩癸笍  寮€鍙戠幆澧? 浣跨敤 SQLite 鏁版嵁搴?
+   濡傞渶浣跨敤MySQL锛岃鍦?.env 涓缃?DEV_DATABASE_URL
+
+姝ｅ湪閰嶇疆搴旂敤鏃ュ織绯荤粺...
+鉁?寮€鍙戞ā寮忥細鍚敤DEBUG绾у埆鏃ュ織
+鉁?寮€鍙戞ā寮忥細涓鸿闂棩蹇楀惎鐢?FileHandler
+鉁?Flask-Session鍒濆鍖栨垚鍔?
+
+灏濊瘯鍒濆鍖栧ぇ妯″瀷璇勪及鍣?..
+姝ｅ湪鍒濆鍖栨櫤璋盇I澶фā鍨嬭瘎浼板櫒...
+浣跨敤zhipu鐨刧lm-4.5-flash妯″瀷杩涜浠ｇ爜璇勪及
+鉁?鏅鸿氨AI瀹㈡埛绔垵濮嬪寲鎴愬姛
+鉁?鏅鸿氨AI澶фā鍨嬭瘎浼板櫒鍒濆鍖栨垚鍔燂紙鍏抽棴涓ユ牸璇勫垎妯″紡锛?
+鉁?澶фā鍨嬭瘎浼板姛鑳藉凡鍚敤
+
+========= 寮€濮嬮鍔犺浇妯″瀷 =========
+妯″瀷鐩綍: e:\CodeSense\婧愪唬鐮乗CodeBERT_model
+脳 CodeBERT妯″瀷鐩綍涓嶅瓨鍦? e:\CodeSense\婧愪唬鐮乗CodeBERT_model
+灏嗚烦杩嘋odeBERT妯″瀷鍔犺浇锛屼粎浣跨敤鍚彂寮忚瘎浼?
+1. 璺宠繃CodeBERT妯″瀷鍔犺浇锛坱ransformers搴撴湭瀹夎锛?
+2. 鍔犺浇TextCNN妯″瀷...
+浣跨敤璁惧: cpu
+鍔犺浇妯″瀷鏉冮噸: e:\CodeSense\婧愪唬鐮乗models\codebertcnn.pth
+鉁?鎴愬姛鍔犺浇妯″瀷鏉冮噸
+鉁?妯″瀷鏉冮噸鍔犺浇鎴愬姛
+鉁?鎵€鏈夋ā鍨嬪姞杞芥垚鍔?
+========= 妯″瀷棰勫姞杞藉畬鎴?=========
+
+
+鉁?杩愯鍦?API-only 妯″紡锛岃烦杩囨湰鍦版ā鍨嬪姞杞戒互鑺傜渷鍐呭瓨
+
+姝ｅ湪鍒濆鍖栧紓姝ヤ换鍔＄郴缁?..
+鉁?寮傛浠诲姟绯荤粺鍒濆鍖栨垚鍔?
+
+姝ｅ湪閰嶇疆搴旂敤鏃ュ織绯荤粺...
+鉁?鐢熶骇妯″紡锛氬惎鐢↖NFO绾у埆鏃ュ織
+鉁?鐢熶骇妯″紡锛氫负璁块棶鏃ュ織鍚敤 TimedRotatingFileHandler
+鉁?Flask-Session鍒濆鍖栨垚鍔?
+
+鉁?杩愯鍦?API-only 妯″紡锛岃烦杩囨湰鍦版ā鍨嬪姞杞戒互鑺傜渷鍐呭瓨
+
+姝ｅ湪鍒濆鍖栧紓姝ヤ换鍔＄郴缁?..
+鉁?寮傛浠诲姟绯荤粺鍒濆鍖栨垚鍔?
+
+姝ｅ湪閰嶇疆搴旂敤鏃ュ織绯荤粺...
+鉁?鐢熶骇妯″紡锛氬惎鐢↖NFO绾у埆鏃ュ織
+鉁?鐢熶骇妯″紡锛氫负璁块棶鏃ュ織鍚敤 TimedRotatingFileHandler
+鉁?Flask-Session鍒濆鍖栨垚鍔?
+
+鉁?杩愯鍦?API-only 妯″紡锛岃烦杩囨湰鍦版ā鍨嬪姞杞戒互鑺傜渷鍐呭瓨
+
+姝ｅ湪鍒濆鍖栧紓姝ヤ换鍔＄郴缁?..
+鉁?寮傛浠诲姟绯荤粺鍒濆鍖栨垚鍔?
+
+姝ｅ湪閰嶇疆搴旂敤鏃ュ織绯荤粺...
+鉁?鐢熶骇妯″紡锛氬惎鐢↖NFO绾у埆鏃ュ織
+鉁?鐢熶骇妯″紡锛氫负璁块棶鏃ュ織鍚敤 TimedRotatingFileHandler
+鉁?Flask-Session鍒濆鍖栨垚鍔?
+
+鉁?杩愯鍦?API-only 妯″紡锛岃烦杩囨湰鍦版ā鍨嬪姞杞戒互鑺傜渷鍐呭瓨
+
+姝ｅ湪鍒濆鍖栧紓姝ヤ换鍔＄郴缁?..
+鉁?寮傛浠诲姟绯荤粺鍒濆鍖栨垚鍔?
+寮€濮嬪噯澶囧浘琛ㄦ暟鎹?..
+鏌ヨ浣滀笟鎻愪氦鏁版嵁...
+娌℃湁浣滀笟鎻愪氦鏁版嵁
+鏌ヨ寰楀垎鍒嗗竷鏁版嵁...
+娌℃湁寰楀垎鍒嗗竷鏁版嵁
+鏌ヨ鐢ㄦ埛娲昏穬搴︽暟鎹?..
+鑾峰彇鍒?0 澶╃殑娲昏穬搴︽暟鎹?
+鎵€鏈夋棩鏈熺殑鎻愪氦鏁伴噺鍧囦负0
+鐢熸垚鐨勫浘琛ㄦ暟鎹暱搴? 647
+浣跨敤婕旂ず鏁版嵁锛屽師鍥狅細鍥捐〃鏁版嵁鏈夐棶棰樻垨涓虹┖
+婕旂ず鏁版嵁JSON闀垮害: 881
+鏈€缁堣緭鍑篔SON(鍓?00瀛楃): {"assignments": {"labels": ["婕旂ず浣滀笟1", "婕旂ず浣滀笟2", "婕旂ず浣滀笟3", "婕旂ず浣滀笟4", "婕旂ず浣滀笟5"], "counts": [15, 12, 8, 6, 4...
+寮€濮嬪噯澶囧浘琛ㄦ暟鎹?..
+鏌ヨ浣滀笟鎻愪氦鏁版嵁...
+娌℃湁浣滀笟鎻愪氦鏁版嵁
+鏌ヨ寰楀垎鍒嗗竷鏁版嵁...
+娌℃湁寰楀垎鍒嗗竷鏁版嵁
+鏌ヨ鐢ㄦ埛娲昏穬搴︽暟鎹?..
+鑾峰彇鍒?0 澶╃殑娲昏穬搴︽暟鎹?
+鎵€鏈夋棩鏈熺殑鎻愪氦鏁伴噺鍧囦负0
+鐢熸垚鐨勫浘琛ㄦ暟鎹暱搴? 647
+浣跨敤婕旂ず鏁版嵁锛屽師鍥狅細鍥捐〃鏁版嵁鏈夐棶棰樻垨涓虹┖
+婕旂ず鏁版嵁JSON闀垮害: 881
+鏈€缁堣緭鍑篔SON(鍓?00瀛楃): {"assignments": {"labels": ["婕旂ず浣滀笟1", "婕旂ず浣滀笟2", "婕旂ず浣滀笟3", "婕旂ず浣滀笟4", "婕旂ず浣滀笟5"], "counts": [15, 12, 8, 6, 4...
+AssertionError: b'\xe7\
+x94\xa8\xe6\x88\xb7\xe5
+\x90\x8d\xe6\x88\x96\xe
+5\xaf\x86\xe7\xa0\x81\x
+e9\x94\x99\xe8\xaf\xaf'
+ not found in b'<!DOCTY
+PE html>\n<html lang="z
+h-CN">\n\n<head>\n    <
+meta charset="UTF-8">\n
+    <meta name="viewpor
+t" content="width=devic
+e-width, initial-scale=
+1.0">\n    <meta name="
+description" content="C
+odeSense \xe9\x85\xb7\x
+e6\xa3\xae\xe6\x80\x9d 
+- \xe5\x9f\xba\xe4\xba\
+x8e\xe6\x9c\xba\xe5\x99
+\xa8\xe5\xad\xa6\xe4\xb
+9\xa0\xe7\x9a\x84\xe4\x
+bb\xa3\xe7\xa0\x81\xe8\
+x83\xbd\xe5\x8a\x9b\xe8
+\xaf\x84\xe4\xbc\xb0\xe
+5\xb9\xb3\xe5\x8f\xb0">
+\n    <title>\xe7\xae\x
+a1\xe7\x90\x86\xe5\x91\
+x98\xe4\xbb\xaa\xe8\xa1
+\xa8\xe7\x9b\x98 - Code
+Sense \xe9\x85\xb7\xe6\
+xa3\xae\xe6\x80\x9d</ti
+tle>\n\n    <!-- \xe5\x
+af\xbc\xe8\x88\xaa\xe6\
+xa0\x8f\xe7\xb4\xa7\xe6
+\x80\xa5\xe4\xbf\xae\xe
+5\xa4\x8d\xe6\xa0\xb7\x
+e5\xbc\x8f -->\n    <st
+yle>\n        .navbar-n
+av {\n            displ
+ay: flex !important;\n 
+           flex-directi
+on: row !important;\n  
+          flex-wrap: wr
+ap !important;\n       
+     justify-content: c
+enter !important;\n    
+    }\n\n        .navba
+r-nav>li {\n           
+ display: inline-block 
+!important;\n          
+  margin: 0 5px !import
+ant;\n        }\n    </
+style>\n\n    <!-- \xe5
+\xbc\x95\xe5\x85\xa5Goo
+gle\xe5\xad\x97\xe4\xbd
+\x93 -->\n    <link rel
+="preconnect" href="htt
+ps://fonts.googleapis.c
+om">\n    <link rel="pr
+econnect" href="https:/
+/fonts.gstatic.com" cro
+ssorigin>\n    <link hr
+ef="https://fonts.googl
+eapis.com/css2?family=I
+nter:wght@400;500;600;7
+00&display=swap" rel="s
+tylesheet">\n    <link 
+href="https://fonts.goo
+gleapis.com/css2?family
+=JetBrains+Mono:wght@40
+0;500&display=swap" rel
+="stylesheet">\n\n    <
+!-- \xe5\xbc\x95\xe5\x8
+5\xa5\xe5\x9b\xbe\xe6\x
+a0\x87\xe5\xba\x93 -->\
+n    <link rel="stylesh
+eet" href="https://cdn.
+jsdelivr.net/npm/bootst
+rap-icons@1.10.5/font/b
+ootstrap-icons.css">\n\
+n    <!-- \xe6\xb7\xbb\
+xe5\x8a\xa0Bootstrap CS
+S -->\n    <link href="
+https://cdn.jsdelivr.ne
+t/npm/bootstrap@5.1.3/d
+ist/css/bootstrap.min.c
+ss" rel="stylesheet"\n 
+       integrity="sha38
+4-1BmE4kWBq78iYhFldvKuh
+fTAU6auU8tT94WrHftjDbrC
+EXSU1oBoqyl2QvZ6jIW3" c
+rossorigin="anonymous">
+\n\n    <!-- CodeMirror
+ CSS -->\n    <link rel
+="stylesheet" href="htt
+ps://cdnjs.cloudflare.c
+om/ajax/libs/codemirror
+/5.65.2/codemirror.min.
+css">\n    <link rel="s
+tylesheet" href="https:
+//cdnjs.cloudflare.com/
+ajax/libs/codemirror/5.
+65.2/theme/darcula.min.
+css">\n    <link rel="s
+tylesheet"\n        hre
+f="https://cdnjs.cloudf
+lare.com/ajax/libs/code
+mirror/5.65.2/addon/fol
+d/foldgutter.min.css">\
+n\n    <!-- \xe5\xbc\x9
+5\xe5\x85\xa5\xe8\x87\x
+aa\xe5\xae\x9a\xe4\xb9\
+x89CSS -->\n    <link r
+el="stylesheet" href="/
+static/modern.css">\n\n
+    <!-- \xe5\xaf\xbc\x
+e8\x88\xaa\xe6\xa0\x8f\
+xe4\xbf\xae\xe5\xa4\x8d
+\xe6\xa0\xb7\xe5\xbc\x8
+f - \xe6\xb7\xbb\xe5\x8
+a\xa0\xe6\x97\xb6\xe9\x
+97\xb4\xe6\x88\xb3\xe4\
+xbb\xa5\xe9\x98\xb2\xe6
+\xad\xa2\xe7\xbc\x93\xe
+5\xad\x98 -->\n    <lin
+k rel="stylesheet" href
+="/static/navbar-fix.cs
+s?v=1777361573.144064">
+\n\n    <!-- \xe9\xa1\x
+b5\xe9\x9d\xa2\xe7\x89\
+xb9\xe5\xae\x9a\xe7\x9a
+\x84CSS -->\n    \n<sty
+le>\n    .overview-card
+ {\n        margin-bott
+om: 2rem;\n    }\n    \
+n    .overview-card h2 
+{\n        font-size: 1
+.5rem;\n        font-we
+ight: 600;\n        col
+or: var(--primary-color
+);\n        margin-bott
+om: 1.5rem;\n        di
+splay: flex;\n        a
+lign-items: center;\n  
+  }\n    \n    .overvie
+w-card h2 i {\n        
+margin-right: 0.75rem;\
+n    }\n    \n    .stat
+s-container {\n        
+display: grid;\n       
+ grid-template-columns:
+ repeat(auto-fill, minm
+ax(250px, 1fr));\n     
+   gap: 1.5rem;\n      
+  margin-bottom: 2rem;\
+n    }\n    \n    .stat
+-card {\n        backgr
+ound-color: #fff;\n    
+    border-radius: 0.5r
+em;\n        padding: 1
+.5rem;\n        box-sha
+dow: 0 2px 4px rgba(0, 
+0, 0, 0.05);\n        b
+order: 1px solid #e5e7e
+b;\n        display: fl
+ex;\n        flex-direc
+tion: column;\n    }\n 
+   \n    .stat-card .st
+at-value {\n        fon
+t-size: 2rem;\n        
+font-weight: 700;\n    
+    color: var(--primar
+y-color);\n        marg
+in-bottom: 0.5rem;\n   
+ }\n    \n    .stat-car
+d .stat-label {\n      
+  color: #4b5563;\n    
+    font-size: 0.875rem
+;\n    }\n    \n    .ad
+min-actions {\n        
+margin-bottom: 2rem;\n 
+   }\n    \n    .admin-
+actions .btn {\n       
+ margin-right: 0.75rem;
+\n        margin-bottom
+: 0.75rem;\n    }\n    
+\n    .btn-icon {\n    
+    display: inline-fle
+x;\n        align-items
+: center;\n    }\n    \
+n    .btn-icon i {\n   
+     margin-right: 0.5r
+em;\n    }\n    \n    .
+recent-activity {\n    
+    margin-bottom: 2rem
+;\n    }\n    \n    .ac
+tivity-list {\n        
+list-style: none;\n    
+    padding: 0;\n    }\
+n    \n    .activity-it
+em {\n        padding: 
+1rem;\n        border-b
+ottom: 1px solid #e5e7e
+b;\n        display: fl
+ex;\n        align-item
+s: center;\n    }\n    
+\n    .activity-item:la
+st-child {\n        bor
+der-bottom: none;\n    
+}\n    \n    .activity-
+icon {\n        width: 
+2.5rem;\n        height
+: 2.5rem;\n        back
+ground-color: #f3f4f6;\
+n        border-radius:
+ 50%;\n        display:
+ flex;\n        align-i
+tems: center;\n        
+justify-content: center
+;\n        margin-right
+: 1rem;\n        color:
+ var(--primary-color);\
+n    }\n    \n    .acti
+vity-details {\n       
+ flex: 1;\n    }\n    \
+n    .activity-message 
+{\n        margin-botto
+m: 0.25rem;\n        co
+lor: #111827;\n        
+font-weight: 500;\n    
+}\n    \n    .activity-
+time {\n        color: 
+#6b7280;\n        font-
+size: 0.875rem;\n    }\
+n    \n    .chart-conta
+iner {\n        height:
+ 300px;\n        positi
+on: relative;\n        
+margin-bottom: 1.5rem;\
+n    }\n</style>\n\n\n 
+   <!-- \xe9\xa1\xb5\xe
+9\x9d\xa2\xe7\x89\xb9\x
+e5\xae\x9a\xe7\x9a\x84\
+xe5\xa4\xb4\xe9\x83\xa8
+\xe5\x86\x85\xe5\xae\xb
+9\xef\xbc\x88\xe5\xa6\x
+82\xe8\x84\x9a\xe6\x9c\
+xac\xef\xbc\x89 -->\n  
+  \n<!-- Chart.js\xe5\x
+ba\x93\xe5\xbc\x95\xe5\
+x85\xa5 -->\n<script sr
+c="https://cdn.jsdelivr
+.net/npm/chart.js@3.9.1
+/dist/chart.min.js"></s
+cript>\n<!-- \xe5\xa4\x
+87\xe7\x94\xa8CDN\xe9\x
+93\xbe\xe6\x8e\xa5 -->\
+n<script>\n    // \xe6\
+xa3\x80\xe6\x9f\xa5Char
+t\xe6\x98\xaf\xe5\x90\x
+a6\xe5\xb7\xb2\xe7\xbb\
+x8f\xe5\x8a\xa0\xe8\xbd
+\xbd\n    if (typeof Ch
+art === \'undefined\') 
+{\n        console.log(
+"\xe4\xb8\xbb\xe8\xa6\x
+81CDN\xe5\x8a\xa0\xe8\x
+bd\xbd\xe5\xa4\xb1\xe8\
+xb4\xa5\xef\xbc\x8c\xe5
+\xb0\x9d\xe8\xaf\x95\xe
+5\xa4\x87\xe7\x94\xa8CD
+N...");\n        docume
+nt.write(\'<script src=
+"https://cdnjs.cloudfla
+re.com/ajax/libs/Chart.
+js/3.9.1/chart.min.js">
+<\\/script>\');\n      
+  \n        // \xe5\xa6
+\x82\xe6\x9e\x9c\xe5\xa
+4\x87\xe7\x94\xa8CDN\xe
+4\xb9\x9f\xe5\xa4\xb1\x
+e8\xb4\xa5\xef\xbc\x8c\
+xe5\xb0\x9d\xe8\xaf\x95
+\xe7\xac\xac\xe4\xb8\x8
+9\xe4\xb8\xaa\xe6\xba\x
+90\n        setTimeout(
+function() {\n         
+   if (typeof Chart ===
+ \'undefined\') {\n    
+            console.log
+("\xe5\xa4\x87\xe7\x94\
+xa8CDN\xe4\xb9\x9f\xe5\
+x8a\xa0\xe8\xbd\xbd\xe5
+\xa4\xb1\xe8\xb4\xa5\xe
+f\xbc\x8c\xe5\xb0\x9d\x
+e8\xaf\x95\xe7\xac\xac\
+xe4\xb8\x89\xe4\xb8\xaa
+\xe6\xba\x90...");\n   
+             document.w
+rite(\'<script src="htt
+ps://cdn.bootcdn.net/aj
+ax/libs/Chart.js/3.9.1/
+chart.min.js"><\\/scrip
+t>\');\n            }\n
+        }, 1000);\n    
+} else {\n        conso
+le.log("Chart.js\xe5\xb
+7\xb2\xe6\x88\x90\xe5\x
+8a\x9f\xe4\xbb\x8e\xe4\
+xb8\xbb\xe8\xa6\x81CDN\
+xe5\x8a\xa0\xe8\xbd\xbd
+");\n    }\n</script>\n
+\n\n    <!-- \xe5\xaf\x
+bc\xe8\x88\xaa\xe6\xa0\
+x8f\xe4\xbf\xae\xe5\xa4
+\x8dCSS -->\n    <style
+>\n        .navbar-nav 
+{\n            display:
+ flex !important;\n    
+        /* \xe5\xbc\xba
+\xe5\x88\xb6\xe6\xa8\xa
+a\xe5\x90\x91\xe6\x98\x
+be\xe7\xa4\xba */\n    
+        flex-wrap: wrap
+;\n            justify-
+content: center;\n     
+   }\n\n        @media 
+(max-width: 768px) {\n 
+           .navbar-cont
+ainer {\n              
+  flex-direction: colum
+n;\n                ali
+gn-items: center;\n    
+            gap: 16px;\
+n            }\n\n     
+       .navbar-user {\n
+                margin-
+top: 10px;\n           
+     justify-content: c
+enter;\n            }\n
+        }\n    </style>
+\n</head>\n\n<body>\n  
+  <!-- \xe5\xaf\xbc\xe8
+\x88\xaa\xe6\xa0\x8f --
+>\n    <nav class="navb
+ar">\n        <div clas
+s="container navbar-con
+tainer">\n            <
+a href="/home" class="n
+avbar-brand">\n        
+        <i class="bi bi
+-code-square" style="ma
+rgin-right: 12px;"></i>
+\n                <span
+>CodeSense \xe9\x85\xb7
+\xe6\xa3\xae\xe6\x80\x9
+d</span>\n            <
+/a>\n\n            <ul 
+class="navbar-nav">\n  
+              \n       
+         <li><a href="/
+home"\n                
+        class="navbar-l
+ink ">\xe9\xa6\x96\xe9\
+xa1\xb5</a></li>\n\n   
+             \n        
+        \n\n           
+     \n                
+\n\n                \n 
+               \n      
+          <li><a href="
+/assignments"\n        
+                class="
+navbar-link ">\xe4\xbd\
+x9c\xe4\xb8\x9a\xe7\xae
+\xa1\xe7\x90\x86</a></l
+i>\n                <li
+><a href="/users"\n    
+                    cla
+ss="navbar-link ">\xe7\
+x94\xa8\xe6\x88\xb7\xe7
+\xae\xa1\xe7\x90\x86</a
+></li>\n               
+ <li><a href="/classes/
+"\n                    
+    class="navbar-link 
+">\xe7\x8f\xad\xe7\xba\
+xa7\xe7\xae\xa1\xe7\x90
+\x86</a></li>\n        
+        <li><a href="/a
+pi/docs"\n             
+           class="navba
+r-link ">API\xe6\x96\x8
+7\xe6\xa1\xa3</a></li>\
+n                \n    
+            \n         
+   </ul>\n\n           
+ <div class="navbar-use
+r">\n                \n
+                <span c
+lass="badge \n         
+           \n          
+              bg-danger
+\n                    \
+n                ">\n  
+                  \xe7\
+xae\xa1\xe7\x90\x86\xe5
+\x91\x98\n             
+   </span>\n           
+     <a href="/profile"
+\n                    c
+lass="navbar-link">\n  
+                  <i cl
+ass="bi bi-person-circl
+e" style="margin-right:
+ 8px;"></i>\n          
+          \xe6\xb5\x8b\
+xe8\xaf\x95\xe7\xae\xa1
+\xe7\x90\x86\xe5\x91\x9
+8\n                </a>
+\n                <a hr
+ef="/logout" class="nav
+bar-link">\n           
+         <i class="bi b
+i-box-arrow-right" styl
+e="margin-right: 8px;">
+</i>\n                 
+   \xe9\x80\x80\xe5\x87
+\xba\n                <
+/a>\n                \n
+            </div>\n   
+     </div>\n    </nav>
+\n\n    <!-- \xe4\xb8\x
+bb\xe5\x86\x85\xe5\xae\
+xb9\xe5\x8c\xba -->\n  
+  <main class="main-con
+tent">\n        <div cl
+ass="container">\n     
+       <!-- \xe9\x97\xa
+a\xe7\x8e\xb0\xe6\xb6\x
+88\xe6\x81\xaf Toast \x
+e5\xae\xb9\xe5\x99\xa8 
+-->\n            <div c
+lass="toast-container">
+\n                \n   
+             \n        
+        \n             
+   \n                <d
+iv class="toast toast-i
+nfo" role="alert" aria-
+live="assertive" aria-a
+tomic="true"\n         
+           data-bs-dela
+y="5000">\n            
+        <div class="toa
+st-header">\n          
+              <i\n     
+                       
+class="bi bi-info-circl
+e-fill text-info me-2">
+</i>\n                 
+       <strong class="m
+e-auto">\n             
+               \xe6\x8f
+\x90\xe7\xa4\xba\n     
+                   </st
+rong>\n                
+        <button type="b
+utton" class="btn-close
+" data-bs-dismiss="toas
+t" aria-label="Close"><
+/button>\n             
+       </div>\n        
+            <div class=
+"toast-body">\n        
+                \xe6\x8
+2\xa8\xe5\xb7\xb2\xe7\x
+99\xbb\xe5\xbd\x95\n   
+                 </div>
+\n                </div
+>\n                \n  
+              \n       
+         <div class="to
+ast toast-info" role="a
+lert" aria-live="assert
+ive" aria-atomic="true"
+\n                    d
+ata-bs-delay="5000">\n 
+                   <div
+ class="toast-header">\
+n                      
+  <i\n                 
+           class="bi bi
+-info-circle-fill text-
+info me-2"></i>\n      
+                  <stro
+ng class="me-auto">\n  
+                       
+   \xe6\x8f\x90\xe7\xa4
+\xba\n                 
+       </strong>\n     
+                   <but
+ton type="button" class
+="btn-close" data-bs-di
+smiss="toast" aria-labe
+l="Close"></button>\n  
+                  </div
+>\n                    
+<div class="toast-body"
+>\n                    
+    \xe5\x9b\xbe\xe8\xa
+1\xa8\xe6\x95\xb0\xe6\x
+8d\xae\xe4\xb8\xba\xe6\
+xbc\x94\xe7\xa4\xba\xe6
+\x95\xb0\xe6\x8d\xae\xe
+f\xbc\x9a\xe6\x95\xb0\x
+e6\x8d\xae\xe5\xba\x93\
+xe4\xb8\xad\xe5\x8f\xaf
+\xe8\xa7\x86\xe5\x8c\x9
+6\xe6\x95\xb0\xe6\x8d\x
+ae\xe4\xb8\x8d\xe8\xb6\
+xb3\xe3\x80\x82\xe8\xaf
+\xb7\xe6\xb7\xbb\xe5\x8
+a\xa0\xe4\xb8\x80\xe4\x
+ba\x9b\xe4\xbd\x9c\xe4\
+xb8\x9a\xe5\x92\x8c\xe6
+\x8f\x90\xe4\xba\xa4\xe
+4\xbb\xa5\xe6\x9f\xa5\x
+e7\x9c\x8b\xe5\xae\x9e\
+xe9\x99\x85\xe7\xbb\x9f
+\xe8\xae\xa1\xe6\x95\xb
+0\xe6\x8d\xae\xe3\x80\x
+82\n                   
+ </div>\n              
+  </div>\n             
+   \n                \n
+                \n     
+       </div>\n\n      
+      <!-- \xe9\xa1\xb5
+\xe9\x9d\xa2\xe5\x86\x8
+5\xe5\xae\xb9 -->\n    
+        \n<div class="p
+age-header">\n    <h1 c
+lass="page-title">\xe7\
+xae\xa1\xe7\x90\x86\xe5
+\x91\x98\xe4\xbb\xaa\xe
+8\xa1\xa8\xe7\x9b\x98</
+h1>\n    <p class="page
+-subtitle">\xe7\xb3\xbb
+\xe7\xbb\x9f\xe6\xa6\x8
+2\xe8\xa7\x88\xe5\x92\x
+8c\xe7\xae\xa1\xe7\x90\
+x86\xe5\x8a\x9f\xe8\x83
+\xbd</p>\n</div>\n\n<di
+v class="overview-card"
+>\n    <h2><i class="bi
+ bi-speedometer2"></i>\
+xe7\xb3\xbb\xe7\xbb\x9f
+\xe6\xa6\x82\xe8\xa7\x8
+8</h2>\n    \n    <div 
+class="stats-container"
+>\n        <div class="
+stat-card">\n          
+  <div class="stat-valu
+e">2</div>\n           
+ <div class="stat-label
+">\xe6\xb3\xa8\xe5\x86\
+x8c\xe7\x94\xa8\xe6\x88
+\xb7\xe6\x95\xb0</div>\
+n        </div>\n      
+  \n        <div class=
+"stat-card">\n         
+   <div class="stat-val
+ue">0</div>\n          
+  <div class="stat-labe
+l">\xe6\x80\xbb\xe4\xbd
+\x9c\xe4\xb8\x9a\xe6\x9
+5\xb0</div>\n        </
+div>\n        \n       
+ <div class="stat-card"
+>\n            <div cla
+ss="stat-value">0</div>
+\n            <div clas
+s="stat-label">\xe6\x80
+\xbb\xe6\x8f\x90\xe4\xb
+a\xa4\xe6\x95\xb0</div>
+\n        </div>\n     
+   \n        <div class
+="stat-card">\n        
+    <div class="stat-va
+lue">0</div>\n         
+   <div class="stat-lab
+el">\xe5\xb9\xb3\xe5\x9
+d\x87\xe5\xbe\x97\xe5\x
+88\x86</div>\n        <
+/div>\n    </div>\n</di
+v>\n\n<div class="admin
+-actions card">\n    <d
+iv class="card-header">
+\n        <div class="c
+ard-title"><i class="bi
+ bi-tools"></i> \xe7\xa
+e\xa1\xe7\x90\x86\xe6\x
+93\x8d\xe4\xbd\x9c</div
+>\n    </div>\n    <div
+ class="card-body">\n  
+      <a href="/users" 
+class="btn btn-secondar
+y btn-icon">\n         
+   <i class="bi bi-peop
+le"></i> \xe7\x94\xa8\x
+e6\x88\xb7\xe7\xae\xa1\
+xe7\x90\x86\n        </
+a>\n        <a href="/a
+ll_submissions" class="
+btn btn-warning btn-ico
+n">\n            <i cla
+ss="bi bi-journal-code"
+></i> \xe6\x8f\x90\xe4\
+xba\xa4\xe8\xae\xb0\xe5
+\xbd\x95\n        </a>\
+n        <a href="/expo
+rt_data" class="btn btn
+-success btn-icon">\n  
+          <i class="bi 
+bi-file-earmark-text"><
+/i> \xe5\xaf\xbc\xe5\x8
+7\xba\xe6\x95\xb0\xe6\x
+8d\xae\n        </a>\n 
+       <!-- \xe4\xb8\xb
+4\xe6\x97\xb6\xe7\xa7\x
+bb\xe9\x99\xa4\xe7\xb3\
+xbb\xe7\xbb\x9f\xe8\xae
+\xbe\xe7\xbd\xae\xe5\x8
+a\x9f\xe8\x83\xbd\n    
+    <a href="/system_se
+ttings" class="btn btn-
+secondary btn-icon">\n 
+           <i class="bi
+ bi-gear"></i> \xe7\xb3
+\xbb\xe7\xbb\x9f\xe8\xa
+e\xbe\xe7\xbd\xae\n    
+    </a>\n        -->\n
+    </div>\n</div>\n\n<
+div class="recent-activ
+ity card">\n    <div cl
+ass="card-header">\n   
+     <div class="card-t
+itle"><i class="bi bi-a
+ctivity"></i> \xe6\x9c\
+x80\xe8\xbf\x91\xe6\xb4
+\xbb\xe5\x8a\xa8</div>\
+n    </div>\n    <div c
+lass="card-body">\n    
+    <ul class="activity
+-list">\n            \n
+            <li class="
+activity-item">\n      
+          <div class="a
+ctivity-icon">\n       
+             <i class="
+bi bi-box-arrow-in-righ
+t"></i>\n              
+  </div>\n             
+   <div class="activity
+-details">\n           
+         <div class="ac
+tivity-message">\xe7\x9
+4\xa8\xe6\x88\xb7 test_
+admin (\xe6\xb5\x8b\xe8
+\xaf\x95\xe7\xae\xa1\xe
+7\x90\x86\xe5\x91\x98) 
+\xe7\x99\xbb\xe5\xbd\x9
+5\xe4\xba\x86\xe7\xb3\x
+bb\xe7\xbb\x9f</div>\n 
+                   <div
+ class="activity-time">
+\xe5\x88\x9a\xe5\x88\x9
+a</div>\n              
+  </div>\n            <
+/li>\n            \n   
+     </ul>\n    </div>\
+n</div>\n\n<div class="
+card">\n    <div class=
+"card-header">\n       
+ <div class="card-title
+"><i class="bi bi-bar-c
+hart"></i> \xe7\xb3\xbb
+\xe7\xbb\x9f\xe7\xbb\x9
+f\xe8\xae\xa1</div>\n  
+  </div>\n    <div clas
+s="card-body">\n       
+ <div class="row">\n   
+         <div class="co
+l-md-6 mb-4">\n        
+        <h5 class="mb-3
+">\xe4\xbd\x9c\xe4\xb8\
+x9a\xe6\x8f\x90\xe4\xba
+\xa4\xe7\xbb\x9f\xe8\xa
+e\xa1</h5>\n           
+     <div class="chart-
+container">\n          
+          <canvas id="a
+ssignmentsChart"></canv
+as>\n                </
+div>\n            </div
+>\n            <div cla
+ss="col-md-6 mb-4">\n  
+              <h5 class
+="mb-3">\xe5\xbe\x97\xe
+5\x88\x86\xe5\x88\x86\x
+e5\xb8\x83</h5>\n      
+          <div class="c
+hart-container">\n     
+               <canvas 
+id="scoresChart"></canv
+as>\n                </
+div>\n            </div
+>\n            <div cla
+ss="col-md-12">\n      
+          <h5 class="mb
+-3">\xe8\xbf\x87\xe5\x8
+e\xbb30\xe5\xa4\xa9\xe6
+\xb4\xbb\xe8\xb7\x83\xe
+5\xba\xa6</h5>\n       
+         <div class="ch
+art-container">\n      
+              <canvas i
+d="activityChart"></can
+vas>\n                <
+/div>\n            </di
+v>\n        </div>\n   
+ </div>\n</div>\n\n<!--
+ \xe5\x9b\xbe\xe8\xa1\x
+a8\xe5\x88\x9d\xe5\xa7\
+x8b\xe5\x8c\x96\xe8\x84
+\x9a\xe6\x9c\xac -->\n<
+script>\n    // \xe8\xb
+0\x83\xe8\xaf\x95\xe4\x
+bf\xa1\xe6\x81\xaf\xe8\
+xbe\x93\xe5\x87\xba\xe5
+\x87\xbd\xe6\x95\xb0\xe
+f\xbc\x88\xe4\xbb\x85\x
+e6\x8e\xa7\xe5\x88\xb6\
+xe5\x8f\xb0\xe6\x98\xbe
+\xe7\xa4\xba\xef\xbc\x8
+c\xe4\xb8\x8d\xe5\xbd\x
+b1\xe5\x93\x8d\xe9\xa1\
+xb5\xe9\x9d\xa2\xef\xbc
+\x89\n    function log(
+message, type = \'info\
+') {\n        const sty
+les = {\n            in
+fo: \'color: #0066cc; b
+ackground: #f0f8ff;\',\
+n            error: \'c
+olor: #cc0000; backgrou
+nd: #fff0f0;\',\n      
+      warning: \'color:
+ #cc6600; background: #
+fff8f0;\',\n           
+ success: \'color: #006
+600; background: #f0fff
+0;\'\n        };\n     
+   console.log(`%c[\xe5
+\x9b\xbe\xe8\xa1\xa8] $
+{message}`, styles[type
+]);\n    }\n\n    // \x
+e5\x9b\xbe\xe8\xa1\xa8\
+xe5\x88\x9d\xe5\xa7\x8b
+\xe5\x8c\x96\xe5\x85\xa
+5\xe5\x8f\xa3\xe5\x87\x
+bd\xe6\x95\xb0\n    doc
+ument.addEventListener(
+\'DOMContentLoaded\', f
+unction() {\n        lo
+g("\xe9\xa1\xb5\xe9\x9d
+\xa2\xe5\x8a\xa0\xe8\xb
+d\xbd\xe5\xae\x8c\xe6\x
+88\x90\xef\xbc\x8c\xe5\
+xbc\x80\xe5\xa7\x8b\xe5
+\x88\x9d\xe5\xa7\x8b\xe
+5\x8c\x96\xe5\x9b\xbe\x
+e8\xa1\xa8...");\n     
+   \n        try {\n   
+         // \xe6\xa3\x8
+0\xe6\x9f\xa5Chart.js\x
+e6\x98\xaf\xe5\x90\xa6\
+xe6\x88\x90\xe5\x8a\x9f
+\xe5\x8a\xa0\xe8\xbd\xb
+d\n            if (type
+of Chart === \'undefine
+d\') {\n               
+ log("\xe9\x94\x99\xe8\
+xaf\xaf: Chart.js\xe5\x
+ba\x93\xe6\x9c\xaa\xe5\
+x8a\xa0\xe8\xbd\xbd\xef
+\xbc\x81\xe5\x9b\xbe\xe
+8\xa1\xa8\xe5\xb0\x86\x
+e6\x97\xa0\xe6\xb3\x95\
+xe6\xb8\xb2\xe6\x9f\x93
+", \'error\');\n       
+         return;\n     
+       }\n            \
+n            log("Chart
+.js\xe5\xba\x93\xe5\xb7
+\xb2\xe5\x8a\xa0\xe8\xb
+d\xbd\xef\xbc\x8c\xe7\x
+89\x88\xe6\x9c\xac: " +
+ (Chart.version || "\xe
+6\x9c\xaa\xe7\x9f\xa5")
+);\n            \n     
+       // \xe4\xbb\x8e\
+xe5\x90\x8e\xe7\xab\xaf
+\xe8\x8e\xb7\xe5\x8f\x9
+6\xe5\x9b\xbe\xe8\xa1\x
+a8\xe6\x95\xb0\xe6\x8d\
+xae\n            let ch
+artData;\n            t
+ry {\n                l
+og("\xe5\xb0\x9d\xe8\xa
+f\x95\xe8\xa7\xa3\xe6\x
+9e\x90\xe5\x90\x8e\xe7\
+xab\xaf\xe4\xbc\xa0\xe9
+\x80\x92\xe7\x9a\x84\xe
+5\x9b\xbe\xe8\xa1\xa8\x
+e6\x95\xb0\xe6\x8d\xae.
+..");\n                
+const rawData = \'{"ass
+ignments": {"labels": [
+"\xe6\xbc\x94\xe7\xa4\x
+ba\xe4\xbd\x9c\xe4\xb8\
+x9a1", "\xe6\xbc\x94\xe
+7\xa4\xba\xe4\xbd\x9c\x
+e4\xb8\x9a2", "\xe6\xbc
+\x94\xe7\xa4\xba\xe4\xb
+d\x9c\xe4\xb8\x9a3", "\
+xe6\xbc\x94\xe7\xa4\xba
+\xe4\xbd\x9c\xe4\xb8\x9
+a4", "\xe6\xbc\x94\xe7\
+xa4\xba\xe4\xbd\x9c\xe4
+\xb8\x9a5"], "counts": 
+[15, 12, 8, 6, 4]}, "sc
+ores": {"labels": ["5\x
+e5\x88\x86", "4\xe5\x88
+\x86", "3\xe5\x88\x86",
+ "2\xe5\x88\x86", "1\xe
+5\x88\x86"], "counts": 
+[18, 14, 8, 5, 2], "col
+ors": ["rgba(54, 162, 2
+35, 0.8)", "rgba(75, 19
+2, 192, 0.8)", "rgba(25
+5, 205, 86, 0.8)", "rgb
+a(255, 159, 64, 0.8)", 
+"rgba(255, 99, 132, 0.8
+)"]}, "activity": {"lab
+els": ["2026-03-29", "2
+026-03-30", "2026-03-31
+", "2026-04-01", "2026-
+04-02", "2026-04-03", "
+2026-04-04", "2026-04-0
+5", "2026-04-06", "2026
+-04-07", "2026-04-08", 
+"2026-04-09", "2026-04-
+10", "2026-04-11", "202
+6-04-12", "2026-04-13",
+ "2026-04-14", "2026-04
+-15", "2026-04-16", "20
+26-04-17", "2026-04-18"
+, "2026-04-19", "2026-0
+4-20", "2026-04-21", "2
+026-04-22", "2026-04-23
+", "2026-04-24", "2026-
+04-25", "2026-04-26", "
+2026-04-27"], "counts":
+ [0, 1, 2, 0, 3, 5, 2, 
+0, 0, 1, 3, 2, 4, 6, 2,
+ 1, 0, 0, 2, 1, 3, 4, 2
+, 2, 1, 0, 1, 2, 3, 5]}
+}\';\n                l
+og("\xe5\x8e\x9f\xe5\xa
+7\x8b\xe6\x95\xb0\xe6\x
+8d\xae\xe9\x95\xbf\xe5\
+xba\xa6: " + rawData.le
+ngth + "\xe5\xad\x97\xe
+7\xac\xa6");\n         
+       \n              
+  // \xe6\xb7\xbb\xe5\x
+8a\xa0\xe4\xb8\x80\xe4\
+xb8\xaa\xe7\xae\x80\xe5
+\x8d\x95\xe7\x9a\x84\xe
+9\xaa\x8c\xe8\xaf\x81\x
+ef\xbc\x8c\xe7\xa1\xae\
+xe4\xbf\x9d\xe6\x95\xb0
+\xe6\x8d\xae\xe4\xb8\x8
+d\xe4\xb8\xba\xe7\xa9\x
+ba\n                if 
+(!rawData || rawData ==
+= \'""\' || rawData ===
+ \'{}\' || rawData.leng
+th < 10) {\n           
+         throw new Erro
+r("\xe5\x90\x8e\xe7\xab
+\xaf\xe4\xbc\xa0\xe9\x8
+0\x92\xe7\x9a\x84\xe5\x
+9b\xbe\xe8\xa1\xa8\xe6\
+x95\xb0\xe6\x8d\xae\xe4
+\xb8\xba\xe7\xa9\xba\xe
+6\x88\x96\xe6\xa0\xbc\x
+e5\xbc\x8f\xe4\xb8\x8d\
+xe6\xad\xa3\xe7\xa1\xae
+");\n                }\
+n                \n    
+            chartData =
+ JSON.parse(rawData);\n
+                log("\x
+e5\x9b\xbe\xe8\xa1\xa8\
+xe6\x95\xb0\xe6\x8d\xae
+\xe8\xa7\xa3\xe6\x9e\x9
+0\xe6\x88\x90\xe5\x8a\x
+9f\xef\xbc\x8c\xe5\x8c\
+x85\xe5\x90\xab " + Obj
+ect.keys(chartData).len
+gth + " \xe4\xb8\xaa\xe
+5\x9b\xbe\xe8\xa1\xa8\x
+e9\x85\x8d\xe7\xbd\xae"
+);\n                \n 
+               // \xe6\
+x98\xbe\xe7\xa4\xba\xe8
+\xb0\x83\xe8\xaf\x95\xe
+4\xbf\xa1\xe6\x81\xaf\n
+                log("\x
+e4\xbd\x9c\xe4\xb8\x9a\
+xe6\x95\xb0\xe6\x8d\xae
+: " + (chartData.assign
+ments?.labels?.length |
+| 0) + " \xe4\xb8\xaa\x
+e6\xa0\x87\xe7\xad\xbe"
+);\n                log
+("\xe5\x88\x86\xe6\x95\
+xb0\xe6\x95\xb0\xe6\x8d
+\xae: " + (chartData.sc
+ores?.labels?.length ||
+ 0) + " \xe4\xb8\xaa\xe
+6\xa0\x87\xe7\xad\xbe")
+;\n                log(
+"\xe6\xb4\xbb\xe5\x8a\x
+a8\xe6\x95\xb0\xe6\x8d\
+xae: " + (chartData.act
+ivity?.labels?.length |
+| 0) + " \xe4\xb8\xaa\x
+e6\xa0\x87\xe7\xad\xbe"
+);\n            } catch
+ (e) {\n               
+ log("\xe8\xa7\xa3\xe6\
+x9e\x90\xe5\x9b\xbe\xe8
+\xa1\xa8\xe6\x95\xb0\xe
+6\x8d\xae\xe6\x97\xb6\x
+e5\x87\xba\xe9\x94\x99:
+ " + e.message, \'error
+\');\n                \
+n                // \xe
+4\xbd\xbf\xe7\x94\xa8\x
+e6\x9c\x80\xe7\xae\x80\
+xe5\x8d\x95\xe7\x9a\x84
+\xe9\xbb\x98\xe8\xae\xa
+4\xe6\x95\xb0\xe6\x8d\x
+ae\xef\xbc\x8c\xe7\xa1\
+xae\xe4\xbf\x9d\xe8\x87
+\xb3\xe5\xb0\x91\xe8\x8
+3\xbd\xe7\x9c\x8b\xe5\x
+88\xb0\xe4\xb8\x80\xe4\
+xba\x9b\xe4\xb8\x9c\xe8
+\xa5\xbf\n             
+   log("\xe4\xbd\xbf\xe
+7\x94\xa8\xe9\xbb\x98\x
+e8\xae\xa4\xe6\x95\xb0\
+xe6\x8d\xae...", \'warn
+ing\');\n              
+  chartData = {\n      
+              assignmen
+ts: {\n                
+        labels: [\'\xe9
+\xbb\x98\xe8\xae\xa4\xe
+7\xa4\xba\xe4\xbe\x8b1\
+', \'\xe9\xbb\x98\xe8\x
+ae\xa4\xe7\xa4\xba\xe4\
+xbe\x8b2\', \'\xe9\xbb\
+x98\xe8\xae\xa4\xe7\xa4
+\xba\xe4\xbe\x8b3\'],\n
+                       
+ counts: [5, 3, 2]\n   
+                 },\n  
+                  score
+s: {\n                 
+       labels: [\'5\xe5
+\x88\x86\', \'4\xe5\x88
+\x86\', \'3\xe5\x88\x86
+\'],\n                 
+       counts: [5, 3, 2
+],\n                   
+     colors: [\'#36a2eb
+\', \'#4bc0c0\', \'#ffc
+d56\']\n               
+     },\n              
+      activity: {\n    
+                    lab
+els: Array.from({length
+: 30}, (_, i) => `\xe7\
+xac\xac${i+1}\xe5\xa4\x
+a9`),\n                
+        counts: Array.f
+rom({length: 30}, () =>
+ Math.floor(Math.random
+() * 5))\n             
+       }\n             
+   };\n            }\n 
+           \n          
+  // \xe5\x88\x9d\xe5\x
+a7\x8b\xe5\x8c\x96\xe5\
+x90\x84\xe4\xb8\xaa\xe5
+\x9b\xbe\xe8\xa1\xa8\n 
+           log("\xe5\xb
+c\x80\xe5\xa7\x8b\xe6\x
+b8\xb2\xe6\x9f\x93\xe5\
+x9b\xbe\xe8\xa1\xa8..."
+);\n            try {\n
+                if (cha
+rtData.assignments && c
+hartData.assignments.la
+bels.length > 0) {\n   
+                 render
+AssignmentsChart(chartD
+ata.assignments);\n    
+            } else {\n 
+                   log(
+"\xe4\xbd\x9c\xe4\xb8\x
+9a\xe5\x9b\xbe\xe8\xa1\
+xa8\xe6\x95\xb0\xe6\x8d
+\xae\xe4\xb8\xba\xe7\xa
+9\xba\xef\xbc\x8c\xe6\x
+97\xa0\xe6\xb3\x95\xe6\
+xb8\xb2\xe6\x9f\x93", \
+'warning\');\n         
+           document.get
+ElementById(\'assignmen
+tsChart\').parentNode.i
+nnerHTML = \n          
+              \'<div cl
+ass="text-center p-3">\
+xe6\x9a\x82\xe6\x97\xa0
+\xe4\xbd\x9c\xe4\xb8\x9
+a\xe6\x8f\x90\xe4\xba\x
+a4\xe6\x95\xb0\xe6\x8d\
+xae</div>\';\n         
+       }\n            }
+ catch (e) {\n         
+       log("\xe6\xb8\xb
+2\xe6\x9f\x93\xe4\xbd\x
+9c\xe4\xb8\x9a\xe5\x9b\
+xbe\xe8\xa1\xa8\xe5\xa4
+\xb1\xe8\xb4\xa5: " + e
+.message, \'error\');\n
+            }\n        
+    \n            try {
+\n                if (c
+hartData.scores && char
+tData.scores.labels.len
+gth > 0) {\n           
+         renderScoresCh
+art(chartData.scores);\
+n                } else
+ {\n                   
+ log("\xe5\x88\x86\xe6\
+x95\xb0\xe5\x9b\xbe\xe8
+\xa1\xa8\xe6\x95\xb0\xe
+6\x8d\xae\xe4\xb8\xba\x
+e7\xa9\xba\xef\xbc\x8c\
+xe6\x97\xa0\xe6\xb3\x95
+\xe6\xb8\xb2\xe6\x9f\x9
+3", \'warning\');\n    
+                documen
+t.getElementById(\'scor
+esChart\').parentNode.i
+nnerHTML = \n          
+              \'<div cl
+ass="text-center p-3">\
+xe6\x9a\x82\xe6\x97\xa0
+\xe5\x88\x86\xe6\x95\xb
+0\xe5\x88\x86\xe5\xb8\x
+83\xe6\x95\xb0\xe6\x8d\
+xae</div>\';\n         
+       }\n            }
+ catch (e) {\n         
+       log("\xe6\xb8\xb
+2\xe6\x9f\x93\xe5\x88\x
+86\xe6\x95\xb0\xe5\x9b\
+xbe\xe8\xa1\xa8\xe5\xa4
+\xb1\xe8\xb4\xa5: " + e
+.message, \'error\');\n
+            }\n        
+    \n            try {
+\n                if (c
+hartData.activity && ch
+artData.activity.labels
+.length > 0) {\n       
+             renderActi
+vityChart(chartData.act
+ivity);\n              
+  } else {\n           
+         log("\xe6\xb4\
+xbb\xe5\x8a\xa8\xe5\x9b
+\xbe\xe8\xa1\xa8\xe6\x9
+5\xb0\xe6\x8d\xae\xe4\x
+b8\xba\xe7\xa9\xba\xef\
+xbc\x8c\xe6\x97\xa0\xe6
+\xb3\x95\xe6\xb8\xb2\xe
+6\x9f\x93", \'warning\'
+);\n                   
+ document.getElementByI
+d(\'activityChart\').pa
+rentNode.innerHTML = \n
+                       
+ \'<div class="text-cen
+ter p-3">\xe6\x9a\x82\x
+e6\x97\xa0\xe6\xb4\xbb\
+xe5\x8a\xa8\xe6\x95\xb0
+\xe6\x8d\xae</div>\';\n
+                }\n    
+        } catch (e) {\n
+                log("\x
+e6\xb8\xb2\xe6\x9f\x93\
+xe6\xb4\xbb\xe5\x8a\xa8
+\xe5\x9b\xbe\xe8\xa1\xa
+8\xe5\xa4\xb1\xe8\xb4\x
+a5: " + e.message, \'er
+ror\');\n            }\
+n            \n        
+    log("\xe5\x9b\xbe\x
+e8\xa1\xa8\xe5\x88\x9d\
+xe5\xa7\x8b\xe5\x8c\x96
+\xe5\xae\x8c\xe6\x88\x9
+0", \'success\');\n    
+        \n        } cat
+ch (e) {\n            l
+og("\xe5\x9b\xbe\xe8\xa
+1\xa8\xe6\x80\xbb\xe4\x
+bd\x93\xe5\x88\x9d\xe5\
+xa7\x8b\xe5\x8c\x96\xe5
+\xa4\xb1\xe8\xb4\xa5: "
+ + e.message, \'error\'
+);\n        }\n    });\
+n\n    // \xe4\xbd\x9c\
+xe4\xb8\x9a\xe6\x8f\x90
+\xe4\xba\xa4\xe6\x95\xb
+0\xe9\x87\x8f\xe5\x9b\x
+be\xe8\xa1\xa8\n    fun
+ction renderAssignments
+Chart(data) {\n        
+log("\xe5\x88\x9d\xe5\x
+a7\x8b\xe5\x8c\x96\xe4\
+xbd\x9c\xe4\xb8\x9a\xe6
+\x8f\x90\xe4\xba\xa4\xe
+5\x9b\xbe\xe8\xa1\xa8..
+.");\n        \n       
+ // \xe8\x8e\xb7\xe5\x8
+f\x96canvas\xe5\x85\x83
+\xe7\xb4\xa0\n        c
+onst ctx = document.get
+ElementById(\'assignmen
+tsChart\');\n        if
+ (!ctx) {\n            
+log("\xe6\x89\xbe\xe4\x
+b8\x8d\xe5\x88\xb0\xe4\
+xbd\x9c\xe4\xb8\x9a\xe5
+\x9b\xbe\xe8\xa1\xa8\xe
+7\x9a\x84canvas\xe5\x85
+\x83\xe7\xb4\xa0", \'er
+ror\');\n            re
+turn;\n        }\n     
+   \n        // \xe5\x8
+8\x9b\xe5\xbb\xba\xe5\x
+9b\xbe\xe8\xa1\xa8\n   
+     const chart = new 
+Chart(ctx, {\n         
+   type: \'bar\',\n    
+        data: {\n      
+          labels: data.
+labels,\n              
+  datasets: [{\n       
+             label: \'\
+xe6\x8f\x90\xe4\xba\xa4
+\xe6\xac\xa1\xe6\x95\xb
+0\',\n                 
+   data: data.counts,\n
+                    bac
+kgroundColor: \'rgba(54
+, 162, 235, 0.8)\',\n  
+                  borde
+rColor: \'rgba(54, 162,
+ 235, 1)\',\n          
+          borderWidth: 
+1\n                }]\n
+            },\n       
+     options: {\n      
+          responsive: t
+rue,\n                m
+aintainAspectRatio: fal
+se,\n                sc
+ales: {\n              
+      y: {\n           
+             beginAtZer
+o: true,\n             
+           title: {\n  
+                       
+   display: true,\n    
+                       
+ text: \'\xe6\x8f\x90\x
+e4\xba\xa4\xe6\xac\xa1\
+xe6\x95\xb0\'\n        
+                }\n    
+                },\n   
+                 x: {\n
+                       
+ title: {\n            
+                display
+: true,\n              
+              text: \'\
+xe4\xbd\x9c\xe4\xb8\x9a
+\'\n                   
+     }\n               
+     }\n               
+ },\n                pl
+ugins: {\n             
+       title: {\n      
+                  displ
+ay: true,\n            
+            text: \'\xe
+4\xbd\x9c\xe4\xb8\x9a\x
+e6\x8f\x90\xe4\xba\xa4\
+xe6\x95\xb0\xe9\x87\x8f
+\xe7\xbb\x9f\xe8\xae\xa
+1\'\n                  
+  },\n                 
+   tooltip: {\n        
+                callbac
+ks: {\n                
+            label: func
+tion(context) {\n      
+                       
+   return `\xe6\x8f\x90
+\xe4\xba\xa4\xe6\xac\xa
+1\xe6\x95\xb0: ${contex
+t.raw}`;\n             
+               }\n     
+                   }\n 
+                   }\n 
+               }\n     
+       }\n        });\n
+        \n        log("
+\xe4\xbd\x9c\xe4\xb8\x9
+a\xe6\x8f\x90\xe4\xba\x
+a4\xe5\x9b\xbe\xe8\xa1\
+xa8\xe5\x88\x9b\xe5\xbb
+\xba\xe6\x88\x90\xe5\x8
+a\x9f", \'success\');\n
+    }\n\n    // \xe5\xb
+e\x97\xe5\x88\x86\xe5\x
+88\x86\xe5\xb8\x83\xe5\
+x9b\xbe\xe8\xa1\xa8\n  
+  function renderScores
+Chart(data) {\n        
+log("\xe5\x88\x9d\xe5\x
+a7\x8b\xe5\x8c\x96\xe5\
+xbe\x97\xe5\x88\x86\xe5
+\x88\x86\xe5\xb8\x83\xe
+5\x9b\xbe\xe8\xa1\xa8..
+.");\n        \n       
+ // \xe8\x8e\xb7\xe5\x8
+f\x96canvas\xe5\x85\x83
+\xe7\xb4\xa0\n        c
+onst ctx = document.get
+ElementById(\'scoresCha
+rt\');\n        if (!ct
+x) {\n            log("
+\xe6\x89\xbe\xe4\xb8\x8
+d\xe5\x88\xb0\xe5\x88\x
+86\xe6\x95\xb0\xe5\x9b\
+xbe\xe8\xa1\xa8\xe7\x9a
+\x84canvas\xe5\x85\x83\
+xe7\xb4\xa0", \'error\'
+);\n            return;
+\n        }\n        \n
+        // \xe5\x88\x9b
+\xe5\xbb\xba\xe5\x9b\xb
+e\xe8\xa1\xa8\n        
+const chart = new Chart
+(ctx, {\n            ty
+pe: \'pie\',\n         
+   data: {\n           
+     labels: data.label
+s,\n                dat
+asets: [{\n            
+        label: \'\xe4\x
+ba\xba\xe6\x95\xb0\',\n
+                    dat
+a: data.counts,\n      
+              backgroun
+dColor: data.colors || 
+[\n                    
+    \'rgba(54, 162, 235
+, 0.8)\',\n            
+            \'rgba(75, 
+192, 192, 0.8)\',\n    
+                    \'r
+gba(255, 205, 86, 0.8)\
+',\n                   
+     \'rgba(255, 159, 6
+4, 0.8)\',\n           
+             \'rgba(255
+, 99, 132, 0.8)\'\n    
+                ],\n   
+                 border
+Color: \'white\',\n    
+                borderW
+idth: 1\n              
+  }]\n            },\n 
+           options: {\n
+                respons
+ive: true,\n           
+     maintainAspectRati
+o: false,\n            
+    plugins: {\n       
+             title: {\n
+                       
+ display: true,\n      
+                  text:
+ \'\xe5\xbe\x97\xe5\x88
+\x86\xe5\x88\x86\xe5\xb
+8\x83\xe7\xbb\x9f\xe8\x
+ae\xa1\'\n             
+       },\n            
+        tooltip: {\n   
+                     ca
+llbacks: {\n           
+                 label:
+ function(context) {\n 
+                       
+        const label = c
+ontext.label || \'\';\n
+                       
+         const value = 
+context.raw;\n         
+                       
+const total = context.d
+ataset.data.reduce((a, 
+b) => a + b, 0);\n     
+                       
+    const percentage = 
+Math.round((value / tot
+al) * 100);\n          
+                      r
+eturn `${label}: ${valu
+e}\xe4\xba\xba (${perce
+ntage}%)`;\n           
+                 }\n   
+                     }\
+n                    }\
+n                }\n   
+         }\n        });
+\n        \n        log
+("\xe5\xbe\x97\xe5\x88\
+x86\xe5\x88\x86\xe5\xb8
+\x83\xe5\x9b\xbe\xe8\xa
+1\xa8\xe5\x88\x9b\xe5\x
+bb\xba\xe6\x88\x90\xe5\
+x8a\x9f", \'success\');
+\n    }\n\n    // \xe7\
+x94\xa8\xe6\x88\xb7\xe6
+\xb4\xbb\xe8\xb7\x83\xe
+5\xba\xa6\xe5\x9b\xbe\x
+e8\xa1\xa8\n    functio
+n renderActivityChart(d
+ata) {\n        log("\x
+e5\x88\x9d\xe5\xa7\x8b\
+xe5\x8c\x96\xe7\x94\xa8
+\xe6\x88\xb7\xe6\xb4\xb
+b\xe8\xb7\x83\xe5\xba\x
+a6\xe5\x9b\xbe\xe8\xa1\
+xa8...");\n        \n  
+      // \xe8\x8e\xb7\x
+e5\x8f\x96canvas\xe5\x8
+5\x83\xe7\xb4\xa0\n    
+    const ctx = documen
+t.getElementById(\'acti
+vityChart\');\n        
+if (!ctx) {\n          
+  log("\xe6\x89\xbe\xe4
+\xb8\x8d\xe5\x88\xb0\xe
+6\xb4\xbb\xe5\x8a\xa8\x
+e5\x9b\xbe\xe8\xa1\xa8\
+xe7\x9a\x84canvas\xe5\x
+85\x83\xe7\xb4\xa0", \'
+error\');\n            
+return;\n        }\n   
+     \n        // \xe5\
+x88\x9b\xe5\xbb\xba\xe5
+\x9b\xbe\xe8\xa1\xa8\n 
+       const chart = ne
+w Chart(ctx, {\n       
+     type: \'line\',\n 
+           data: {\n   
+             labels: da
+ta.labels,\n           
+     datasets: [{\n    
+                label: 
+\'\xe6\x8f\x90\xe4\xba\
+xa4\xe6\x95\xb0\',\n   
+                 data: 
+data.counts,\n         
+           fill: true,\
+n                    ba
+ckgroundColor: \'rgba(7
+5, 192, 192, 0.2)\',\n 
+                   bord
+erColor: \'rgba(75, 192
+, 192, 1)\',\n         
+           borderWidth:
+ 1,\n                  
+  tension: 0.4,\n      
+              pointBack
+groundColor: \'rgba(75,
+ 192, 192, 1)\',\n     
+               pointRad
+ius: 3\n               
+ }]\n            },\n  
+          options: {\n 
+               responsi
+ve: true,\n            
+    maintainAspectRatio
+: false,\n             
+   scales: {\n         
+           y: {\n      
+                  begin
+AtZero: true,\n        
+                title: 
+{\n                    
+        display: true,\
+n                      
+      text: \'\xe6\x8f\
+x90\xe4\xba\xa4\xe6\x95
+\xb0\xe9\x87\x8f\'\n   
+                     }\
+n                    },
+\n                    x
+: {\n                  
+      title: {\n       
+                     di
+splay: true,\n         
+                   text
+: \'\xe6\x97\xa5\xe6\x9
+c\x9f\'\n              
+          }\n          
+          }\n          
+      },\n             
+   plugins: {\n        
+            title: {\n 
+                       
+display: true,\n       
+                 text: 
+\'\xe7\x94\xa8\xe6\x88\
+xb7\xe6\xb4\xbb\xe8\xb7
+\x83\xe5\xba\xa6\xe7\xb
+b\x9f\xe8\xae\xa1 (30\x
+e5\xa4\xa9)\'\n        
+            },\n       
+             tooltip: {
+\n                     
+   callbacks: {\n      
+                      l
+abel: function(context)
+ {\n                   
+             return `\x
+e6\x8f\x90\xe4\xba\xa4\
+xe6\x95\xb0: ${context.
+raw}`;\n               
+             }\n       
+                 }\n   
+                 }\n   
+             }\n       
+     }\n        });\n  
+      \n        log("\x
+e7\x94\xa8\xe6\x88\xb7\
+xe6\xb4\xbb\xe8\xb7\x83
+\xe5\xba\xa6\xe5\x9b\xb
+e\xe8\xa1\xa8\xe5\x88\x
+9b\xe5\xbb\xba\xe6\x88\
+x90\xe5\x8a\x9f", \'suc
+cess\');\n    }\n</scri
+pt>\n\n        </div>\n
+    </main>\n\n    <!--
+ Modals (Placed outside
+ main-content to avoid 
+z-index stacking contex
+t issues) -->\n    \n\n
+    <!-- \xe9\xa1\xb5\x
+e8\x84\x9a -->\n    <fo
+oter class="footer">\n 
+       <div class="cont
+ainer footer-content">\
+n            <div class
+="footer-links">\n     
+           <a href="/ab
+out">\xe5\x85\xb3\xe4\x
+ba\x8e\xe7\xb3\xbb\xe7\
+xbb\x9f</a>\n          
+      <a href="/help">\
+xe4\xbd\xbf\xe7\x94\xa8
+\xe5\xb8\xae\xe5\x8a\xa
+9</a>\n                
+<a href="/contact">\xe8
+\x81\x94\xe7\xb3\xbb\xe
+6\x88\x91\xe4\xbb\xac</
+a>\n            </div>\
+n            <div class
+="footer-copyright">\n 
+               &copy; 2
+026 CodeSense \xe9\x85\
+xb7\xe6\xa3\xae\xe6\x80
+\x9d - \xe7\x89\x88\xe6
+\x9d\x83\xe6\x89\x80\xe
+6\x9c\x89\n            
+</div>\n        </div>\
+n    </footer>\n\n    <
+!-- \xe5\x9f\xba\xe7\xa
+1\x80JavaScript\xe5\xba
+\x93 -->\n    <script s
+rc="https://cdn.jsdeliv
+r.net/npm/bootstrap@5.1
+.3/dist/js/bootstrap.bu
+ndle.min.js"\n        i
+ntegrity="sha384-ka7Sk0
+Gln4gmtz2MlQnikT1wXgYsO
+g+OMhuP+IlRH9sENBO0LRn5
+q+8nbTov4+1p"\n        
+crossorigin="anonymous"
+></script>\n    <script
+ src="https://cdn.jsdel
+ivr.net/npm/marked@9/ma
+rked.min.js"></script>\
+n    <script>\n        
+// \xe5\x85\xa8\xe5\xb1
+\x80 Markdown \xe6\xb8\
+xb2\xe6\x9f\x93\xef\xbc
+\x9a\xe9\xa1\xb5\xe9\x9
+d\xa2\xe5\x8a\xa0\xe8\x
+bd\xbd\xe5\x90\x8e\xe8\
+x87\xaa\xe5\x8a\xa8\xe6
+\xb8\xb2\xe6\x9f\x93\xe
+6\x89\x80\xe6\x9c\x89 .
+markdown-body \xe5\x92\
+x8c .markdown-render \x
+e5\x85\x83\xe7\xb4\xa0\
+n        document.addEv
+entListener(\'DOMConten
+tLoaded\', function () 
+{\n            if (type
+of marked === \'undefin
+ed\') return;\n        
+    marked.setOptions({
+ breaks: true, gfm: tru
+e });\n            docu
+ment.querySelectorAll(\
+'.markdown-body, .markd
+own-render\').forEach(f
+unction (el) {\n       
+         var raw = el.g
+etAttribute(\'data-mark
+down\') || el.textConte
+nt || \'\';\n          
+      if (raw.trim()) e
+l.innerHTML = marked.pa
+rse(raw);\n            
+});\n            // \xe
+5\x88\x9d\xe5\xa7\x8b\x
+e5\x8c\x96\xe5\xb9\xb6\
+xe6\x98\xbe\xe7\xa4\xba
+\xe6\x89\x80\xe6\x9c\x8
+9 Toast\n            do
+cument.querySelectorAll
+(\'.toast\').forEach(fu
+nction (toastEl) {\n   
+             var toast 
+= new bootstrap.Toast(t
+oastEl);\n             
+   toast.show();\n     
+       });\n        });
+\n    </script>\n\n    
+<!-- \xe5\xa4\x87\xe7\x
+94\xa8Bootstrap\xe5\x8a
+\xa0\xe8\xbd\xbd -->\n 
+   <script>\n        //
+ \xe6\xa3\x80\xe6\x9f\x
+a5Bootstrap\xe6\x98\xaf
+\xe5\x90\xa6\xe6\x88\x9
+0\xe5\x8a\x9f\xe5\x8a\x
+a0\xe8\xbd\xbd\n       
+ setTimeout(function ()
+ {\n            if (typ
+eof bootstrap === \'und
+efined\') {\n          
+      console.warn(\'Bo
+otstrap\xe6\x9c\xaa\xe6
+\xad\xa3\xe7\xa1\xae\xe
+5\x8a\xa0\xe8\xbd\xbd\x
+ef\xbc\x8c\xe5\xb0\x9d\
+xe8\xaf\x95\xe4\xbd\xbf
+\xe7\x94\xa8\xe5\xa4\x8
+7\xe7\x94\xa8CDN\');\n 
+               // \xe5\
+x8a\xa0\xe8\xbd\xbd\xe5
+\xa4\x87\xe7\x94\xa8CSS
+\n                var b
+ackupCSS = document.cre
+ateElement(\'link\');\n
+                backupC
+SS.rel = \'stylesheet\'
+;\n                back
+upCSS.href = \'https://
+cdn.bootcdn.net/ajax/li
+bs/twitter-bootstrap/5.
+1.3/css/bootstrap.min.c
+ss\';\n                
+document.head.appendChi
+ld(backupCSS);\n\n     
+           // \xe5\x8a\
+xa0\xe8\xbd\xbd\xe5\xa4
+\x87\xe7\x94\xa8JS\n   
+             var backup
+Script = document.creat
+eElement(\'script\');\n
+                backupS
+cript.src = \'https://c
+dn.bootcdn.net/ajax/lib
+s/twitter-bootstrap/5.1
+.3/js/bootstrap.bundle.
+min.js\';\n            
+    backupScript.onload
+ = function () {\n     
+               console.
+log(\'Bootstrap\xe5\xb7
+\xb2\xe9\x80\x9a\xe8\xb
+f\x87\xe5\xa4\x87\xe7\x
+94\xa8CDN\xe5\x8a\xa0\x
+e8\xbd\xbd\');\n       
+             // \xe9\x8
+7\x8d\xe6\x96\xb0\xe5\x
+88\x9d\xe5\xa7\x8b\xe5\
+x8c\x96\xe9\xa1\xb5\xe9
+\x9d\xa2\xe4\xb8\x8a\xe
+7\x9a\x84Bootstrap\xe7\
+xbb\x84\xe4\xbb\xb6\n  
+                  initB
+ootstrapComponents();\n
+                };\n   
+             document.h
+ead.appendChild(backupS
+cript);\n            } 
+else {\n               
+ console.log(\'Bootstra
+p\xe5\xb7\xb2\xe6\xad\x
+a3\xe7\xa1\xae\xe5\x8a\
+xa0\xe8\xbd\xbd:\', boo
+tstrap.Modal ? \'\xe5\x
+8c\x85\xe5\x90\xabModal
+\xe7\xbb\x84\xe4\xbb\xb
+6\' : \'\xe7\xbc\xba\xe
+5\xb0\x91Modal\xe7\xbb\
+x84\xe4\xbb\xb6\');\n  
+              // \xe7\x
+a1\xae\xe4\xbf\x9dBoots
+trap\xe7\xbb\x84\xe4\xb
+b\xb6\xe8\xa2\xab\xe6\x
+ad\xa3\xe7\xa1\xae\xe5\
+x88\x9d\xe5\xa7\x8b\xe5
+\x8c\x96\n             
+   initBootstrapCompone
+nts();\n            }\n
+        }, 1000);\n\n  
+      // \xe5\x88\x9d\x
+e5\xa7\x8b\xe5\x8c\x96B
+ootstrap\xe7\xbb\x84\xe
+4\xbb\xb6\n        func
+tion initBootstrapCompo
+nents() {\n            
+// \xe5\x88\x9d\xe5\xa7
+\x8b\xe5\x8c\x96\xe6\x8
+9\x80\xe6\x9c\x89\xe6\x
+a8\xa1\xe6\x80\x81\xe6\
+xa1\x86\n            do
+cument.querySelectorAll
+(\'.modal\').forEach(fu
+nction (modal) {\n     
+           new bootstra
+p.Modal(modal);\n      
+      });\n\n          
+  // \xe5\x88\x9d\xe5\x
+a7\x8b\xe5\x8c\x96\xe6\
+x89\x80\xe6\x9c\x89\xe5
+\xb7\xa5\xe5\x85\xb7\xe
+6\x8f\x90\xe7\xa4\xba\n
+            document.qu
+erySelectorAll(\'[data-
+bs-toggle="tooltip"]\')
+.forEach(function (tool
+tip) {\n               
+ new bootstrap.Tooltip(
+tooltip);\n            
+});\n\n            // \
+xe5\x88\x9d\xe5\xa7\x8b
+\xe5\x8c\x96\xe6\x89\x8
+0\xe6\x9c\x89\xe4\xb8\x
+8b\xe6\x8b\x89\xe8\x8f\
+x9c\xe5\x8d\x95\n      
+      document.querySel
+ectorAll(\'.dropdown-to
+ggle\').forEach(functio
+n (dropdown) {\n       
+         new bootstrap.
+Dropdown(dropdown);\n  
+          });\n        
+}\n    </script>\n\n   
+ <!-- \xe6\xb7\xbb\xe5\
+x8a\xa0jQuery (\xe6\x9f
+\x90\xe4\xba\x9bBootstr
+ap\xe7\xbb\x84\xe4\xbb\
+xb6\xe5\x8f\xaf\xe8\x83
+\xbd\xe9\x9c\x80\xe8\xa
+6\x81) -->\n    <script
+ src="https://code.jque
+ry.com/jquery-3.6.0.min
+.js"\n        integrity
+="sha256-/xUj+3OJU5yExl
+q6GSYGSHk7tPXikynS7ogEv
+Dej/m4=" crossorigin="a
+nonymous"></script>\n\n
+    <!-- CodeMirror \xe
+5\x9f\xba\xe7\xa1\x80\x
+e8\x84\x9a\xe6\x9c\xac 
+-->\n    <script src="h
+ttps://cdnjs.cloudflare
+.com/ajax/libs/codemirr
+or/5.65.2/codemirror.mi
+n.js"></script>\n    <s
+cript src="https://cdnj
+s.cloudflare.com/ajax/l
+ibs/codemirror/5.65.2/m
+ode/python/python.min.j
+s"></script>\n    <scri
+pt src="https://cdnjs.c
+loudflare.com/ajax/libs
+/codemirror/5.65.2/mode
+/clike/clike.min.js"></
+script>\n    <script sr
+c="https://cdnjs.cloudf
+lare.com/ajax/libs/code
+mirror/5.65.2/addon/edi
+t/closebrackets.min.js"
+></script>\n    <script
+ src="https://cdnjs.clo
+udflare.com/ajax/libs/c
+odemirror/5.65.2/addon/
+edit/matchbrackets.min.
+js"></script>\n    <scr
+ipt src="https://cdnjs.
+cloudflare.com/ajax/lib
+s/codemirror/5.65.2/add
+on/selection/active-lin
+e.min.js"></script>\n  
+  <script src="https://
+cdnjs.cloudflare.com/aj
+ax/libs/codemirror/5.65
+.2/addon/fold/foldcode.
+min.js"></script>\n    
+<script src="https://cd
+njs.cloudflare.com/ajax
+/libs/codemirror/5.65.2
+/addon/fold/foldgutter.
+min.js"></script>\n    
+<script src="https://cd
+njs.cloudflare.com/ajax
+/libs/codemirror/5.65.2
+/addon/fold/brace-fold.
+min.js"></script>\n    
+<script src="https://cd
+njs.cloudflare.com/ajax
+/libs/codemirror/5.65.2
+/addon/fold/indent-fold
+.min.js"></script>\n\n 
+   <!-- \xe8\x87\xaa\xe
+5\xae\x9a\xe4\xb9\x89Ja
+vaScript -->\n    <scri
+pt>\n        // \xe5\x8
+8\x9d\xe5\xa7\x8b\xe5\x
+8c\x96\xe5\x9b\xbe\xe6\
+xa0\x87\n        docume
+nt.addEventListener(\'D
+OMContentLoaded\', func
+tion () {\n            
+// \xe4\xbd\xbf\xe8\xa1
+\xa8\xe5\x8d\x95\xe5\x8
+7\xba\xe9\x94\x99\xe6\x
+97\xb6\xe6\xb7\xbb\xe5\
+x8a\xa0\xe9\x94\x99\xe8
+\xaf\xaf\xe6\xa0\xb7\xe
+5\xbc\x8f\n            
+document.querySelectorA
+ll(\'.form-control\').f
+orEach(input => {\n    
+            if (input.n
+extElementSibling && in
+put.nextElementSibling.
+classList.contains(\'fo
+rm-error\')) {\n       
+             input.clas
+sList.add(\'is-invalid\
+');\n                }\
+n            });\n\n   
+         // \xe5\xbc\xb
+a\xe5\x88\xb6\xe5\xaf\x
+bc\xe8\x88\xaa\xe6\xa0\
+x8f\xe6\xb0\xb4\xe5\xb9
+\xb3\xe6\x8e\x92\xe5\x8
+8\x97\n            cons
+t navbarNav = document.
+querySelector(\'.navbar
+-nav\');\n            i
+f (navbarNav) {\n      
+          navbarNav.sty
+le.cssText = \'display:
+ flex !important; flex-
+direction: row !importa
+nt; flex-wrap: wrap !im
+portant;\';\n\n        
+        // \xe5\xa4\x84
+\xe7\x90\x86\xe6\xaf\x8
+f\xe4\xb8\xaa\xe5\xaf\x
+bc\xe8\x88\xaa\xe9\xa1\
+xb9\n                co
+nst navItems = navbarNa
+v.querySelectorAll(\'li
+\');\n                n
+avItems.forEach(item =>
+ {\n                   
+ item.style.cssText = \
+'display: inline-block 
+!important; float: left
+ !important; margin: 0 
+5px !important;\';\n   
+             });\n     
+       }\n\n           
+ // \xe6\xa3\x80\xe6\x9
+f\xa5CodeMirror\xe6\x98
+\xaf\xe5\x90\xa6\xe6\xa
+d\xa3\xe7\xa1\xae\xe5\x
+8a\xa0\xe8\xbd\xbd\n   
+         if (typeof Cod
+eMirror === \'undefined
+\') {\n                
+console.error(\'CodeMir
+ror \xe6\x9c\xaa\xe5\x8
+a\xa0\xe8\xbd\xbd\xef\x
+bc\x8c\xe5\xb0\x9d\xe8\
+xaf\x95\xe9\x80\x9a\xe8
+\xbf\x87\xe6\x9c\xac\xe
+5\x9c\xb0CDN\xe5\x8a\xa
+0\xe8\xbd\xbd\');\n\n  
+              // \xe5\x
+88\x9b\xe5\xbb\xba\xe5\
+xa4\xb1\xe8\xb4\xa5\xe6
+\x8f\x90\xe7\xa4\xba\n 
+               var erro
+rMsg = document.createE
+lement(\'div\');\n     
+           errorMsg.cla
+ssName = \'alert alert-
+danger\';\n            
+    errorMsg.innerHTML 
+= \'<i class="bi bi-exc
+lamation-triangle"></i>
+ \xe4\xbb\xa3\xe7\xa0\x
+81\xe7\xbc\x96\xe8\xbe\
+x91\xe5\x99\xa8\xe5\x8a
+\xa0\xe8\xbd\xbd\xe5\xa
+4\xb1\xe8\xb4\xa5\xef\x
+bc\x8c\xe8\xaf\xb7\xe5\
+x88\xb7\xe6\x96\xb0\xe9
+\xa1\xb5\xe9\x9d\xa2\xe
+6\x88\x96\xe4\xbd\xbf\x
+e7\x94\xa8\xe5\x85\xb6\
+xe4\xbb\x96\xe6\xb5\x8f
+\xe8\xa7\x88\xe5\x99\xa
+8\xe5\xb0\x9d\xe8\xaf\x
+95\xe3\x80\x82\';\n\n  
+              // \xe6\x
+8f\x92\xe5\x85\xa5\xe5\
+x88\xb0\xe9\xa1\xb5\xe9
+\x9d\xa2\xe9\xa1\xb6\xe
+9\x83\xa8\n            
+    document.querySelec
+tor(\'.main-content .co
+ntainer\').prepend(erro
+rMsg);\n\n             
+   // \xe5\xb0\x9d\xe8\
+xaf\x95\xe9\x87\x8d\xe6
+\x96\xb0\xe5\x8a\xa0\xe
+8\xbd\xbd\xe5\x85\xb3\x
+e9\x94\xae\xe8\x84\x9a\
+xe6\x9c\xac\n          
+      loadScript(\'http
+s://cdnjs.cloudflare.co
+m/ajax/libs/codemirror/
+5.65.2/codemirror.min.j
+s\', function () {\n   
+                 loadSc
+ript(\'https://cdnjs.cl
+oudflare.com/ajax/libs/
+codemirror/5.65.2/mode/
+clike/clike.min.js\', f
+unction () {\n         
+               loadScri
+pt(\'https://cdnjs.clou
+dflare.com/ajax/libs/co
+demirror/5.65.2/mode/py
+thon/python.min.js\', f
+unction () {\n         
+                   // \
+xe8\x84\x9a\xe6\x9c\xac
+\xe5\x8a\xa0\xe8\xbd\xb
+d\xe5\xae\x8c\xe6\x88\x
+90\xef\xbc\x8c\xe5\x88\
+xb7\xe6\x96\xb0\xe9\xa1
+\xb5\xe9\x9d\xa2\n     
+                       
+window.location.reload(
+);\n                   
+     });\n             
+       });\n           
+     });\n            }
+ else {\n              
+  console.log(\'CodeMir
+ror \xe5\xb7\xb2\xe6\xa
+d\xa3\xe7\xa1\xae\xe5\x
+8a\xa0\xe8\xbd\xbd\');\
+n\n                // \
+xe6\xa3\x80\xe6\x9f\xa5
+\xe5\x90\x84\xe6\xa8\xa
+1\xe5\xbc\x8f\xe6\x98\x
+af\xe5\x90\xa6\xe6\xad\
+xa3\xe7\xa1\xae\xe5\x8a
+\xa0\xe8\xbd\xbd\n     
+           if (!CodeMir
+ror.modes[\'text/x-c++s
+rc\']) {\n             
+       console.warn(\'C
+++ \xe6\xa8\xa1\xe5\xbc
+\x8f\xe6\x9c\xaa\xe5\x8
+a\xa0\xe8\xbd\xbd\xef\x
+bc\x8c\xe5\xb0\x9d\xe8\
+xaf\x95\xe5\x8a\xa0\xe8
+\xbd\xbd\');\n         
+           loadScript(\
+'https://cdnjs.cloudfla
+re.com/ajax/libs/codemi
+rror/5.65.2/mode/clike/
+clike.min.js\');\n     
+           }\n\n       
+         if (!CodeMirro
+r.modes[\'python\']) {\
+n                    co
+nsole.warn(\'Python \xe
+6\xa8\xa1\xe5\xbc\x8f\x
+e6\x9c\xaa\xe5\x8a\xa0\
+xe8\xbd\xbd\xef\xbc\x8c
+\xe5\xb0\x9d\xe8\xaf\x9
+5\xe5\x8a\xa0\xe8\xbd\x
+bd\');\n               
+     loadScript(\'https
+://cdnjs.cloudflare.com
+/ajax/libs/codemirror/5
+.65.2/mode/python/pytho
+n.min.js\');\n         
+       }\n            }
+\n        });\n\n      
+  // \xe5\x8a\xa8\xe6\x
+80\x81\xe5\x8a\xa0\xe8\
+xbd\xbd\xe8\x84\x9a\xe6
+\x9c\xac\xe8\xbe\x85\xe
+5\x8a\xa9\xe5\x87\xbd\x
+e6\x95\xb0\n        fun
+ction loadScript(url, c
+allback) {\n           
+ var script = document.
+createElement(\'script\
+');\n            script
+.type = \'text/javascri
+pt\';\n            scri
+pt.src = url;\n        
+    script.onload = cal
+lback || function () { 
+};\n            script.
+onerror = function () {
+\n                conso
+le.error(\'\xe8\x84\x9a
+\xe6\x9c\xac\xe5\x8a\xa
+0\xe8\xbd\xbd\xe5\xa4\x
+b1\xe8\xb4\xa5:\', url)
+;\n                // \
+xe5\xb0\x9d\xe8\xaf\x95
+\xe4\xbd\xbf\xe7\x94\xa
+8\xe5\xa4\x87\xe7\x94\x
+a8CDN\n                
+var backupUrl = url.rep
+lace(\'cdnjs.cloudflare
+.com\', \'cdn.bootcdn.n
+et/ajax/libs\');\n     
+           console.log(
+\'\xe5\xb0\x9d\xe8\xaf\
+x95\xe5\xa4\x87\xe7\x94
+\xa8CDN:\', backupUrl);
+\n                var b
+ackupScript = document.
+createElement(\'script\
+');\n                ba
+ckupScript.type = \'tex
+t/javascript\';\n      
+          backupScript.
+src = backupUrl;\n     
+           document.hea
+d.appendChild(backupScr
+ipt);\n            };\n
+            document.he
+ad.appendChild(script);
+\n        }\n    </scri
+pt>\n\n    <!-- \xe5\x8
+5\xa8\xe5\xb1\x80 Markd
+own \xe6\xb8\xb2\xe6\x9
+f\x93\xef\xbc\x88marked
+.js + DOMPurify\xef\xbc
+\x89 -->\n    <script s
+rc="https://cdn.jsdeliv
+r.net/npm/marked@9/mark
+ed.min.js"></script>\n 
+   <script src="https:/
+/cdn.jsdelivr.net/npm/d
+ompurify@3/dist/purify.
+min.js"></script>\n    
+<script>\n        // \x
+e5\x85\xa8\xe5\xb1\x80\
+xe6\xb8\xb2\xe6\x9f\x93
+\xe6\x89\x80\xe6\x9c\x8
+9 data-markdown \xe5\xb
+1\x9e\xe6\x80\xa7\xe5\x
+85\x83\xe7\xb4\xa0\n   
+     (function () {\n  
+          function rend
+erAllMarkdown() {\n    
+            if (typeof 
+marked === \'undefined\
+') return;\n           
+     marked.setOptions(
+{ breaks: true, gfm: tr
+ue });\n               
+ document.querySelector
+All(\'[data-markdown]\'
+).forEach(function (el)
+ {\n                   
+ var raw = el.getAttrib
+ute(\'data-markdown\');
+\n                    i
+f (raw) {\n            
+            // \xe9\xa2
+\x84\xe8\xa7\xa3\xe6\x9
+e\x90\xef\xbc\x9a\xe5\x
+a6\x82\xe6\x9e\x9c\xe5\
+x86\x85\xe5\xae\xb9\xe6
+\x98\xaf\xe9\x95\xbf\xe
+6\xae\xb5\xe8\x90\xbd\x
+e4\xb8\x94\xe5\x8c\x85\
+xe5\x90\xab 1) 2) \xe6\
+x88\x96 1. 2. \xe7\xad\
+x89\xe7\xbc\x96\xe5\x8f
+\xb7\xef\xbc\x8c\xe5\x8
+d\x8f\xe5\x8a\xa9\xe5\x
+88\x86\xe6\xae\xb5\n   
+                     if
+ (!raw.includes(\'\\n\'
+) || raw.split(\'\\n\')
+.length < 3) {\n       
+                     ra
+w = raw.replace(/(\\s)(
+\\d[\\)\\.]\\s?)/g, \'\
+\n\\n$2\');\n          
+              }\n      
+                  var h
+tml = marked.parse(raw)
+;\n                    
+    el.innerHTML = type
+of DOMPurify !== \'unde
+fined\' ? DOMPurify.san
+itize(html) : html;\n  
+                  }\n  
+              });\n    
+            // \xe5\x90
+\x8c\xe6\x97\xb6\xe6\xb
+8\xb2\xe6\x9f\x93 class
+="markdown-render" \xe7
+\x9a\x84\xe5\x85\x83\xe
+7\xb4\xa0\xef\xbc\x88\x
+e5\x86\x85\xe5\xae\xb9\
+xe5\x9c\xa8 textContent
+ \xe4\xb8\xad\xef\xbc\x
+89\n                doc
+ument.querySelectorAll(
+\'.markdown-render\').f
+orEach(function (el) {\
+n                    if
+ (el.getAttribute(\'dat
+a-rendered\')) return;\
+n                    va
+r raw = el.textContent 
+|| el.innerText;\n     
+               if (raw 
+&& raw.trim()) {\n     
+                   var 
+html = marked.parse(raw
+);\n                   
+     el.innerHTML = typ
+eof DOMPurify !== \'und
+efined\' ? DOMPurify.sa
+nitize(html) : html;\n 
+                       
+el.setAttribute(\'data-
+rendered\', \'1\');\n  
+                  }\n  
+              });\n    
+        }\n            
+if (document.readyState
+ === \'loading\') {\n  
+              document.
+addEventListener(\'DOMC
+ontentLoaded\', renderA
+llMarkdown);\n         
+   } else {\n          
+      renderAllMarkdown
+();\n            }\n   
+         // \xe6\x9a\xb
+4\xe9\x9c\xb2\xe5\x85\x
+a8\xe5\xb1\x80\xe5\x87\
+xbd\xe6\x95\xb0\xe4\xbe
+\x9b\xe5\x90\x84\xe9\xa
+1\xb5\xe9\x9d\xa2\xe8\x
+b0\x83\xe7\x94\xa8\n   
+         window.renderM
+arkdownElements = rende
+rAllMarkdown;\n        
+})();\n    </script>\n\
+n    <!-- \xe9\xa1\xb5\
+xe9\x9d\xa2\xe7\x89\xb9
+\xe5\xae\x9a\xe7\x9a\x8
+4JavaScript -->\n    \n
+\n</body>\n\n</html>'
+
+-----------------------
+-----------------------
+-----------------------
+-
+Ran 3 tests in 1.435s
+
+FAILED (failures=2)

@@ -6,7 +6,7 @@ from flask import Blueprint, request, session, render_template, Response, curren
 from flask_login import current_user
 from sqlalchemy import desc
 from models import db, User, Assignment, Submission, AbilityTrend, TestCase
-from utils.auth import login_required, admin_required, teacher_required
+from utils.auth import login_required, admin_required, teacher_required, admin_or_teacher_required
 from utils.api import api_response, error_response, user_to_dict, assignment_to_dict, submission_to_dict
 from utils.code_evaluator import evaluate_cpp_code
 from utils.guidance_generator import generate_guidance, generate_answer_to_question  # 导入指导生成函数和答案生成函数
@@ -1293,7 +1293,7 @@ def get_submission_status(submission_id):
 
 @api.route('/assignments/create_batch_item', methods=['POST'])
 @login_required
-@admin_required
+@admin_or_teacher_required
 def create_batch_item():
     """批量导入创建单个作业(由前端批处理循环调用)"""
     data = request.get_json()
@@ -1333,7 +1333,7 @@ def create_batch_item():
 
 @api.route('/assignments/parse_file', methods=['POST'])
 @login_required
-@admin_required
+@admin_or_teacher_required
 def parse_file():
     """解析上传的题库文件并提取文本行 (支持 docx, xlsx, csv, txt, md)"""
     if 'file' not in request.files:

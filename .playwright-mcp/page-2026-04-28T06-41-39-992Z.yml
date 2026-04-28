@@ -1,0 +1,230 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - list [ref=e8]:
+        - listitem [ref=e9]:
+          - link " 首页" [ref=e10] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e11]: 
+            - text: 首页
+        - listitem [ref=e12]:
+          - link " 班级管理" [ref=e13] [cursor=pointer]:
+            - /url: /classes/
+            - generic [ref=e14]: 
+            - text: 班级管理
+        - listitem [ref=e15]:
+          - link " 作业管理" [ref=e16] [cursor=pointer]:
+            - /url: /teacher
+            - generic [ref=e17]: 
+            - text: 作业管理
+      - generic [ref=e19]:
+        - generic [ref=e20] [cursor=pointer]:
+          - generic [ref=e21]: t
+          - generic [ref=e22]: teacher_li
+          - generic [ref=e23]: 
+        - list [ref=e211]:
+          - listitem [ref=e212]:
+            - link " 个人资料" [ref=e213] [cursor=pointer]:
+              - /url: /profile
+              - generic [ref=e214]: 
+              - text: 个人资料
+          - listitem [ref=e215]:
+            - separator [ref=e216]
+          - listitem [ref=e217]:
+            - link " 退出登录" [ref=e218] [cursor=pointer]:
+              - /url: /logout
+              - generic [ref=e219]: 
+              - text: 退出登录
+  - main [ref=e24]:
+    - generic [ref=e26]:
+      - generic [ref=e29]:
+        - heading "班级管理" [level=1] [ref=e30]
+        - generic [ref=e31]:
+          - link " 同步与清理班级" [ref=e32] [cursor=pointer]:
+            - /url: /classes/sync
+            - generic [ref=e33]: 
+            - text: 同步与清理班级
+          - link " 班级对比" [ref=e34] [cursor=pointer]:
+            - /url: /classes/compare
+            - generic [ref=e35]: 
+            - text: 班级对比
+          - link " 返回仪表盘" [ref=e36] [cursor=pointer]:
+            - /url: /teacher_dashboard
+            - generic [ref=e37]: 
+            - text: 返回仪表盘
+      - generic [ref=e38]:
+        - heading "概览统计" [level=3] [ref=e39]
+        - generic [ref=e40]:
+          - generic [ref=e42]:
+            - generic [ref=e43]: "4"
+            - generic [ref=e44]: 总班级数
+          - generic [ref=e46]:
+            - generic [ref=e47]: "20"
+            - generic [ref=e48]: 总学生数
+          - generic [ref=e50]:
+            - generic [ref=e51]: "61"
+            - generic [ref=e52]: 总提交数
+          - generic [ref=e54]:
+            - generic [ref=e55]: "2.8"
+            - generic [ref=e56]: 整体平均分
+      - generic [ref=e57]:
+        - generic [ref=e59]:
+          - generic [ref=e60]:
+            - generic [ref=e61]: 软工2302
+            - link "详情" [ref=e63] [cursor=pointer]:
+              - /url: /classes/14
+          - generic [ref=e64]:
+            - generic [ref=e65]:
+              - generic [ref=e66]: "10"
+              - generic [ref=e67]: 学生数
+            - generic [ref=e68]:
+              - generic [ref=e69]: "2.5"
+              - generic [ref=e70]: 平均分
+            - generic [ref=e71]:
+              - generic [ref=e72]: "34"
+              - generic [ref=e73]: 提交数
+            - generic [ref=e74]:
+              - generic [ref=e75]: "10"
+              - generic [ref=e76]: 活跃学生
+          - generic [ref=e77]:
+            - generic [ref=e78]:
+              - paragraph [ref=e79]:
+                - strong [ref=e80]: "年级:"
+                - text: 2023级
+              - paragraph [ref=e81]:
+                - strong [ref=e82]: "专业:"
+                - text: 软件工程
+              - paragraph [ref=e83]:
+                - strong [ref=e84]: "班主任:"
+                - text: 李芳
+            - generic [ref=e86]:
+              - heading "前3名学生:" [level=6] [ref=e87]
+              - generic [ref=e88]:
+                - generic [ref=e89]: 戚宏远
+                - generic [ref=e90]: 4.5分
+              - generic [ref=e91]:
+                - generic [ref=e92]: 陶景行
+                - generic [ref=e93]: 4.2分
+              - generic [ref=e94]:
+                - generic [ref=e95]: 姜欣妍
+                - generic [ref=e96]: 4.0分
+        - generic [ref=e98]:
+          - generic [ref=e99]:
+            - generic [ref=e100]: 网络工程一班
+            - link "详情" [ref=e102] [cursor=pointer]:
+              - /url: /classes/18
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - generic [ref=e105]: "6"
+              - generic [ref=e106]: 学生数
+            - generic [ref=e107]:
+              - generic [ref=e108]: "3.3"
+              - generic [ref=e109]: 平均分
+            - generic [ref=e110]:
+              - generic [ref=e111]: "6"
+              - generic [ref=e112]: 提交数
+            - generic [ref=e113]:
+              - generic [ref=e114]: "5"
+              - generic [ref=e115]: 活跃学生
+          - generic [ref=e116]:
+            - generic [ref=e117]:
+              - paragraph [ref=e118]:
+                - strong [ref=e119]: "年级:"
+                - text: "2024"
+              - paragraph [ref=e120]:
+                - strong [ref=e121]: "专业:"
+                - text: 计算机大类
+              - paragraph [ref=e122]:
+                - strong [ref=e123]: "班主任:"
+                - text: 李芳
+            - generic [ref=e125]:
+              - heading "前3名学生:" [level=6] [ref=e126]
+              - generic [ref=e127]:
+                - generic [ref=e128]: 学生3
+                - generic [ref=e129]: 5.0分
+              - generic [ref=e130]:
+                - generic [ref=e131]: 学生7
+                - generic [ref=e132]: 5.0分
+              - generic [ref=e133]:
+                - generic [ref=e134]: 学生8
+                - generic [ref=e135]: 4.0分
+        - generic [ref=e137]:
+          - generic [ref=e138]:
+            - generic [ref=e139]: 软件工程实验班
+            - link "详情" [ref=e141] [cursor=pointer]:
+              - /url: /classes/20
+          - generic [ref=e142]:
+            - generic [ref=e143]:
+              - generic [ref=e144]: "3"
+              - generic [ref=e145]: 学生数
+            - generic [ref=e146]:
+              - generic [ref=e147]: "2.9"
+              - generic [ref=e148]: 平均分
+            - generic [ref=e149]:
+              - generic [ref=e150]: "20"
+              - generic [ref=e151]: 提交数
+            - generic [ref=e152]:
+              - generic [ref=e153]: "3"
+              - generic [ref=e154]: 活跃学生
+          - generic [ref=e155]:
+            - generic [ref=e156]:
+              - paragraph [ref=e157]:
+                - strong [ref=e158]: "年级:"
+                - text: "2024"
+              - paragraph [ref=e159]:
+                - strong [ref=e160]: "专业:"
+                - text: 计算机大类
+              - paragraph [ref=e161]:
+                - strong [ref=e162]: "班主任:"
+                - text: 李芳
+            - generic [ref=e164]:
+              - heading "前3名学生:" [level=6] [ref=e165]
+              - generic [ref=e166]:
+                - generic [ref=e167]: 学生1
+                - generic [ref=e168]: 6.7分
+              - generic [ref=e169]:
+                - generic [ref=e170]: 学生4
+                - generic [ref=e171]: 1.0分
+              - generic [ref=e172]:
+                - generic [ref=e173]: 学生9
+                - generic [ref=e174]: 1.0分
+        - generic [ref=e176]:
+          - generic [ref=e177]:
+            - generic [ref=e178]: 计算机科学二班
+            - link "详情" [ref=e180] [cursor=pointer]:
+              - /url: /classes/19
+          - generic [ref=e181]:
+            - generic [ref=e182]:
+              - generic [ref=e183]: "1"
+              - generic [ref=e184]: 学生数
+            - generic [ref=e185]:
+              - generic [ref=e186]: "3.0"
+              - generic [ref=e187]: 平均分
+            - generic [ref=e188]:
+              - generic [ref=e189]: "1"
+              - generic [ref=e190]: 提交数
+            - generic [ref=e191]:
+              - generic [ref=e192]: "1"
+              - generic [ref=e193]: 活跃学生
+          - generic [ref=e194]:
+            - generic [ref=e195]:
+              - paragraph [ref=e196]:
+                - strong [ref=e197]: "年级:"
+                - text: "2024"
+              - paragraph [ref=e198]:
+                - strong [ref=e199]: "专业:"
+                - text: 计算机大类
+              - paragraph [ref=e200]:
+                - strong [ref=e201]: "班主任:"
+                - text: 李芳
+            - generic [ref=e203]:
+              - heading "前3名学生:" [level=6] [ref=e204]
+              - generic [ref=e205]:
+                - generic [ref=e206]: 学生5
+                - generic [ref=e207]: 3.0分
+  - contentinfo [ref=e208]:
+    - generic [ref=e210]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

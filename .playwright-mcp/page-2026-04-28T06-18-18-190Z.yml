@@ -1,0 +1,89 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - navigation [ref=e8]:
+        - list [ref=e9]:
+          - listitem [ref=e10]:
+            - link " 首页" [ref=e11] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e12]: 
+              - text: 首页
+          - listitem [ref=e13]:
+            - link " 班级管理" [ref=e14] [cursor=pointer]:
+              - /url: /classes/
+              - generic [ref=e15]: 
+              - text: 班级管理
+          - listitem [ref=e16]:
+            - link " 作业管理" [ref=e17] [cursor=pointer]:
+              - /url: /teacher
+              - generic [ref=e18]: 
+              - text: 作业管理
+      - generic [ref=e21] [cursor=pointer]:
+        - generic [ref=e22]: t
+        - generic [ref=e23]: teacher_li
+        - generic [ref=e24]: 
+  - main [ref=e25]:
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - heading "作业管理" [level=1] [ref=e30]
+          - paragraph [ref=e31]: 创建、查看和管理您自己创建的作业，并将其布置给您管理的班级。
+        - generic [ref=e32]:
+          - link " 创建新作业" [ref=e33] [cursor=pointer]:
+            - /url: /teacher/add
+            - generic [ref=e34]: 
+            - text: 创建新作业
+          - link " 返回仪表盘" [ref=e35] [cursor=pointer]:
+            - /url: /teacher_dashboard
+            - generic [ref=e36]: 
+            - text: 返回仪表盘
+      - generic [ref=e37]:
+        - heading "作业列表" [level=5] [ref=e39]
+        - table [ref=e42]:
+          - rowgroup [ref=e43]:
+            - row
+            - row "ID 作业标题 发布日期 截止倒计时 已布置给我的班级 提交/平均分 操作" [ref=e44]:
+              - columnheader "ID" [ref=e45]
+              - columnheader "作业标题" [ref=e46]
+              - columnheader "发布日期" [ref=e47]
+              - columnheader "截止倒计时" [ref=e48]
+              - columnheader "已布置给我的班级" [ref=e49]
+              - columnheader "提交/平均分" [ref=e50]
+              - columnheader "操作" [ref=e51]
+          - rowgroup [ref=e52]:
+            - 'row "120 最长公共子序列 2026-04-27 07:47 剩余: 1.7 天 网络工程一班 软件工程实验班 计算机科学二班 软工2302 提交: 1 平均: 5.00  编辑  布置  删除" [ref=e53]':
+              - cell "120" [ref=e54]
+              - cell "最长公共子序列" [ref=e55]:
+                - link "最长公共子序列" [ref=e56] [cursor=pointer]:
+                  - /url: /view_assignment/120
+              - cell "2026-04-27 07:47" [ref=e57]
+              - 'cell "剩余: 1.7 天" [ref=e58]':
+                - progressbar [ref=e60]
+                - text: "剩余: 1.7 天"
+              - cell "网络工程一班 软件工程实验班 计算机科学二班 软工2302" [ref=e61]:
+                - generic [ref=e62]: 网络工程一班
+                - generic [ref=e63]: 软件工程实验班
+                - generic [ref=e64]: 计算机科学二班
+                - generic [ref=e65]: 软工2302
+              - 'cell "提交: 1 平均: 5.00" [ref=e66]':
+                - text: "提交: 1"
+                - text: "平均: 5.00"
+              - cell " 编辑  布置  删除" [ref=e67]:
+                - generic [ref=e68]:
+                  - link " 编辑" [ref=e69] [cursor=pointer]:
+                    - /url: /teacher/edit/120
+                    - generic [ref=e70]: 
+                    - text: 编辑
+                  - link " 布置" [ref=e71] [cursor=pointer]:
+                    - /url: /assign/120
+                    - generic [ref=e72]: 
+                    - text: 布置
+                  - button " 删除" [ref=e74] [cursor=pointer]:
+                    - generic [ref=e75]: 
+                    - text: 删除
+  - contentinfo [ref=e76]:
+    - generic [ref=e78]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

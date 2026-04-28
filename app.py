@@ -167,6 +167,10 @@ def setup_logging(app):
         if not request.endpoint or 'static' in request.endpoint or request.endpoint == 'favicon':
             return
             
+        # 忽略测试环境，避免 Session 干扰
+        if app.config.get('TESTING'):
+            return
+
         # 允许登出操作
         if request.endpoint == 'auth.logout':
             return

@@ -1,0 +1,193 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - list [ref=e8]:
+        - listitem [ref=e9]:
+          - link " 首页" [ref=e10] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e11]: 
+            - text: 首页
+        - listitem [ref=e12]:
+          - link " 我的作业" [ref=e13] [cursor=pointer]:
+            - /url: /student_assignments
+            - generic [ref=e14]: 
+            - text: 我的作业
+      - generic [ref=e16]:
+        - generic [ref=e17] [cursor=pointer]:
+          - generic [ref=e18]: s
+          - generic [ref=e19]: student_1
+          - generic [ref=e20]: 
+        - list [ref=e200]:
+          - listitem [ref=e201]:
+            - link " 个人资料" [ref=e202] [cursor=pointer]:
+              - /url: /profile
+              - generic [ref=e203]: 
+              - text: 个人资料
+          - listitem [ref=e204]:
+            - separator [ref=e205]
+          - listitem [ref=e206]:
+            - link " 退出登录" [ref=e207] [cursor=pointer]:
+              - /url: /logout
+              - generic [ref=e208]: 
+              - text: 退出登录
+  - main [ref=e21]:
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - heading "欢迎回来，student_1" [level=1] [ref=e24]
+        - paragraph [ref=e25]: 通过完成编程作业提升您的代码能力，获取智能反馈和评分
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - generic [ref=e29]: 
+          - generic [ref=e30]:
+            - generic [ref=e31]: "1"
+            - generic [ref=e32]: 待完成作业
+        - generic [ref=e33]:
+          - generic [ref=e35]: 
+          - generic [ref=e36]:
+            - generic [ref=e37]: "1"
+            - generic [ref=e38]: 已提交作业
+        - generic [ref=e39]:
+          - generic [ref=e41]: 
+          - generic [ref=e42]:
+            - generic [ref=e43]: "69.5"
+            - generic [ref=e44]: 能力成熟度
+      - generic [ref=e45]:
+        - heading " 近期作业" [level=2] [ref=e46]:
+          - generic [ref=e47]: 
+          - text: 近期作业
+        - generic [ref=e49]:
+          - heading "最长公共子序列" [level=5] [ref=e50]
+          - generic [ref=e52]:
+            - generic [ref=e53]: 
+            - text: 截止：2026-04-29
+          - paragraph [ref=e54]: "###..."
+          - generic [ref=e55]:
+            - generic [ref=e56]:
+              - generic [ref=e57]: 
+              - text: 已提交
+            - link " 重新提交" [ref=e58] [cursor=pointer]:
+              - /url: /submit/120
+              - generic [ref=e59]: 
+              - text: 重新提交
+      - generic [ref=e60]:
+        - heading " 我的编程能力分析" [level=2] [ref=e61]:
+          - generic [ref=e62]: 
+          - text: 我的编程能力分析
+        - generic [ref=e63]:
+          - generic [ref=e64]:
+            - heading " C语言知识点画像  已加载" [level=5] [ref=e65]:
+              - generic [ref=e66]: 
+              - text: C语言知识点画像
+              - generic [ref=e67]:
+                - generic [ref=e68]: 
+                - text: 已加载
+            - generic [ref=e70]:
+              - generic [ref=e71]: 加载进度
+              - generic [ref=e72]: 60% - 正在加载分析结果...
+          - generic [ref=e76]:
+            - heading " AI 个性化分析  已完成" [level=5] [ref=e182]:
+              - generic [ref=e78]: 
+              - text: AI 个性化分析
+              - generic [ref=e79]:
+                - generic [ref=e183]: 
+                - text: 已完成
+            - generic [ref=e81]:
+              - paragraph [ref=e184]: 能力发展趋势：
+              - list [ref=e185]:
+                - listitem [ref=e186]: 学生初步掌握了动态规划算法的基本概念，能够实现最长公共子序列（LCS）问题的基本解法。
+                - listitem [ref=e187]: 代码结构基本清晰，使用了标准输入输出流和vector容器。
+                - listitem [ref=e188]: 但是，代码中存在未完成的for循环，可能是编程过程中遇到了问题，未能完成全部代码的编写。
+              - paragraph [ref=e189]: 改进建议：
+              - list [ref=e190]:
+                - listitem [ref=e191]: 完成未完成的代码，特别是for循环中的内容，确保算法能够正确运行。
+                - listitem [ref=e192]: 学习并理解动态规划的核心思想，包括状态转移方程和边界条件的处理。
+                - listitem [ref=e193]: 加强对标准库函数和容器使用的理解，提高代码的规范性和效率。
+              - paragraph [ref=e194]: 具体行动措施：
+              - list [ref=e195]:
+                - listitem [ref=e196]: 完成代码中缺失的部分，通过调试和测试来验证代码的正确性。
+                - listitem [ref=e197]: 查阅相关资料，深入学习LCS问题的动态规划解法，理解状态转移的具体过程。
+                - listitem [ref=e198]: 分析代码中的错误，找出可能导致问题的地方，如变量名错误、逻辑错误等，并加以修正。
+                - listitem [ref=e199]: 在学习过程中，注重代码的可读性和规范性，适当添加注释，以便于理解和维护。
+        - generic [ref=e84]:
+          - generic [ref=e86]:
+            - generic [ref=e87]: 
+            - text: 知识点详细评分
+          - table [ref=e90]:
+            - rowgroup [ref=e91]:
+              - row "知识点 评分 尝试次数 正确率" [ref=e92]:
+                - columnheader "知识点" [ref=e93]
+                - columnheader "评分" [ref=e94]
+                - columnheader "尝试次数" [ref=e95]
+                - columnheader "正确率" [ref=e96]
+            - rowgroup [ref=e97]:
+              - row "基础语法 28.8 14 29%" [ref=e98]:
+                - cell "基础语法" [ref=e99]
+                - cell "28.8" [ref=e100]
+                - cell "14" [ref=e101]
+                - cell "29%" [ref=e102]
+              - row "指针 100.0 10 20%" [ref=e103]:
+                - cell "指针" [ref=e104]
+                - cell "100.0" [ref=e105]
+                - cell "10" [ref=e106]
+                - cell "20%" [ref=e107]
+              - row "函数 21.6 15 27%" [ref=e108]:
+                - cell "函数" [ref=e109]
+                - cell "21.6" [ref=e110]
+                - cell "15" [ref=e111]
+                - cell "27%" [ref=e112]
+              - row "数组 100.0 4 50%" [ref=e113]:
+                - cell "数组" [ref=e114]
+                - cell "100.0" [ref=e115]
+                - cell "4" [ref=e116]
+                - cell "50%" [ref=e117]
+              - row "字符串 100.0 2 100%" [ref=e118]:
+                - cell "字符串" [ref=e119]
+                - cell "100.0" [ref=e120]
+                - cell "2" [ref=e121]
+                - cell "100%" [ref=e122]
+              - row "结构体 0.0 1 0%" [ref=e123]:
+                - cell "结构体" [ref=e124]
+                - cell "0.0" [ref=e125]
+                - cell "1" [ref=e126]
+                - cell "0%" [ref=e127]
+              - row "文件操作 28.2 13 23%" [ref=e128]:
+                - cell "文件操作" [ref=e129]
+                - cell "28.2" [ref=e130]
+                - cell "13" [ref=e131]
+                - cell "23%" [ref=e132]
+              - row "动态内存 100.0 1 100%" [ref=e133]:
+                - cell "动态内存" [ref=e134]
+                - cell "100.0" [ref=e135]
+                - cell "1" [ref=e136]
+                - cell "100%" [ref=e137]
+              - row "链表 0.0 0 0%" [ref=e138]:
+                - cell "链表" [ref=e139]
+                - cell "0.0" [ref=e140]
+                - cell "0" [ref=e141]
+                - cell "0%" [ref=e142]
+              - row "树 0.0 1 0%" [ref=e143]:
+                - cell "树" [ref=e144]
+                - cell "0.0" [ref=e145]
+                - cell "1" [ref=e146]
+                - cell "0%" [ref=e147]
+              - row "排序算法 100.0 1 100%" [ref=e148]:
+                - cell "排序算法" [ref=e149]
+                - cell "100.0" [ref=e150]
+                - cell "1" [ref=e151]
+                - cell "100%" [ref=e152]
+              - row "搜索算法 0.0 0 0%" [ref=e153]:
+                - cell "搜索算法" [ref=e154]
+                - cell "0.0" [ref=e155]
+                - cell "0" [ref=e156]
+                - cell "0%" [ref=e157]
+              - row "递归 0.0 1 0%" [ref=e158]:
+                - cell "递归" [ref=e159]
+                - cell "0.0" [ref=e160]
+                - cell "1" [ref=e161]
+                - cell "0%" [ref=e162]
+  - contentinfo [ref=e163]:
+    - generic [ref=e165]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

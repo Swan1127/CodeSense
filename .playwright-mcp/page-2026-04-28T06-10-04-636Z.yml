@@ -1,0 +1,37 @@
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e6]: 
+    - heading "CodeSense 酷森思" [level=1] [ref=e7]
+    - paragraph [ref=e8]: 开启你的编程之旅，通过智能评估和引导式学习，提升代码能力
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: 
+        - generic [ref=e12]: AI 智能代码评估
+      - generic [ref=e13]:
+        - generic [ref=e14]: 
+        - generic [ref=e15]: 启发式学习引导
+      - generic [ref=e16]:
+        - generic [ref=e17]: 
+        - generic [ref=e18]: 能力成长可视化
+  - generic [ref=e19]:
+    - generic [ref=e20]:
+      - heading "欢迎回来" [level=2] [ref=e21]
+      - paragraph [ref=e22]: 请登录您的账户以继续
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]: 用户名
+        - textbox "用户名" [active] [ref=e26]:
+          - /placeholder: 请输入您的用户名
+      - generic [ref=e27]:
+        - generic [ref=e28]: 密码
+        - generic [ref=e29]:
+          - textbox "密码" [ref=e30]:
+            - /placeholder: 请输入您的密码
+          - generic [ref=e31] [cursor=pointer]: 
+      - button " 登录" [ref=e32] [cursor=pointer]:
+        - generic [ref=e33]: 
+        - text: 登录
+    - generic [ref=e34]:
+      - text: 还没有账户？
+      - link "立即注册" [ref=e35] [cursor=pointer]:
+        - /url: /register

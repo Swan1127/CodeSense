@@ -1,0 +1,36 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - navigation [ref=e8]:
+        - list [ref=e9]:
+          - listitem [ref=e10]:
+            - link " 首页" [ref=e11] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e12]: 
+              - text: 首页
+          - listitem [ref=e13]:
+            - link " 班级管理" [ref=e14] [cursor=pointer]:
+              - /url: /classes/
+              - generic [ref=e15]: 
+              - text: 班级管理
+          - listitem [ref=e16]:
+            - link " 作业管理" [ref=e17] [cursor=pointer]:
+              - /url: /assignments
+              - generic [ref=e18]: 
+              - text: 作业管理
+          - listitem [ref=e19]:
+            - link " 用户管理" [ref=e20] [cursor=pointer]:
+              - /url: /users
+              - generic [ref=e21]: 
+              - text: 用户管理
+      - generic [ref=e24] [cursor=pointer]:
+        - generic [ref=e25]: X
+        - generic [ref=e26]: XiaoCow
+        - generic [ref=e27]: 
+  - main [ref=e28]
+  - contentinfo [ref=e29]:
+    - generic [ref=e31]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

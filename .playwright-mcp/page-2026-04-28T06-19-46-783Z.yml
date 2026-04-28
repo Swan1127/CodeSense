@@ -1,0 +1,70 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - navigation [ref=e8]:
+        - list [ref=e9]:
+          - listitem [ref=e10]:
+            - link " 首页" [ref=e11] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e12]: 
+              - text: 首页
+          - listitem [ref=e13]:
+            - link " 班级管理" [ref=e14] [cursor=pointer]:
+              - /url: /classes/
+              - generic [ref=e15]: 
+              - text: 班级管理
+          - listitem [ref=e16]:
+            - link " 作业管理" [ref=e17] [cursor=pointer]:
+              - /url: /teacher
+              - generic [ref=e18]: 
+              - text: 作业管理
+      - generic [ref=e20]:
+        - generic [ref=e21] [cursor=pointer]:
+          - generic [ref=e22]: t
+          - generic [ref=e23]: teacher_li
+          - generic [ref=e24]: 
+        - text:  
+  - main [ref=e25]:
+    - generic [ref=e28]:
+      - generic [ref=e30]:
+        - generic [ref=e31]:
+          - generic [ref=e32]: 
+          - heading "李芳" [level=4] [ref=e33]
+          - paragraph [ref=e34]: teacher_li
+          - generic [ref=e35]: 教师
+        - list [ref=e36]:
+          - listitem [ref=e37]:
+            - strong [ref=e38]: "教师工号:"
+            - text: T2024002
+          - listitem [ref=e39]:
+            - strong [ref=e40]: "注册时间:"
+            - text: 2026-03-13
+        - link "编辑个人资料" [ref=e42] [cursor=pointer]:
+          - /url: /edit_profile
+      - generic [ref=e44]:
+        - heading "我管理的班级" [level=5] [ref=e46]
+        - generic [ref=e47]:
+          - paragraph [ref=e48]: 您当前管理以下 4 个班级：
+          - generic [ref=e49]:
+            - link "软工2302 10 名学生" [ref=e50] [cursor=pointer]:
+              - /url: /classes/14
+              - text: 软工2302
+              - generic [ref=e51]: 10 名学生
+            - link "网络工程一班 6 名学生" [ref=e52] [cursor=pointer]:
+              - /url: /classes/18
+              - text: 网络工程一班
+              - generic [ref=e53]: 6 名学生
+            - link "计算机科学二班 1 名学生" [ref=e54] [cursor=pointer]:
+              - /url: /classes/19
+              - text: 计算机科学二班
+              - generic [ref=e55]: 1 名学生
+            - link "软件工程实验班 3 名学生" [ref=e56] [cursor=pointer]:
+              - /url: /classes/20
+              - text: 软件工程实验班
+              - generic [ref=e57]: 3 名学生
+  - contentinfo [ref=e58]:
+    - generic [ref=e60]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

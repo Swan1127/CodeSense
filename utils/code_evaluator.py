@@ -6,6 +6,25 @@ import re
 import sys
 import traceback
 
+# 评分权重常量
+SCORE_WEIGHTS_WITH_REQUIREMENT = {
+    'basic': 0.4,
+    'quality': 0.2,
+    'complexity': 0.1,
+    'requirement': 1.2
+}
+SCORE_WEIGHTS_WITHOUT_REQUIREMENT = {
+    'basic': 1.0,
+    'quality': 0.8,
+    'complexity': 0.6
+}
+MATURITY_WEIGHTS = {
+    'phi_avg': 0.4,
+    'phi_grad': 0.3,
+    'phi_freq': 0.15,
+    'phi_std': 0.15
+}
+
 # 可选导入torch，如果没有安装就跳过深度学习模型功能
 try:
     import torch
@@ -593,11 +612,20 @@ def calculate_heuristic_score(code, assignment_title=None):
     # 如果题目有特殊要求，优先考虑题目要求得分
     if requirement_score > 0:
         # 使用更优的加权方案
-        total_score = 0.4 * basic_score + 0.2 * quality_score + 0.1 * complexity_score + 1.2 * requirement_score
+        total_score = (
+            SCORE_WEIGHTS_WITH_REQUIREMENT['basic'] * basic_score +
+            SCORE_WEIGHTS_WITH_REQUIREMENT['quality'] * quality_score +
+            SCORE_WEIGHTS_WITH_REQUIREMENT['complexity'] * complexity_score +
+            SCORE_WEIGHTS_WITH_REQUIREMENT['requirement'] * requirement_score
+        )
         print(f"分数明细: 基础结构({basic_score:.1f}) + 代码质量({quality_score:.1f}) + 复杂度({complexity_score:.1f}) + 题目要求({requirement_score:.1f}) × 1.2")
     else:
         # 如果没有特定要求，基础结构分变得更重要
-        total_score = 1.0 * basic_score + 0.8 * quality_score + 0.6 * complexity_score
+        total_score = (
+            SCORE_WEIGHTS_WITHOUT_REQUIREMENT['basic'] * basic_score +
+            SCORE_WEIGHTS_WITHOUT_REQUIREMENT['quality'] * quality_score +
+            SCORE_WEIGHTS_WITHOUT_REQUIREMENT['complexity'] * complexity_score
+        )
         print(f"分数明细: 基础结构({basic_score:.1f}) × 1.0 + 代码质量({quality_score:.1f}) × 0.8 + 复杂度({complexity_score:.1f}) × 0.6")
     
     # 根据代码行数适当调整分数

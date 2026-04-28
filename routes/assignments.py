@@ -21,8 +21,8 @@ assignments = Blueprint('assignments', __name__)
 initialize_models()
 
 @assignments.route('/assignments/generate', methods=['POST'])
-# @login_required
-# @admin_or_teacher_required
+@login_required
+@admin_or_teacher_required
 def generate_assignment():
     """根据简短提示智能生成作业题目和描述"""
     data = request.json

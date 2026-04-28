@@ -1,0 +1,67 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - list [ref=e8]:
+        - listitem [ref=e9]:
+          - link " 首页" [ref=e10] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e11]: 
+            - text: 首页
+        - listitem [ref=e12]:
+          - link " 我的作业" [ref=e13] [cursor=pointer]:
+            - /url: /student_assignments
+            - generic [ref=e14]: 
+            - text: 我的作业
+      - generic [ref=e17] [cursor=pointer]:
+        - generic [ref=e18]: s
+        - generic [ref=e19]: student_1
+        - generic [ref=e20]: 
+  - main [ref=e21]:
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - link " 编辑资料" [ref=e24] [cursor=pointer]:
+          - /url: /edit_profile
+          - generic [ref=e25]: 
+          - text: 编辑资料
+        - generic [ref=e26]:
+          - generic [ref=e28]: 
+          - generic [ref=e29]:
+            - heading "student_1" [level=1] [ref=e30]
+            - paragraph [ref=e31]: 学生 | 软件工程实验班
+            - generic [ref=e32]:
+              - generic [ref=e33]:
+                - generic [ref=e34]: "18"
+                - generic [ref=e35]: 提交次数
+              - generic [ref=e36]:
+                - generic [ref=e37]: "6.66667"
+                - generic [ref=e38]: 平均分
+              - generic [ref=e39]:
+                - generic [ref=e40]: "120"
+                - generic [ref=e41]: 总分
+      - generic [ref=e42]:
+        - generic [ref=e43] [cursor=pointer]: 基本信息
+        - generic [ref=e44] [cursor=pointer]: 统计分析
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - generic [ref=e47]:
+            - generic [ref=e49]: 
+            - generic [ref=e50]:
+              - generic [ref=e51]: "18"
+              - generic [ref=e52]: 提交次数
+          - generic [ref=e53]:
+            - generic [ref=e55]: 
+            - generic [ref=e56]:
+              - generic [ref=e57]: "6.66667"
+              - generic [ref=e58]: 平均分数
+          - generic [ref=e59]:
+            - generic [ref=e61]: 
+            - generic [ref=e62]:
+              - generic [ref=e63]: "120"
+              - generic [ref=e64]: 总分
+        - heading "能力分析" [level=3] [ref=e66]
+  - contentinfo [ref=e69]:
+    - generic [ref=e71]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

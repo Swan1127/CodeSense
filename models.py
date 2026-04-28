@@ -7,6 +7,10 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin  # 添加UserMixin导入
 
+# 班级默认配置
+DEFAULT_GRADE = '2024'
+DEFAULT_MAJOR = '计算机相关专业'
+
 db = SQLAlchemy()
 
 
@@ -117,8 +121,8 @@ class Class(db.Model):
                 # 创建新班级
                 new_class = Class(
                     name=class_name,
-                    grade='2024',  # 默认年级
-                    major='计算机相关专业'  # 默认专业
+                    grade=DEFAULT_GRADE,
+                    major=DEFAULT_MAJOR
                 )
                 db.session.add(new_class)
         

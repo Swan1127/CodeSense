@@ -1,0 +1,93 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - navigation [ref=e8]:
+        - list [ref=e9]:
+          - listitem [ref=e10]:
+            - link " 首页" [ref=e11] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e12]: 
+              - text: 首页
+          - listitem [ref=e13]:
+            - link " 我的作业" [ref=e14] [cursor=pointer]:
+              - /url: /student_assignments
+              - generic [ref=e15]: 
+              - text: 我的作业
+      - generic [ref=e18] [cursor=pointer]:
+        - generic [ref=e19]: s
+        - generic [ref=e20]: student_1
+        - generic [ref=e21]: 
+  - main [ref=e22]:
+    - generic [ref=e23]:
+      - generic [ref=e26]:
+        - heading "我的作业" [level=1] [ref=e27]
+        - paragraph [ref=e28]: 查看和完成所有编程作业，提升你的编程能力
+      - generic [ref=e29]:
+        - generic [ref=e31]:
+          - generic [ref=e32]: 
+          - text: 作业列表
+        - generic [ref=e33]:
+          - table [ref=e35]:
+            - rowgroup [ref=e36]:
+              - row "ID 标题 出题教师 发布日期 截止倒计时 提交/平均分 个人最高分" [ref=e37]:
+                - columnheader "ID" [ref=e38]
+                - columnheader "标题" [ref=e39]
+                - columnheader "出题教师" [ref=e40]
+                - columnheader "发布日期" [ref=e41]
+                - columnheader "截止倒计时" [ref=e42]
+                - columnheader "提交/平均分" [ref=e43]
+                - columnheader "个人最高分" [ref=e44]
+            - rowgroup [ref=e45]:
+              - 'row "120 最长公共子序列 李芳 2026-04-27 07:47 64 剩余: 1.7 天 提交: 1 平均: 5.0 未提交" [ref=e46]':
+                - cell "120" [ref=e47]
+                - cell "最长公共子序列" [ref=e48]:
+                  - link "最长公共子序列" [ref=e49] [cursor=pointer]:
+                    - /url: /view_assignment/120
+                - cell "李芳" [ref=e50]
+                - cell "2026-04-27 07:47" [ref=e51]
+                - 'cell "64 剩余: 1.7 天" [ref=e52]':
+                  - progressbar [ref=e54]
+                  - text: "剩余: 1.7 天"
+                - 'cell "提交: 1 平均: 5.0" [ref=e55]':
+                  - text: "提交: 1"
+                  - text: "平均: 5.0"
+                - cell "未提交" [ref=e56]
+          - navigation "Page navigation" [ref=e57]:
+            - list [ref=e58]:
+              - listitem [ref=e59]:
+                - link " 上一页":
+                  - /url: /student_assignments
+                  - generic: 
+                  - text: 上一页
+              - listitem [ref=e60]:
+                - link "1" [ref=e61] [cursor=pointer]:
+                  - /url: /student_assignments?page=1
+              - listitem [ref=e62]:
+                - link "下一页":
+                  - /url: /student_assignments
+      - generic [ref=e63]:
+        - generic [ref=e66]:
+          - heading " 刷题技巧" [level=5] [ref=e67]:
+            - generic [ref=e68]: 
+            - text: 刷题技巧
+          - paragraph [ref=e69]: 持续练习是提高编程能力的关键。每天解决一道题目，你的编程能力将会稳步提升。
+        - generic [ref=e72]:
+          - heading " 评分标准" [level=5] [ref=e73]:
+            - generic [ref=e74]: 
+            - text: 评分标准
+          - paragraph [ref=e75]: 系统会从算法能力、代码风格、功能实现、效率优化和代码可读性五个维度进行评估。
+        - generic [ref=e78]:
+          - heading " 需要帮助？" [level=5] [ref=e79]:
+            - generic [ref=e80]: 
+            - text: 需要帮助？
+          - paragraph [ref=e81]:
+            - text: 如果你在解题过程中遇到困难，可以查看
+            - link "使用帮助" [ref=e82] [cursor=pointer]:
+              - /url: /help
+            - text: 或联系教师获取支持。
+  - contentinfo [ref=e83]:
+    - generic [ref=e85]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

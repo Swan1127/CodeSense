@@ -1,0 +1,137 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link " CodeSense 酷森思" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]: 
+        - generic [ref=e7]: CodeSense 酷森思
+      - navigation [ref=e8]:
+        - list [ref=e9]:
+          - listitem [ref=e10]:
+            - link " 首页" [ref=e11] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e12]: 
+              - text: 首页
+          - listitem [ref=e13]:
+            - link " 班级管理" [ref=e14] [cursor=pointer]:
+              - /url: /classes/
+              - generic [ref=e15]: 
+              - text: 班级管理
+          - listitem [ref=e16]:
+            - link " 作业管理" [ref=e17] [cursor=pointer]:
+              - /url: /assignments
+              - generic [ref=e18]: 
+              - text: 作业管理
+          - listitem [ref=e19]:
+            - link " 用户管理" [ref=e20] [cursor=pointer]:
+              - /url: /users
+              - generic [ref=e21]: 
+              - text: 用户管理
+      - generic [ref=e24] [cursor=pointer]:
+        - generic [ref=e25]: X
+        - generic [ref=e26]: XiaoCow
+        - generic [ref=e27]: 
+  - main [ref=e28]:
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - heading "管理员仪表盘" [level=1] [ref=e31]
+        - paragraph [ref=e32]: 系统概览和管理功能
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e36]: 
+          - generic [ref=e37]:
+            - generic [ref=e38]: "68"
+            - generic [ref=e39]: 注册用户数
+        - generic [ref=e40]:
+          - generic [ref=e42]: 
+          - generic [ref=e43]:
+            - generic [ref=e44]: "1"
+            - generic [ref=e45]: 总作业数
+        - generic [ref=e46]:
+          - generic [ref=e48]: 
+          - generic [ref=e49]:
+            - generic [ref=e50]: "1"
+            - generic [ref=e51]: 总提交数
+        - generic [ref=e52]:
+          - generic [ref=e54]: 
+          - generic [ref=e55]:
+            - generic [ref=e56]: "5.00"
+            - generic [ref=e57]: 平均得分
+      - generic [ref=e58]:
+        - heading " 管理操作" [level=2] [ref=e59]:
+          - generic [ref=e60]: 
+          - text: 管理操作
+        - generic [ref=e63]:
+          - link " 用户管理" [ref=e64] [cursor=pointer]:
+            - /url: /users
+            - generic [ref=e65]: 
+            - text: 用户管理
+          - link " 提交记录" [ref=e66] [cursor=pointer]:
+            - /url: /all_submissions
+            - generic [ref=e67]: 
+            - text: 提交记录
+          - link " 导出数据" [ref=e68] [cursor=pointer]:
+            - /url: /export_data
+            - generic [ref=e69]: 
+            - text: 导出数据
+      - generic [ref=e70]:
+        - heading " 最近活动" [level=2] [ref=e71]:
+          - generic [ref=e72]: 
+          - text: 最近活动
+        - list [ref=e75]:
+          - listitem [ref=e76]:
+            - generic [ref=e78]: 
+            - generic [ref=e79]:
+              - generic [ref=e80]: 用户 XiaoCow (代宇鹏) 登录了系统
+              - generic [ref=e81]: 4分钟前
+          - listitem [ref=e82]:
+            - generic [ref=e84]: 
+            - generic [ref=e85]:
+              - generic [ref=e86]: 用户 student_1 (学生1) 退出了系统
+              - generic [ref=e87]: 4分钟前
+          - listitem [ref=e88]:
+            - generic [ref=e90]: 
+            - generic [ref=e91]:
+              - generic [ref=e92]: 用户 student_1 (学生1) 登录了系统
+              - generic [ref=e93]: 5分钟前
+          - listitem [ref=e94]:
+            - generic [ref=e96]: 
+            - generic [ref=e97]:
+              - generic [ref=e98]: 用户 student_1 (学生1) 登录了系统
+              - generic [ref=e99]: 16分钟前
+          - listitem [ref=e100]:
+            - generic [ref=e102]: 
+            - generic [ref=e103]:
+              - generic [ref=e104]: 用户 student_1 (学生1) 退出了系统
+              - generic [ref=e105]: 16分钟前
+          - listitem [ref=e106]:
+            - generic [ref=e108]: 
+            - generic [ref=e109]:
+              - generic [ref=e110]: 用户 jetski_bot (Jetski Browser Bot) 登录了系统
+              - generic [ref=e111]: 1小时前
+          - listitem [ref=e112]:
+            - generic [ref=e114]: 
+            - generic [ref=e115]:
+              - generic [ref=e116]: 用户 jetski_bot (Jetski Browser Bot) 退出了系统
+              - generic [ref=e117]: 1小时前
+          - listitem [ref=e118]:
+            - generic [ref=e120]: 
+            - generic [ref=e121]:
+              - generic [ref=e122]: 用户 jetski_bot (Jetski Browser Bot) 登录了系统
+              - generic [ref=e123]: 1小时前
+          - listitem [ref=e124]:
+            - generic [ref=e126]: 
+            - generic [ref=e127]:
+              - generic [ref=e128]: 新学生 jetski_bot (Jetski Browser Bot) 注册成功
+              - generic [ref=e129]: 1小时前
+          - listitem [ref=e130]:
+            - generic [ref=e132]: 
+            - generic [ref=e133]:
+              - generic [ref=e134]: 用户 student_1 (学生1) 登录了系统
+              - generic [ref=e135]: 1小时前
+      - generic [ref=e136]:
+        - heading "作业提交统计" [level=3] [ref=e138]
+        - heading "得分分布" [level=3] [ref=e142]
+        - heading "过去30天活跃度" [level=3] [ref=e146]
+  - contentinfo [ref=e149]:
+    - generic [ref=e151]: © 2024 CodeSense 酷森思 | 基于机器学习的代码评估平台

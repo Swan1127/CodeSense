@@ -2,6 +2,244 @@
 
 {% block title %}作业管理 - 教师工作台{% endblock %}
 
+{% block modals %}
+<!-- 批量导入题库 Modal -->
+<div class="modal fade" id="batchImportModal" tabindex="-1" aria-labelledby="batchImportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="batchImportModalLabel"><i class="bi bi-cloud-upload text-success"></i>
+                    批量自动化导入题库</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-lightbulb"></i>
+                    请在下方输入您想要的题目要求，<strong>每行一个题目</strong>。系统将自动依次调用AI助手为您生成完整的题目描述和结构，并批量存入题库。
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">1. 从文件导入(可选):</label>
+                    <input class="form-control" type="file" id="batchFileInput" accept=".txt,.md,.csv,.xls,.xlsx,.docx">
+                    <div class="form-text">支持 docx, xlsx, csv, txt, md 格式。选中文件后会自动提取题目描述至下方。</div>
+                </div>
+                <div class="mb-3">
+                    <label for="batchPrompts" class="form-label fw-bold">2. 题库要求（按行分割）:</label>
+                    <textarea class="form-control font-monospace" id="batchPrompts" rows="8"
+                        placeholder="示例：&#10;用C++实现快速排序&#10;设计一个二叉树前序遍历&#10;解决动态规划背包问题"></textarea>
+                </div>
+
+                <div id="batchProgressContainer" class="d-none">
+                    <hr>
+                    <h6 class="fw-bold mb-2">自动生成进度 (<span id="batchCount">0/0</span>)</h6>
+                    <div class="progress mb-3" style="height: 10px;">
+                        <div id="batchProgressBar"
+                            class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                            role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div class="list-group" id="batchProgressList" style="max-height: 250px; overflow-y: auto;">
+                        <!-- 动态生成的进度列表项 -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="btnCancelBatch">取消</button>
+                <button type="button" class="btn btn-success" id="btnStartBatch"><i class="bi bi-play-circle"></i>
+                    开始自动生成</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // ==========================================
+        // 批量导入处理逻辑
+        // ==========================================
+        const btnStartBatch = document.getElementById('btnStartBatch');
+        const batchPrompts = document.getElementById('batchPrompts');
+        const batchFileInput = document.getElementById('batchFileInput');
+        const batchProgressContainer = document.getElementById('batchProgressContainer');
+        const batchProgressList = document.getElementById('batchProgressList');
+        const batchProgressBar = document.getElementById('batchProgressBar');
+        const batchCount = document.getElementById('batchCount');
+        const btnCancelBatch = document.getElementById('btnCancelBatch');
+
+        if (batchFileInput) {
+            batchFileInput.addEventListener('change', async function () {
+                const file = this.files[0];
+                if (!file) return;
+
+                // 提示状态
+                const oriText = batchPrompts.value;
+                batchPrompts.value = "正在请求后端解析文件进行文本提取，请稍候...";
+                batchPrompts.disabled = true;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch('/api/assignments/parse_file', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok && data.success) {
+                        if (data.lines && data.lines.length > 0) {
+                            batchPrompts.value = data.lines.join('\n');
+                        } else {
+                            batchPrompts.value = oriText;
+                            alert('提取成功，但这似乎是一个空文件，未找到有效文本行。');
+                        }
+                    } else {
+                        batchPrompts.value = oriText;
+                        alert(data.error || '解析文件失败');
+                    }
+                } catch (error) {
+                    batchPrompts.value = oriText;
+                    alert('网络错误: ' + error.message);
+                } finally {
+                    if (btnStartBatch && !btnStartBatch.disabled) {
+                        batchPrompts.disabled = false;
+                    }
+                    this.value = ''; // 重置文件选择，允许重复选中同一个文件
+                }
+            });
+        }
+
+        if (btnStartBatch) {
+            btnStartBatch.addEventListener('click', async function () {
+                const text = batchPrompts.value.trim();
+                if (!text) {
+                    alert('请输入至少一个题目要求！');
+                    return;
+                }
+
+                // 获取所有行，过滤空行
+                const prompts = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                if (prompts.length === 0) return;
+
+                // 界面准备
+                batchProgressContainer.classList.remove('d-none');
+                batchProgressList.innerHTML = '';
+                batchProgressBar.style.width = '0%';
+                btnStartBatch.disabled = true;
+                batchPrompts.disabled = true;
+                batchCount.textContent = `0/${prompts.length}`;
+
+                // 初始化列表项
+                const listItems = [];
+                for (let i = 0; i < prompts.length; i++) {
+                    const li = document.createElement('div');
+                    li.className = 'list-group-item list-group-item-action py-2 text-muted';
+                    li.innerHTML = `<div class="d-flex w-100 justify-content-between align-items-center">
+                                        <span class="text-truncate flex-grow-1" style="max-width: 75%;">
+                                            <i class="bi bi-cpu text-secondary me-2"></i><strong>[任务 ${i + 1}]</strong> ${prompts[i]}
+                                        </span>
+                                        <span class="badge bg-secondary rounded-pill status-badge">待处理</span>
+                                    </div>`;
+                    batchProgressList.appendChild(li);
+                    listItems.push(li);
+                }
+
+                let successCount = 0;
+
+                // 逐个顺序处理(防止大模型并发限流或后端堵塞)
+                for (let i = 0; i < prompts.length; i++) {
+                    const prompt = prompts[i];
+                    const listItem = listItems[i];
+                    const badge = listItem.querySelector('.status-badge');
+
+                    // 标记为正在处理
+                    listItem.classList.remove('text-muted');
+                    listItem.classList.add('list-group-item-primary');
+                    badge.className = 'badge bg-primary rounded-pill status-badge';
+                    badge.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 思考与生成中';
+
+                    // 自动滚动
+                    listItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+                    try {
+                        // 1. 调用AI生成作业内容
+                        const genResponse = await fetch('/assignments/generate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ prompt: prompt })
+                        });
+
+                        const genData = await genResponse.json();
+
+                        if (!genResponse.ok || genData.error) {
+                            throw new Error(genData.error || 'AI生成失败');
+                        }
+
+                        // 2. 调用API存入数据库
+                        const saveResponse = await fetch('/api/assignments/create_batch_item', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                title: genData.title,
+                                description: genData.description
+                            })
+                        });
+
+                        const saveData = await saveResponse.json();
+                        if (!saveResponse.ok || saveData.error) {
+                            throw new Error(saveData.error || '保存数据库失败');
+                        }
+
+                        // 成功
+                        successCount++;
+                        listItem.classList.remove('list-group-item-primary');
+                        listItem.classList.add('list-group-item-success');
+                        badge.className = 'badge bg-success rounded-pill status-badge';
+                        badge.innerHTML = '<i class="bi bi-check-circle-fill"></i> 生成成功';
+
+                    } catch (error) {
+                        // 失败
+                        console.error('Batch error:', error);
+                        listItem.classList.remove('list-group-item-primary');
+                        listItem.classList.add('list-group-item-danger');
+                        badge.className = 'badge bg-danger rounded-pill status-badge';
+                        badge.innerText = '生成失败';
+
+                        // 添加错误详情提示
+                        const errText = document.createElement('div');
+                        errText.className = 'text-danger small mt-1';
+                        errText.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${error.message}`;
+                        listItem.appendChild(errText);
+                    }
+
+                    // 更新进度条
+                    const progress = Math.round(((i + 1) / prompts.length) * 100);
+                    batchProgressBar.style.width = progress + '%';
+                    batchCount.textContent = `${i + 1}/${prompts.length}`;
+                }
+
+                // 处理完毕
+                btnStartBatch.innerHTML = '<i class="bi bi-check-all"></i> 全部处理完成';
+                btnCancelBatch.innerText = '关闭并刷新';
+
+                // 如果全部完成，自动刷新页面，给用户看看最新的作业
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            });
+
+            // 点击取消时，如果已经生成或正在生成，刷新页面
+            btnCancelBatch.addEventListener('click', function () {
+                if (btnStartBatch.disabled) {
+                    window.location.reload();
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -10,6 +248,9 @@
             <p class="text-muted">创建、查看和管理您自己创建的作业，并将其布置给您管理的班级。</p>
         </div>
         <div>
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#batchImportModal">
+                <i class="bi bi-cloud-upload"></i> 批量导入题库
+            </button>
             <a href="{{ url_for('assignments.add_teacher_assignment') }}" class="btn btn-primary">
                 <i class="bi bi-plus-circle"></i> 创建新作业
             </a>

@@ -1,0 +1,347 @@
+﻿python : 2026-04-28 15:
+40:01,340 - code_adviso
+r - INFO - 浠ｇ爜寤鸿绯荤粺鏃ュ織
+鍒濆鍖栧畬鎴?
+所在位置 行:1 字符: 1
++ python e:\CodeSense\源
+代码\tests\test_app.py Ap
+pTestCase.test_admin_ac
+ce ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (2026-04-28 15   
+ :4...绯荤粺鏃ュ織鍒濆鍖栧畬    
+鎴?:String) [], Rem    o
+teException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+INFO: =================
+=======================
+==========
+INFO: Flask搴旂敤鏃ュ織绯荤粺鍒濆
+鍖栧畬鎴?
+INFO: 鏃ュ織鐩綍: e:\CodeSe
+nse\婧愪唬鐮乗logs
+INFO: 鏃ュ織绾у埆: DEBUG
+INFO: 搴旂敤妯″紡: 寮€鍙戞ā寮?
+INFO: =================
+=======================
+==========
+INFO: 搴旂敤鍚姩 - 閰嶇疆: dev
+elopment
+INFO: 寮€濮嬪垵濮嬪寲鏁版嵁搴?..
+INFO: 鏁版嵁搴撳垵濮嬪寲瀹屾垚
+INFO: 杩愯鍦?API-only 妯″紡
+锛岃烦杩囨湰鍦版ā鍨嬪姞杞?
+INFO: 璺宠繃缂栫▼鎸囧绯荤粺鍒濆鍖栵
+紙API-only 妯″紡锛?
+INFO: 璺宠繃浠ｇ爜寤鸿绯荤粺鍒濆鍖栵
+紙API-only 妯″紡锛?
+INFO: 鍚姩寮傛浠诲姟澶勭悊鍣紝宸ヤ
+綔绾跨▼鏁? 2
+INFO: 宸ヤ綔绾跨▼ worker-1 宸
+插惎鍔?
+INFO: 宸ヤ綔绾跨▼ worker-2 宸
+插惎鍔?
+INFO: 寮傛浠诲姟绯荤粺宸插惎鍔?
+INFO: 寮傛浠诲姟绯荤粺鍒濆鍖栨垚鍔?
+INFO: Flask搴旂敤瀹屽叏鍒濆鍖栧畬
+鎴愶紝鍑嗗鎺ュ彈璇锋眰
+INFO: -----------------
+-----------------------
+----------
+INFO: 搴旂敤瀹炰緥鍒涘缓鎴愬姛
+INFO: Flask鐗堟湰: Unknown
+INFO: Python鐗堟湰: 3.13.5
+ | packaged by Anaconda
+, Inc. | (main, Jun 12 
+2025, 16:37:03) [MSC v.
+1929 64 bit (AMD64)]
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:751: Deprecat
+ionWarning: ast.Str is 
+deprecated and will be 
+removed in Python 3.14;
+ use ast.Constant inste
+ad
+  parts = parts or [ast
+.Str("")]
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:748: Deprecat
+ionWarning: ast.Str is 
+deprecated and will be 
+removed in Python 3.14;
+ use ast.Constant inste
+ad
+  _convert(elem) if is_
+dynamic else ast.Str(s=
+elem)
+E:\anaconda\Lib\ast.py:
+602: DeprecationWarning
+: Constant.__init__ got
+ an unexpected keyword 
+argument 's'. Support f
+or arbitrary keyword ar
+guments is deprecated a
+nd will be removed in P
+ython 3.15.
+  return Constant(*args
+, **kwargs)
+E:\anaconda\Lib\ast.py:
+602: DeprecationWarning
+: Attribute s is deprec
+ated and will be remove
+d in Python 3.14; use v
+alue instead
+  return Constant(*args
+, **kwargs)
+E:\anaconda\Lib\ast.py:
+602: DeprecationWarning
+: Constant.__init__ mis
+sing 1 required positio
+nal argument: 'value'. 
+This will become an err
+or in Python 3.15.
+  return Constant(*args
+, **kwargs)
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:755: Deprecat
+ionWarning: ast.Str is 
+deprecated and will be 
+removed in Python 3.14;
+ use ast.Constant inste
+ad
+  if isinstance(p, ast.
+Str) and isinstance(ret
+[-1], ast.Str):
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:756: Deprecat
+ionWarning: Attribute s
+ is deprecated and will
+ be removed in Python 3
+.14; use value instead
+  ret[-1] = ast.Str(ret
+[-1].s + p.s)
+E:\anaconda\Lib\site-pa
+ckages\werkzeug\routing
+\rules.py:756: Deprecat
+ionWarning: ast.Str is 
+deprecated and will be 
+removed in Python 3.14;
+ use ast.Constant inste
+ad
+  ret[-1] = ast.Str(ret
+[-1].s + p.s)
+e:\CodeSense\婧愪唬鐮乗app.p
+y:93: ResourceWarning: 
+unclosed file <_io.Text
+IOWrapper name='e:\\Cod
+eSense\\婧愪唬鐮乗\logs\\err
+or.log' mode='a' encodi
+ng='utf-8'>
+  app.logger.handlers.c
+lear()
+ResourceWarning: Enable
+ tracemalloc to get the
+ object allocation trac
+eback
+e:\CodeSense\婧愪唬鐮乗app.p
+y:93: ResourceWarning: 
+unclosed file <_io.Text
+IOWrapper name='e:\\Cod
+eSense\\婧愪唬鐮乗\logs\\app
+.log' mode='a' encoding
+='utf-8'>
+  app.logger.handlers.c
+lear()
+ResourceWarning: Enable
+ tracemalloc to get the
+ object allocation trac
+eback
+E:\anaconda\Lib\site-pa
+ckages\sqlalchemy\sql\s
+chema.py:3624: Deprecat
+ionWarning: datetime.da
+tetime.utcnow() is depr
+ecated and scheduled fo
+r removal in a future v
+ersion. Use timezone-aw
+are objects to represen
+t datetimes in UTC: dat
+etime.datetime.now(date
+time.UTC).
+  return util.wrap_call
+able(lambda ctx: fn(), 
+fn)  # type: ignore
+E:\anaconda\Lib\site-pa
+ckages\flask_session\se
+ssions.py:329: Deprecat
+ionWarning: 'session_co
+okie_name' is deprecate
+d and will be removed i
+n Flask 2.3. Use 'SESSI
+ON_COOKIE_NAME' in 'app
+.config' instead.
+  sid = request.cookies
+.get(app.session_cookie
+_name)
+e:\CodeSense\婧愪唬鐮乗utils
+\async_tasks.py:65: Dep
+recationWarning: dateti
+me.datetime.utcnow() is
+ deprecated and schedul
+ed for removal in a fut
+ure version. Use timezo
+ne-aware objects to rep
+resent datetimes in UTC
+: datetime.datetime.now
+(datetime.UTC).
+  'created_at': datetim
+e.utcnow(),
+e:\CodeSense\婧愪唬鐮乗utils
+\async_tasks.py:166: Le
+gacyAPIWarning: The Que
+ry.get() method is cons
+idered legacy as of the
+ 1.x series of SQLAlche
+my and becomes a legacy
+ construct in 2.0. The 
+method is now available
+ as Session.get() (depr
+ecated since: 2.0) (Bac
+kground on SQLAlchemy 2
+.0 at: https://sqlalche
+.me/e/b8d9)
+  user = User.query.get
+(student_id)
+E:\anaconda\Lib\site-pa
+ckages\flask_session\se
+ssions.py:372: Deprecat
+ionWarning: 'session_co
+okie_name' is deprecate
+d and will be removed i
+n Flask 2.3. Use 'SESSI
+ON_COOKIE_NAME' in 'app
+.config' instead.
+  response.set_cookie(a
+pp.session_cookie_name,
+ session_id,
+FE:\anaconda\Lib\site-p
+ackages\flask_sqlalchem
+y\extension.py:865: SAW
+arning: Can't sort tabl
+es for DROP; an unresol
+vable foreign key depen
+dency exists between ta
+bles: classes, users; a
+nd backend does not sup
+port ALTER.  To restore
+ at least a partial sor
+t, apply use_alter=True
+ to ForeignKey and Fore
+ignKeyConstraint object
+s involved in the cycle
+ to mark these as known
+ cycles that will be ig
+nored.
+  getattr(metadata, op_
+name)(bind=engine)
+
+=======================
+=======================
+=======================
+=
+FAIL: test_admin_access
+_teacher_route (__main_
+_.AppTestCase.test_admi
+n_access_teacher_route)
+娴嬭瘯绠＄悊鍛樿闂暀甯堜笓鐢ㄨ矾鐢?
+-----------------------
+-----------------------
+-----------------------
+-
+Traceback (most recent 
+call last):
+  File "e:\CodeSense\婧愪
+唬鐮乗tests\test_app.py", 
+line 127, in test_admin
+_access_teacher_route
+    self.assertEqual(re
+sponse.status_code, 200
+)
+    ~~~~~~~~~~~~~~~~^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+^
+AssertionError: 404 != 
+200
+
+-----------------------
+-----------------------
+-----------------------
+-
+Ran 1 test in 0.492s
+
+FAILED (failures=1)
+鈿狅笍  璀﹀憡: SECRET_KEY 鏈缃紝浣跨敤涓存椂鐢熸垚鐨勫瘑閽ワ紙浠呴檺寮€鍙戠幆澧冿級
+   鐢熶骇鐜璇峰湪 .env 鏂囦欢涓缃?SECRET_KEY
+脳 transformers搴撴湭瀹夎锛孋odeBERT鍔熻兘灏嗕笉鍙敤
+灏嗕娇鐢ㄥ惎鍙戝紡璇勫垎鏂规硶
+姝ｅ湪妫€鏌ョ幆澧冨彉閲忛厤缃?..
+鈩癸笍  寮€鍙戠幆澧? 浣跨敤 SQLite 鏁版嵁搴?
+   濡傞渶浣跨敤MySQL锛岃鍦?.env 涓缃?DEV_DATABASE_URL
+
+姝ｅ湪閰嶇疆搴旂敤鏃ュ織绯荤粺...
+鉁?寮€鍙戞ā寮忥細鍚敤DEBUG绾у埆鏃ュ織
+鉁?寮€鍙戞ā寮忥細涓鸿闂棩蹇楀惎鐢?FileHandler
+鉁?Flask-Session鍒濆鍖栨垚鍔?
+
+灏濊瘯鍒濆鍖栧ぇ妯″瀷璇勪及鍣?..
+姝ｅ湪鍒濆鍖栨櫤璋盇I澶фā鍨嬭瘎浼板櫒...
+浣跨敤zhipu鐨刧lm-4.5-flash妯″瀷杩涜浠ｇ爜璇勪及
+鉁?鏅鸿氨AI瀹㈡埛绔垵濮嬪寲鎴愬姛
+鉁?鏅鸿氨AI澶фā鍨嬭瘎浼板櫒鍒濆鍖栨垚鍔燂紙鍏抽棴涓ユ牸璇勫垎妯″紡锛?
+鉁?澶фā鍨嬭瘎浼板姛鑳藉凡鍚敤
+
+========= 寮€濮嬮鍔犺浇妯″瀷 =========
+妯″瀷鐩綍: e:\CodeSense\婧愪唬鐮乗CodeBERT_model
+脳 CodeBERT妯″瀷鐩綍涓嶅瓨鍦? e:\CodeSense\婧愪唬鐮乗CodeBERT_model
+灏嗚烦杩嘋odeBERT妯″瀷鍔犺浇锛屼粎浣跨敤鍚彂寮忚瘎浼?
+1. 璺宠繃CodeBERT妯″瀷鍔犺浇锛坱ransformers搴撴湭瀹夎锛?
+2. 鍔犺浇TextCNN妯″瀷...
+浣跨敤璁惧: cpu
+鍔犺浇妯″瀷鏉冮噸: e:\CodeSense\婧愪唬鐮乗models\codebertcnn.pth
+鉁?鎴愬姛鍔犺浇妯″瀷鏉冮噸
+鉁?妯″瀷鏉冮噸鍔犺浇鎴愬姛
+鉁?鎵€鏈夋ā鍨嬪姞杞芥垚鍔?
+========= 妯″瀷棰勫姞杞藉畬鎴?=========
+
+
+鉁?杩愯鍦?API-only 妯″紡锛岃烦杩囨湰鍦版ā鍨嬪姞杞戒互鑺傜渷鍐呭瓨
+
+姝ｅ湪鍒濆鍖栧紓姝ヤ换鍔＄郴缁?..
+鉁?寮傛浠诲姟绯荤粺鍒濆鍖栨垚鍔?
+
+姝ｅ湪閰嶇疆搴旂敤鏃ュ織绯荤粺...
+鉁?鐢熶骇妯″紡锛氬惎鐢↖NFO绾у埆鏃ュ織
+鉁?鐢熶骇妯″紡锛氫负璁块棶鏃ュ織鍚敤 TimedRotatingFileHandler
+鉁?Flask-Session鍒濆鍖栨垚鍔?
+
+鉁?杩愯鍦?API-only 妯″紡锛岃烦杩囨湰鍦版ā鍨嬪姞杞戒互鑺傜渷鍐呭瓨
+
+姝ｅ湪鍒濆鍖栧紓姝ヤ换鍔＄郴缁?..
+鉁?寮傛浠诲姟绯荤粺鍒濆鍖栨垚鍔?
+<sys>:0: ResourceWarnin
+g: unclosed database in
+ <sqlite3.Connection ob
+ject at 0x000002133A885
+030>
