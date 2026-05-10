@@ -1,0 +1,287 @@
+{% extends "layout.html" %}
+
+{% block title %}思维竞技场 V6.0 (至尊液态版) - CodeSense 酷森思{% endblock %}
+
+{% block extra_head %}
+<!-- 引入 SortableJS -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<!-- 引入 Anime.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+<!-- 引入 Confetti -->
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+<style>
+    :root {
+        --bg-deep: #020617;
+        --liquid-base: #4f46e5;
+        --liquid-glow: #818cf8;
+        --accent-gold: #fbbf24;
+    }
+
+    body {
+        background-color: var(--bg-deep);
+        color: #f8fafc;
+        overflow-x: hidden;
+    }
+
+    .arena-container {
+        padding: 60px 0;
+        min-height: 100vh;
+    }
+
+    /* 
+       至尊液态感核心：高对比度 Gooey 滤镜 
+       通过降低 stdDeviation 并提高 Matrix 的 contrast，保证文字不模糊
+    */
+    .liquid-fusion-layer {
+        filter: url("#goo-premium");
+        position: relative;
+    }
+
+    .logic-block {
+        background: var(--liquid-base);
+        color: white;
+        padding: 18px 24px;
+        margin-bottom: 20px;
+        border-radius: 50px;
+        cursor: grab;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 600;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        position: relative;
+        will-change: transform;
+        box-shadow: 0 8px 32px rgba(79, 70, 229, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .logic-block::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border-radius: 50px;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 50%);
+        pointer-events: none;
+    }
+
+    .logic-block:hover {
+        background: var(--liquid-glow);
+        box-shadow: 0 12px 40px rgba(99, 102, 241, 0.5);
+    }
+
+    /* 抓取瞬间：至尊液态悬浮感 */
+    .sortable-chosen {
+        background: #6366f1 !important;
+        transform: scale(1.1) !important;
+        box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6) !important;
+        z-index: 9999;
+        opacity: 1 !important;
+        border: 2px solid var(--accent-gold) !important;
+    }
+
+    .sortable-ghost {
+        opacity: 0.15;
+        background: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    .target-zone {
+        background: rgba(30, 41, 59, 0.4);
+        border: 2px dashed rgba(255, 255, 255, 0.05);
+        border-radius: 40px;
+        min-height: 600px;
+        padding: 40px;
+        backdrop-filter: blur(10px);
+    }
+
+    /* 影子编辑器 */
+    .editor-card {
+        background: #0f172a;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 30px;
+        padding: 30px;
+        height: 80vh;
+        position: sticky;
+        top: 40px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    .code-line {
+        display: block;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.8rem;
+    }
+
+    /* 隐藏滤镜 */
+    .filter-svg {
+        width: 0;
+        height: 0;
+        position: absolute;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="arena-container">
+    <!-- 至尊液态滤镜：关键在于 stdDeviation: 8 & values 中的 25 -12 (超高对比度闭合) -->
+    <svg class="filter-svg">
+        <defs>
+            <filter id="goo-premium">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 25 -12"
+                    result="goo" />
+                <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+            </filter>
+        </defs>
+    </svg>
+
+    <div class="container">
+        <div class="text-center mb-5 animate__animated animate__fadeIn">
+            <div class="badge bg-primary px-3 py-2 rounded-pill mb-3">Thinking Arena V6.0</div>
+            <h1 class="display-5 fw-bold">至尊液态竞技场</h1>
+            <p class="text-muted">物理驱动的液态逻辑流。请在此构建你的算法蓝图。</p>
+        </div>
+
+        <div class="row g-5">
+            <!-- 逻辑源池 -->
+            <div class="col-md-4">
+                <div class="liquid-fusion-layer" id="source-pool">
+                    <div class="logic-block" data-id="1" data-code="int sum = 0;">
+                        <i class="bi bi-stars"></i> 初始化计数器
+                    </div>
+                    <div class="logic-block" data-id="2" data-code="for(int i=0; i<n; i++)">
+                        <i class="bi bi-arrow-repeat"></i> 标准循环 (0..N-1)
+                    </div>
+                    <div class="logic-block" data-id="trap-1" data-code="for(int i=0; i<=n; i++)">
+                        <i class="bi bi-bug text-warning"></i> 循环陷阱 (0..N)
+                    </div>
+                    <div class="logic-block" data-id="3" data-code="if(arr[i] > 0)">
+                        <i class="bi bi-filter"></i> 条件过滤
+                    </div>
+                    <div class="logic-block" data-id="4" data-code="sum += arr[i];">
+                        <i class="bi bi-plus-lg"></i> 累加逻辑
+                    </div>
+                </div>
+            </div>
+
+            <!-- 构建区 -->
+            <div class="col-md-4">
+                <div class="target-zone liquid-fusion-layer" id="drop-zone">
+                    <div class="text-center text-muted mt-5 opacity-25">
+                        <i class="bi bi-droplet" style="font-size: 3rem;"></i><br>
+                        释放逻辑积木开始融合
+                    </div>
+                </div>
+            </div>
+
+            <!-- 投影区 -->
+            <div class="col-md-4">
+                <div class="editor-card">
+                    <h6 class="text-primary text-uppercase mb-4 fw-bold">Code Projection</h6>
+                    <div id="projection-content" class="text-secondary small">
+                        // 等待逻辑注入...
+                    </div>
+                    <div class="mt-5 pt-3 border-top border-secondary text-center">
+                        <button class="btn btn-primary rounded-pill px-5 btn-lg shadow-lg"
+                            onclick="auditLogic()">思维鉴定</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 报告阶段 (简约版) -->
+<div class="modal fade" id="auditModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary text-white rounded-4">
+            <div class="modal-body p-5 text-center">
+                <div id="audit-icon" class="mb-4"></div>
+                <h3 id="audit-title" class="fw-bold mb-3"></h3>
+                <p id="audit-desc" class="text-muted mb-4"></p>
+                <button class="btn btn-outline-light rounded-pill px-4" data-bs-dismiss="modal">返回精进</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const pool = document.getElementById('source-pool');
+        const drop = document.getElementById('drop-zone');
+        const proj = document.getElementById('projection-content');
+
+        const sortableParams = {
+            group: 'liquid',
+            animation: 0,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            dragClass: 'sortable-drag',
+            fallbackOnBody: true,
+            onStart: (evt) => {
+                anime({
+                    targets: evt.item,
+                    scale: [1, 1.1],
+                    duration: 300,
+                    easing: 'easeOutQuart'
+                });
+            },
+            onEnd: (evt) => {
+                anime({
+                    targets: evt.item,
+                    scale: [1.1, 1],
+                    translateY: [10, 0],
+                    duration: 800,
+                    easing: 'easeOutElastic(1, .5)'
+                });
+                renderCode();
+            }
+        };
+
+        new Sortable(pool, sortableParams);
+        new Sortable(drop, sortableParams);
+
+        function renderCode() {
+            const items = drop.querySelectorAll('.logic-block');
+            if (items.length === 0) {
+                proj.innerHTML = '// 等待逻辑注入... ';
+                return;
+            }
+            let code = 'int main() {\n';
+            let indent = '  ';
+            items.forEach(el => {
+                code += indent + el.getAttribute('data-code') + '\n';
+            });
+            code += '}';
+            proj.innerHTML = `<pre class="text-info">${code}</pre>`;
+        }
+
+        window.auditLogic = function () {
+            const ids = Array.from(drop.querySelectorAll('.logic-block')).map(el => el.getAttribute('data-id'));
+            const modal = new bootstrap.Modal(document.getElementById('auditModal'));
+            const title = document.getElementById('audit-title');
+            const desc = document.getElementById('audit-desc');
+            const icon = document.getElementById('audit-icon');
+
+            if (ids.join(',') === '1,2,3,4') {
+                confetti({ particleCount: 200, spread: 80 });
+                title.innerText = "完美逻辑融合";
+                desc.innerText = "你精准识别了边界条件，算法稳健。";
+                icon.innerHTML = '<i class="bi bi-patch-check text-success display-1"></i>';
+            } else {
+                title.innerText = "逻辑断层";
+                desc.innerText = "思维流中存在瑕疵，请检查边界条件。";
+                icon.innerHTML = '<i class="bi bi-exclamation-triangle text-danger display-1"></i>';
+            }
+            modal.show();
+        };
+    });
+</script>
+{% endblock %}

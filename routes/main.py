@@ -26,6 +26,17 @@ def cpp_editor_demo():
     """C++代码编辑器示例页面"""
     return render_template('cpp_editor_demo.html')
 
+# 添加积木编程（Parsons Problems）演示路由
+@main.route('/parsons_demo')
+def parsons_demo():
+    """积木编程演示页面"""
+    return render_template('parsons_demo.html')
+
+@main.route('/cot_demo')
+def cot_demo():
+    """思维链演示页面"""
+    return render_template('cot_demo.html')
+
 # 添加全局上下文处理器，使模板可以使用now()函数
 @main.app_context_processor
 def inject_now():

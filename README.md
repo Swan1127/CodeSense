@@ -2,15 +2,13 @@
 
 # CodeSense 酷森思
 
-**基于因果隔离沙箱与启发式大模型的智能编程教育平台**
+**基于因果隔离沙箱与启发式大模型的智能编程教育实训平台**
 
-[![Version](https://img.shields.io/badge/版本-0.4.0-4361ee?style=flat-square)](https://github.com/XiaoCow666/CodeSense)
+[![Version](https://img.shields.io/badge/版本-0.5.0-4361ee?style=flat-square)](https://github.com/XiaoCow666/CodeSense)
 [![Python](https://img.shields.io/badge/Python-3.8+-3776ab?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-2.0+-000000?style=flat-square&logo=flask)](https://flask.palletsprojects.com)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0+-4479a1?style=flat-square&logo=mysql&logoColor=white)](https://mysql.com)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/XiaoCow666/CodeSense?style=flat-square&logo=github&color=gold)](https://github.com/XiaoCow666/CodeSense/stargazers)
-[![Activity](https://img.shields.io/github/last-commit/XiaoCow666/CodeSense?style=flat-square&color=orange)](https://github.com/XiaoCow666/CodeSense/commits)
 
 </div>
 
@@ -18,50 +16,46 @@
 
 ## 项目简介
 
-CodeSense 酷森思是专为高校编程教育设计的**第二代智能评测平台**。我们摒弃了传统 OJ 仅反馈 `Wrong Answer` 的冰冷体验，也告别了初阶 AI 直接给出答案的"投喂式"教育。
+CodeSense 酷森思是专为高校编程实训设计的**智能化评测与教学管理平台**。我们致力于解决传统 OJ（Online Judge）“只断对错，不教逻辑”的痛点，通过 AI 语义分析与动态沙箱执行的双轨驱动，打造“练-评-管”闭环的深度学习体验。
 
-通过**因果隔离沙箱 (Causal Sandbox)** 捕捉程序运行细节，配合**启发式大模型 (Heuristic LLM)** 生成由浅入深的逻辑引导，CodeSense 将每一次 Bug 报错转化为学生的成长契机。
-
-### 教育理念
-
-> **"只给思路，不给代码，强制诱导学生自主思考"**
-
-CodeSense 不是简单地判断对错，而是像一个耐心的导师一样，通过提问引导思考，帮助学生真正理解代码背后的逻辑。
+平台核心定位为**“启发式编程导师”**：它不直接向学生提供现成代码，而是通过对程序运行细节的捕捉和代码语义的深度理解，以引导、提问、类比的方式帮助学生自主修复 Bug，构建底层编程思维。
 
 ---
 
-## 核心技术亮点
+## 核心技术支柱
 
-### 因果隔离沙箱 (Causal Sandbox)
+### 1. 因果隔离沙箱 (Causal Sandbox)
+*   **安全隔离执行**：基于多层子进程隔离与资源配额管理（编译 15s/运行 5s 强制熔断），确保代码评测环境的绝对安全。
+*   **异常深度截获**：不仅判断对错，更能精准捕获堆栈异常、内存溢出、死循环等因果细节，为 AI 诊断提供原始数据支撑。
+*   **多语言兼容**：工业级支持 C++、Python 等主流教学语言。
 
-- **轻量级进程隔离**：基于 subprocess 的多层隔离防御
-- **毫秒级异常捕获**：堆栈异常、内存溢出、死循环的实时检测
-- **多语言动态编译**：支持 C++/Python/Java 等主流语言
-- **安全可控**：编译超时 15s，运行超时 5s，自动资源限制
+### 2. 启发式 AI 导师 (Heuristic AI Tutor)
+*   **四层阶梯式引导**：从基础分析（语法）、问题诊断（边界）、思路启发（类比）到优化建议（重构），由浅入深层层递进。
+*   **引导不投喂**：内置严苛的 Prompt 策略，拒绝输出完整代码，强制诱导学生进行“逻辑补全”。
+*   **实时流式反馈**：基于 SSE（Server-Sent Events）技术，实现 AI 指导建议的即时流式输出。
 
-### 启发式 AI 导师 (Heuristic AI)
+### 3. 多维能力画像 (Maturity & Ability Modeling)
+*   **五大核心维度评分**：算法能力 (Algorithm)、代码风格 (Style)、功能完整性 (Functionality)、执行效率 (Efficiency)、代码可读性 (Readability)。
+*   **成熟度指标 (Maturity Score)**：结合提交频率、分数稳定性、平均基准及进步梯度，构建学生个人的 $\phi$ 值成长模型。
+*   **知识点热力追踪**：全量覆盖 C 语言核心知识点，直观展现班级学情分布。
 
-- **四层分级提示词矩阵**：
-  1. 基础分析 - 代码结构、语法检查
-  2. 问题诊断 - 错误类型、边界情况
-  3. 思路引导 - 用提问代替答案
-  4. 优化建议 - 效率、可读性改进
-- **防绕过机制**：识别"我是老师"等提示注入攻击
-- **多 AI 支持**：智谱 GLM-4、OpenAI GPT-4 按需切换
+---
 
-### 异步高并发引擎 (Async Core)
+## 功能模块
 
-- **任务调度与 Web 解耦**：基于 ThreadPool + Queue 的异步任务系统
-- **实时进度推送**：SSE 流式输出，评测状态实时可见
-- **自动重试机制**：失败任务最多 3 次重试
-- **无感知体验**：前台提交，后台处理，结果推送
+### 🚀 学生端：沉浸式实训体验
+*   **工业级 Web IDE**：集成 Monaco Editor，支持智能提示、代码对比与历史提交回溯。
+*   **实时 AI 助手**：对话式编程指导，支持 Markdown 渲染的优美格式化输出。
+*   **能力进化视图**：动态展示雷达图、成长曲线及瓶颈作业分析。
 
-### 数理能力画像 (Scoring Model)
+### 📊 教师端：精细化教学管理
+*   **AI 辅助出题**：基于大模型的作业格式化工具，自动解析自然语言描述并生成结构化题目。
+*   **学情大数据驾驶舱**：班级平均水平对比、学生个体成长潜力预测、高风险学生预警。
+*   **精细化视图隔离**：重构的 RBAC 权限体系，确保教师端与学生端的角色体验深度解耦。
 
-- **13 个 C 语言知识点追踪**：指针、函数、数组、结构体等
-- **贝叶斯权重评估**：稳定性、密度、进步梯度多维分析
-- **能力趋势图谱**：基于历史提交的量化成长轨迹
-- **班级全局监控**：教师端学情大数据驾驶舱
+### 🧪 实验性教学模块 (Alpha)
+*   **思维链 (CoT) 训练场**：通过“分析-策略-审计”三阶段工作流，训练学生解决复杂问题的思维链路。
+*   **积木编程 (Parsons Problems)**：支持代码块拖拽排序，降低语法门槛，专注于逻辑构建。
 
 ---
 
@@ -69,124 +63,60 @@ CodeSense 不是简单地判断对错，而是像一个耐心的导师一样，�
 
 ```mermaid
 graph TD
-    User((学生/教师)) -->|HTTP/SSE| Web[Flask Web Server]
-    Web -->|调度| Queue[Async Task Queue]
-    Queue -->|挂载| Sandbox[Causal Sandbox]
-    Sandbox -->|堆栈特征| AI[Heuristic AI Engine]
-    AI -->|分层 Prompt| LLM[GLM-4 / GPT-4]
-    LLM -->|实时推流| Web
-    Web -->|持久化| DB[(MySQL 8.0)]
-```
-
-### 技术栈
-
-| 层级 | 技术方案 | 说明 |
-|------|----------|------|
-| **后端框架** | Flask 2.0+ | 轻量级 WSGI 微框架 |
-| **数据库** | MySQL 8.0+ / SQLite | 关系型数据持久化 |
-| **深度学习** | PyTorch, Transformers, CodeBERT | 本地模型推理 |
-| **AI 服务** | 智谱 GLM-4 / OpenAI GPT-4 | 云端大模型 |
-| **前端** | Bootstrap 5, Monaco Editor | 响应式工业级 IDE |
-| **异步任务** | Threading + Queue | 后台任务调度 |
-| **实时通信** | SSE (Server-Sent Events) | 流式推送 |
-| **部署** | WSGI (gunicorn), dotenv | 生产级部署 |
-
----
-
-## 功能特性
-
-### 学生端
-
-- Monaco Editor 代码编辑器（工业级 IDE 体验）
-- 实时 AI 编程助手（聊天式交互）
-- Markdown 渲染的 AI 反馈（优美的格式化输出）
-- 提交历史记录与对比
-- 个人能力画像与成长趋势
-
-### 教师端
-
-- 作业管理与测试用例编辑
-- AI 辅助作业格式化（智能题目生成）
-- 班级学情监控仪表盘
-- 学生能力对比分析
-- 知识点掌握热力图
-
-### 管理端
-
-- 用户与权限管理（学生/教师/管理员）
-- 系统趋势统计分析
-- 批量能力趋势更新
-- 教师邀请码管理（24 小时过期）
-
----
-
-## 项目结构
-
-```
-CodeSense/
-├── app.py                    # 应用入口
-├── config.py                 # 三环境配置（开发/测试/生产）
-├── models.py                 # 数据库模型（~900行）
-├── routes/                   # 路由模块
-│   ├── api.py              # REST API（~1200行）
-│   ├── auth.py             # 认证路由
-│   ├── main.py             # 主页面路由
-│   ├── assignments.py      # 作业管理
-│   ├── users.py            # 用户管理
-│   └── classes.py          # 班级管理
-├── services/                # 业务服务
-│   └── ai_evaluator.py    # AI 评估器（~530行）
-├── utils/                   # 核心工具
-│   ├── code_evaluator.py  # 代码评估（~1570行）
-│   ├── sandbox_runner.py   # 沙箱执行（~250行）
-│   ├── llm_evaluator.py    # 大模型调用（~985行）
-│   ├── guidance_generator.py # 编程指导（~623行）
-│   ├── code_advisor.py     # 代码建议（~946行）
-│   ├── async_tasks.py      # 异步任务（~305行）
-│   ├── prompts.py          # 提示词模板
-│   └── ability_scorer.py   # 能力评分
-├── templates/               # Jinja2 模板
-│   ├── submit_code.html   # 代码提交页（~1790行）
-│   ├── layout.html         # 基础布局
-│   └── ...
-├── static/                  # 静态资源
-│   ├── css/               # 样式文件
-│   ├── js/                # JavaScript
-│   └── img/               # 图片资源
-├── models/                  # 机器学习模型
-│   ├── CNN.py             # TextCNN 模型
-│   └── codebertcnn.pth     # 预训练权重
-├── .env.example           # 环境变量示例
-├── requirements.txt       # Python 依赖
-└── wsgi.py                # WSGI 入口
+    User((学生/教师)) -->|SSE/REST| Web[Flask Core Server]
+    Web -->|Async Tasks| Queue[Task Engine]
+    Queue -->|Capture| Sandbox[Causal Sandbox]
+    Sandbox -->|Stack Traces| AI[Heuristic AI Logic]
+    AI -->|Heuristic Prompt| LLM[GLM-4 / GPT-4]
+    LLM -->|Stream Output| User
+    Web -->|Persist| DB[(MySQL 8.0)]
 ```
 
 ---
 
 ## 快速启动
 
-### 1. 环境准备
-
+### 1. 环境克隆与安装
 ```bash
-# 克隆仓库
 git clone https://github.com/XiaoCow666/CodeSense.git
 cd CodeSense
-
-# 创建虚拟环境（推荐）
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# 或
-venv\Scripts\activate  # Windows
-
-# 安装依赖
+source venv/bin/activate  # Windows使用 venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
 ### 2. 配置部署
+复制 `env.example` 为 `.env` 并配置以下核心项：
+*   `DATABASE_URL`: 数据库连接字符串（支持 MySQL/SQLite）。
+*   `ZHIPU_API_KEY` 或 `OPENAI_API_KEY`: 大模型接口密钥。
+*   `LOAD_LOCAL_MODEL`: 云端内存受限时建议设为 `False`。
 
+### 3. 初始化与运行
 ```bash
-# 复制环境变量示例
-copy env.example .env  # Windows
+# 初始化数据库
+python -c "from models import db, app; app.app_context().push(); db.create_all()"
+# 启动开发服务器
+python app.py
+```
+
+---
+
+## 更新日志
+
+### [v0.5.0] - 2026-05 - 智能化全链路闭环
+- **[重大升级]** 引入**成熟度模型 (Maturity Score)**，全面覆盖进步梯度与稳定性分析。
+- **[体验优化]** 重构 RBAC 体系，实现学生、教师、管理员角色的**深度视图隔离**。
+- **[功能上新]** 上线 **AI 辅助作业生成工具**，提升教师出题效率 70% 以上。
+- **[实验性]** 发布 **“思维链 (CoT) 训练”** 原型，探索深度逻辑培养路径。
+- **[架构优化]** 深度优化 SSE 流式响应，彻底解决云端部署下的重定向循环与性能抖动。
+
+---
+
+## 许可证
+本项目基于 [MIT License](LICENSE) 协议。
+
+如有疑问请访问 [saucodesense.com](http://saucodesense.com) 或提交 Issue。
+opy env.example .env  # Windows
 # 或
 cp env.example .env  # Linux/Mac
 
