@@ -297,6 +297,7 @@ def create_app(config_name='default'):
     from routes.users import users
     from routes.api import api
     from routes.classes import classes
+    from routes.thinking import thinking  # 三阶段引导式学习
     
     app.register_blueprint(auth)
     app.register_blueprint(main)
@@ -304,6 +305,7 @@ def create_app(config_name='default'):
     app.register_blueprint(users)
     app.register_blueprint(api)
     app.register_blueprint(classes)
+    app.register_blueprint(thinking)  # /thinking/*
     
     # 初始化数据库
     with app.app_context():
