@@ -1484,19 +1484,104 @@ def run_setup():
             class_objs[name] = cls
         db.session.commit()
 
-        # 3. 创建测试学生，保证班级内至少有 1 个学生，防止被系统的空班级清理逻辑误删
-        students_info = [
-            {'student_id': 's_240101', 'username': 'net2401_stu1', 'full_name': '张三', 'class_name': '网络2401'},
-            {'student_id': 's_240201', 'username': 'net2402_stu1', 'full_name': '李四', 'class_name': '网络2402'}
-        ]
+        # 3. 从外部名册文件加载学生账号（不在代码中存储个人信息）
+        # 支持两种方式：
+        #   方式A: 提供 Excel 名册文件路径（推荐）
+        #   方式B: 提供 CSV 名册文件路径
+        #
+        # Excel 格式要求（从第6行开始，前5行为表头）：
+        #   列顺序: 序号 | 学号 | 姓名 | 班级 | ...（后续列忽略）
+        #
+        # CSV 格式要求（有表头行）：
+        #   student_id,name,class_name
+        #   243401040101,张某某,网络2401
+        #
+        # 使用方法（在项目根目录放置名册文件后运行）：
+        #   python scripts/setup_ds_course.py --roster 名册文件.xlsx
+        #   python scripts/setup_ds_course.py --roster 名册文件.csv
+        #
+        # ⚠️  隐私说明：名册文件包含学生个人信息，请勿提交到 git 仓库。
+        #              已在 .gitignore 中添加常见名册文件名的屏蔽规则。
+
+        import argparse
+        import sys
+
+        # 解析命令行参数
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument('--roster', type=str, default=None)
+        args, _ = parser.parse_known_args()
+
+        students_info = []
+
+        if args.roster:
+            roster_path = args.roster
+            if not os.path.exists(roster_path):
+                print(f"[✗] 名册文件不存在: {roster_path}")
+                sys.exit(1)
+
+            if roster_path.endswith('.xlsx') or roster_path.endswith('.xls'):
+                try:
+                    import openpyxl
+                    wb = openpyxl.load_workbook(roster_path)
+                    ws = wb.active
+                    for row in ws.iter_rows(min_row=6, values_only=True):
+                        seq, student_id, name, cls = row[0], row[1], row[2], row[3]
+                        if not (student_id and name and cls):
+                            continue
+                        sid = str(int(student_id)) if isinstance(student_id, float) else str(student_id).strip()
+                        sname = str(name).strip()
+                        scls = str(cls).strip()
+                        if sid and sname and scls and sname != '姓名':
+                            students_info.append({'student_id': sid, 'full_name': sname, 'class_name': scls})
+                    print(f"[✓] 从 Excel 名册读取到 {len(students_info)} 名学生")
+                except ImportError:
+                    print("[✗] 需要安装 openpyxl: pip install openpyxl")
+                    sys.exit(1)
+
+            elif roster_path.endswith('.csv'):
+                import csv
+                with open(roster_path, 'r', encoding='utf-8-sig') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        students_info.append({
+                            'student_id': row['student_id'].strip(),
+                            'full_name': row['name'].strip(),
+                            'class_name': row['class_name'].strip()
+                        })
+                print(f"[✓] 从 CSV 名册读取到 {len(students_info)} 名学生")
+            else:
+                print(f"[✗] 不支持的文件格式，请使用 .xlsx 或 .csv")
+                sys.exit(1)
+        else:
+            print("[i] 未指定名册文件，跳过学生账号注册步骤")
+            print("    如需注册学生，请运行: python scripts/setup_ds_course.py --roster 名册.xlsx")
+
+        # 批量注册学生账号（用户名=学号，密码=学号，幂等执行）
+        created_count = 0
+        updated_count = 0
         for si in students_info:
+            # 确保班级存在（若名册中有新班级则自动创建）
+            cls = class_objs.get(si['class_name'])
+            if not cls:
+                cls = Class.query.filter_by(name=si['class_name']).first()
+                if not cls:
+                    cls = Class(
+                        name=si['class_name'],
+                        grade='2024',
+                        major='网络工程',
+                        teacher_id=teacher.student_id
+                    )
+                    db.session.add(cls)
+                    db.session.commit()
+                    print(f"[+] 自动创建班级: {si['class_name']}")
+                class_objs[si['class_name']] = cls
+
             stu = User.query.filter_by(student_id=si['student_id']).first()
-            cls = class_objs[si['class_name']]
             if not stu:
                 stu = User(
                     student_id=si['student_id'],
-                    username=si['username'],
-                    password_hash=generate_password_hash('student123'),
+                    username=si['student_id'],
+                    password_hash=generate_password_hash(si['student_id']),
                     usertype='学生',
                     full_name=si['full_name'],
                     class_name=si['class_name'],
@@ -1505,12 +1590,48 @@ def run_setup():
                     user_ascore=0.0
                 )
                 db.session.add(stu)
-                print(f"[+] 创建测试学生: {si['full_name']} (学号: {si['student_id']}) 并分配到班级: {si['class_name']}")
+                created_count += 1
+                print(f"[+] 注册学生: {si['full_name']} ({si['student_id']}) → {si['class_name']}")
             else:
                 stu.class_name = si['class_name']
                 stu.class_id = cls.id
-                print(f"[i] 测试学生 {si['full_name']} 已存在，重新关联到班级: {si['class_name']}")
+                stu.full_name = si['full_name']
+                updated_count += 1
         db.session.commit()
+        if students_info:
+            print(f"\n[*] 学生账号：新建 {created_count} 个，更新 {updated_count} 个，共 {len(students_info)} 人")
+
+            # ===== 网络2402（35人）=====
+        ]
+        created_count = 0
+        updated_count = 0
+        for si in students_info:
+            stu = User.query.filter_by(student_id=si['student_id']).first()
+            cls = class_objs[si['class_name']]
+            if not stu:
+                stu = User(
+                    student_id=si['student_id'],
+                    username=si['student_id'],          # 用户名 = 学号
+                    password_hash=generate_password_hash(si['student_id']),  # 密码 = 学号
+                    usertype='学生',
+                    full_name=si['full_name'],
+                    class_name=si['class_name'],
+                    class_id=cls.id,
+                    submit_count=0,
+                    user_ascore=0.0
+                )
+                db.session.add(stu)
+                created_count += 1
+                print(f"[+] 注册学生: {si['full_name']} ({si['student_id']}) → {si['class_name']}")
+            else:
+                stu.class_name = si['class_name']
+                stu.class_id = cls.id
+                stu.full_name = si['full_name']
+                updated_count += 1
+                print(f"[i] 更新学生: {si['full_name']} ({si['student_id']}) → {si['class_name']}")
+        db.session.commit()
+        print(f"\n[*] 学生账号：新建 {created_count} 个，更新 {updated_count} 个，共 {len(students_info)} 人")
+
 
         # 4. 批量添加作业题目
         assignment_count = 0
