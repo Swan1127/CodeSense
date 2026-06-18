@@ -108,6 +108,8 @@ class AsyncTaskManager:
                 self._handle_ability_trend_update(task)
             elif task_type == 'batch_update_trends':
                 self._handle_batch_update(task)
+            elif task_type == 'generate_thinking_preset':
+                self._handle_generate_preset(task)
             else:
                 if self.logger:
                     self.logger.warning(f"未知任务类型: {task_type}")
@@ -259,6 +261,66 @@ class AsyncTaskManager:
                         self.logger.error("Flask应用实例未设置，无法标记任务失败状态")
                 raise
                 
+    def _handle_generate_preset(self, task):
+        """处理生成引导式学习预设任务"""
+        from models import db, Assignment, AssignmentThinkingPreset
+        from utils.thinking_ai import generate_preset
+        import json
+        
+        data = task['data']
+        assignment_id = data['assignment_id']
+        
+        if self.logger:
+            self.logger.info(f"开始为作业 {assignment_id} 生成引导式学习预设")
+            
+        if not self.app:
+            if self.logger:
+                self.logger.error(f"Flask应用实例未设置，无法处理作业 {assignment_id} 的预设生成任务")
+            return
+            
+        with self.app.app_context():
+            try:
+                assignment = Assignment.query.get(assignment_id)
+                if not assignment:
+                    self.logger.error(f"找不到作业 {assignment_id}，无法生成预设")
+                    return
+                    
+                preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
+                if not preset:
+                    preset = AssignmentThinkingPreset(assignment_id=assignment_id)
+                    db.session.add(preset)
+                    
+                preset.status = 'generating'
+                db.session.commit()
+                
+                result = generate_preset(
+                    assignment.title,
+                    assignment.description or ''
+                )
+                
+                preset.reference_code = result.get('reference_code', '')
+                preset.key_steps = json.dumps(result.get('key_steps', []), ensure_ascii=False)
+                preset.code_blocks = json.dumps(result.get('code_blocks', []), ensure_ascii=False)
+                preset.noise_blocks = json.dumps(result.get('noise_blocks', []), ensure_ascii=False)
+                preset.difficulty_config = json.dumps(result.get('difficulty_config', {}), ensure_ascii=False)
+                preset.status = 'ready'
+                preset.error_message = None
+                
+                db.session.commit()
+                
+                if self.logger:
+                    self.logger.info(f"作业 {assignment_id} 的引导式学习预设生成完成")
+                    
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"处理作业 {assignment_id} 的预设生成失败: {e}")
+                preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
+                if preset:
+                    preset.status = 'failed'
+                    preset.error_message = str(e)
+                    db.session.commit()
+                raise
+
     def _handle_batch_update(self, task):
         """处理批量更新任务"""
         data = task['data']
@@ -288,6 +350,23 @@ class AsyncTaskManager:
             except Exception as e:
                 if self.logger:
                     self.logger.error(f"标记任务失败状态时出错: {e}")
+        elif task['type'] == 'generate_thinking_preset':
+            assignment_id = task['data']['assignment_id']
+            try:
+                if self.app:
+                    with self.app.app_context():
+                        from models import db, AssignmentThinkingPreset
+                        preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
+                        if preset:
+                            preset.status = 'failed'
+                            preset.error_message = "多次尝试生成失败"
+                            db.session.commit()
+                else:
+                    if self.logger:
+                        self.logger.error("Flask应用实例未设置，无法标记任务失败状态")
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"标记任务失败状态时出错: {e}")
 
 # 全局任务管理器实例
 task_manager = AsyncTaskManager()
@@ -305,3 +384,7 @@ def add_ability_trend_task(student_id):
 def add_batch_trend_update(student_ids):
     """添加批量趋势更新任务"""
     return task_manager.add_task('batch_update_trends', student_ids=student_ids)
+
+def add_generate_preset_task(assignment_id):
+    """添加生成引导式学习预设任务"""
+    return task_manager.add_task('generate_thinking_preset', assignment_id=assignment_id)

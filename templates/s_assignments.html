@@ -156,6 +156,12 @@
                                 class="fw-bold">
                                 {{ assignment.title }}
                             </a>
+                            <br>
+                            <a href="{{ url_for('thinking.arena', assignment_id=assignment.id) }}"
+                               class="badge bg-primary bg-opacity-10 text-primary text-decoration-none mt-1"
+                               style="font-size: 0.7rem;">
+                                <i class="bi bi-lightning-charge"></i> 引导式学习
+                            </a>
                         </td>
                         <td>{{ assignment.creator.full_name if assignment.creator else '未知' }}</td>
                         <td>

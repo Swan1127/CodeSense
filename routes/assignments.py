@@ -42,7 +42,7 @@ def generate_assignment():
                 api_key=zhipu_key,
                 base_url="https://open.bigmodel.cn/api/paas/v4/"
             )
-            model_name = current_app.config.get('ZHIPU_MODEL', "glm-4-flash")
+            model_name = current_app.config.get('ZHIPU_MODEL', "glm-4.7-flash")
         # 降级使用 OpenAI
         elif openai_key:
             client = OpenAI(
@@ -937,6 +937,14 @@ def add_teacher_assignment():
         try:
             db.session.add(new_assignment)
             db.session.commit()
+            
+            # 触发异步生成预设任务
+            try:
+                from utils.async_tasks import add_generate_preset_task
+                add_generate_preset_task(new_assignment.id)
+            except Exception as e:
+                current_app.logger.error(f"触发预设生成任务失败: {e}")
+                
             flash('作业创建成功！', 'success')
             # AJAX 提交时返回 JSON，普通提交时重定向
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -977,6 +985,14 @@ def edit_assignment(assignment_id):
         
         try:
             db.session.commit()
+            
+            # 触发异步生成预设任务，以便更新
+            try:
+                from utils.async_tasks import add_generate_preset_task
+                add_generate_preset_task(assignment.id)
+            except Exception as e:
+                current_app.logger.error(f"触发预设生成任务失败: {e}")
+                
             flash('作业更新成功！', 'success')
             
             # AJAX 提交时返回 JSON，支持测试用例同步保存

@@ -88,6 +88,8 @@ def compile_cpp(source_code: str, work_dir: str) -> Tuple[bool, str, str]:
             [compiler, src_path, '-o', exe_path, '-std=c++17', '-O2', '-Wall'],
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=COMPILE_TIMEOUT,
             cwd=work_dir,
             env=env
@@ -128,6 +130,8 @@ def run_single_test(exe_path: str, input_data: str, expected_output: str, work_d
             input=input_data,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=RUN_TIMEOUT,
             cwd=work_dir,
             env=env

@@ -73,7 +73,7 @@ class SharedLLMClient:
                 return
 
             self._client = ZhipuAI(api_key=api_key)
-            self._model_name = "glm-4-flash"
+            self._model_name = "glm-4.7-flash"
             self._available = True
             print("✅ 共享智谱 AI 客户端初始化成功")
         except ImportError:
@@ -206,6 +206,45 @@ class SharedLLMClient:
             feedback = response
 
         return score, feedback
+
+    def generate_image(self, prompt: str) -> Optional[str]:
+        """
+        根据提示词生成图像
+        
+        Args:
+            prompt: 图像生成提示词
+            
+        Returns:
+            生成的图像 URL，或 None（失败时）
+        """
+        if not self.is_available():
+            print("⚠️  LLM 客户端不可用，无法生成图像")
+            return None
+            
+        try:
+            if self._provider == LLMProvider.ZHIPU:
+                # 智谱 AI CogView-4 图像生成（2026年最新版，¥0.06/次）
+                response = self._client.images.generations(
+                    model="cogview-4",
+                    prompt=prompt,
+                    size="1024x1024"
+                )
+                if response and response.data:
+                    return response.data[0].url
+            elif self._provider == LLMProvider.OPENAI:
+                # OpenAI DALL-E-3 图像生成
+                response = self._client.images.generate(
+                    model="dall-e-3",
+                    prompt=prompt,
+                    size="1024x1024",
+                    n=1
+                )
+                if response and response.data:
+                    return response.data[0].url
+        except Exception as e:
+            print(f"图像生成失败: {e}")
+            print(traceback.format_exc())
+            return None
 
 
 # 全局单例访问点

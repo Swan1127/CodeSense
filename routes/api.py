@@ -706,7 +706,7 @@ def get_code_advice():
                             "Authorization": f"Bearer {api_key}"
                         },
                         json={
-                            "model": "glm-4-flash",
+                            "model": "glm-4.7-flash",
                             "messages": messages,
                             "temperature": 0.7,
                             "max_tokens": 1000,

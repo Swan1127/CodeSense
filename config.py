@@ -96,8 +96,10 @@ class DevelopmentConfig(Config):
     def init_app(app):
         Config.init_app(app)
         if 'sqlite' in app.config['SQLALCHEMY_DATABASE_URI']:
-            print("ℹ️  开发环境: 使用 SQLite 数据库")
-            print("   如需使用MySQL，请在 .env 中设置 DEV_DATABASE_URL")
+            app.logger.info("ℹ️  开发环境: 使用 SQLite 数据库")
+            app.logger.info(f"   Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+            app.logger.info(f"   Instance Path: {app.instance_path}")
+            app.logger.info("   如需使用MySQL，请在 .env 中设置 DEV_DATABASE_URL")
 
 
 class TestingConfig(Config):

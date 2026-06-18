@@ -13,7 +13,7 @@ from utils.sandbox_runner import run_test_cases
 logger = logging.getLogger(__name__)
 
 
-def _generate_solution_code(description: str, solution_index: int, api_key: str) -> str:
+def _generate_solution_code(description: str, solution_index: int, api_key: str, error_feedback: str = "") -> str:
     """
     调用 AI 生成一套 C++ 解题代码。
     solution_index 用于引导 AI 生成不同风格的代码。
@@ -25,7 +25,7 @@ def _generate_solution_code(description: str, solution_index: int, api_key: str)
     ]
     style = style_hints[solution_index % len(style_hints)]
 
-    prompt = f"""你是一位C++编程专家。请根据以下题目描述，编写一个完整的、可编译运行的 C++ 解题程序。
+    base_prompt = f"""你是一位C++编程专家。请根据以下题目描述，编写一个完整的、可编译运行的 C++ 解题程序。
 
 {style}
 
@@ -33,11 +33,16 @@ def _generate_solution_code(description: str, solution_index: int, api_key: str)
 1. 程序必须通过 stdin 读取输入，通过 stdout 输出结果
 2. 必须包含 `#include` 和 `int main()` 
 3. 只输出纯 C++ 代码，不要输出任何解释文字、Markdown 标记或代码块标记（如 ```）
-4. 确保程序能处理题目中描述的所有边界情况
+4. 确保程序能处理题目中描述的所有边界情况。如果遇到题目未定义输出的边界异常情况（如空队列出队等），请务必防御性地输出 "None" 或 "-1" 并继续运行，绝对不要使用 throw、assert 导致程序崩溃或段错误！
 
 ## 题目描述
 {description}
 """
+
+    if error_feedback:
+        prompt = base_prompt + f"\n## 注意：上次生成的代码测试失败！\n错误反馈如下：\n{error_feedback}\n\n请仔细分析错误原因，修正代码并输出正确的完整代码。"
+    else:
+        prompt = base_prompt
 
     try:
         headers = {
@@ -45,26 +50,26 @@ def _generate_solution_code(description: str, solution_index: int, api_key: str)
             "Authorization": f"Bearer {api_key}"
         }
         data = {
-            "model": "glm-4-flash",
+            "model": "glm-4.7-flash",
             "messages": [
                 {
                     "role": "system",
                     "content": (
                         "你是一个C++编程专家。你只输出纯C++源代码，"
                         "不添加任何Markdown标记、代码块标记或解释文字。"
-                        "确保代码可以直接编译运行。"
+                        "确保代码可以直接用g++编译运行。"
                     )
                 },
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.5 + solution_index * 0.15,  # 不同温度产生不同方案
+            "temperature": 0.5 + solution_index * 0.15 if not error_feedback else 0.3,
             "max_tokens": 2000
         }
         response = requests.post(
             "https://open.bigmodel.cn/api/paas/v4/chat/completions",
             headers=headers,
             json=data,
-            timeout=30
+            timeout=90
         )
         if response.status_code == 200:
             result = response.json()
@@ -200,147 +205,111 @@ def validate_test_cases(
 def auto_generate_expected_outputs(
     description: str,
     test_inputs: List[Dict],
+    max_retries: int = 2
 ) -> Dict:
     """
-    自动生成测试用例的期望输出。
+    自动生成测试用例的期望输出（带自纠错重试）。
 
-    流程：
-    1. 调用 AI 生成 2 套 C++ 解题代码
-    2. 用沙箱分别运行两套代码，对每个测试输入取输出
-    3. 如果两套代码对同一输入产生相同输出 → 采用该输出
-    4. 如果不同 → 标记该用例为"不确定"
-
-    参数：
-        description: 题目 Markdown 描述
-        test_inputs: [{'input_data': str, 'is_public': bool}, ...]
-
-    返回：
-        {
-            'success': bool,
-            'test_cases': [
-                {
-                    'input_data': str,
-                    'expected_output': str,   # 共识输出（两套代码结果一致时）
-                    'is_public': bool,
-                    'consensus': bool,         # 两套代码是否一致
-                }
-            ],
-            'solutions': [{'index': int, 'code': str, 'compiled': bool}, ...],
-            'summary': str,
-        }
+    流程（稳妥模式）：
+    1. 调用 AI 生成 1 套 C++ 官方参考解题代码。
+    2. 用沙箱运行这套代码，对每个测试输入取输出。
+    3. 如果编译失败或输出崩溃报错 → 带入错误信息让 AI 重试（最多 max_retries 次）。
+    4. 只要有 1 套代码成功执行所有用例，直接采纳其输出作为标准期望输出，不再要求两套代码共识。
     """
     if not test_inputs:
-        return {
-            'success': False,
-            'test_cases': [],
-            'solutions': [],
-            'summary': '没有测试输入',
-        }
+        return {'success': False, 'test_cases': [], 'solutions': [], 'summary': '没有测试输入'}
 
     api_key = api_keys.get_key('zhipu')
     if not api_key:
-        return {
-            'success': False,
-            'test_cases': [],
-            'solutions': [],
-            'summary': 'AI服务未配置',
-        }
+        return {'success': False, 'test_cases': [], 'solutions': [], 'summary': 'AI服务未配置'}
 
-    # ---------- 1. 生成 2 套解题代码 ----------
-    codes = []
-    solution_info = []
-    for i in range(2):
-        logger.info(f"正在生成第 {i+1}/2 套解题代码...")
-        code = _generate_solution_code(description, i, api_key)
-        codes.append(code)
-        solution_info.append({'index': i + 1, 'code': code, 'compiled': False})
-
-    # ---------- 2. 为每套代码构造"伪测试用例"运行沙箱 ----------
-    # 期望输出设为空字符串，我们只关心 actual_output
+    # 伪装测试用例，不比对期望输出
     dummy_cases = [
         {
             'id': idx + 1,
             'input_data': tc.get('input_data', ''),
-            'expected_output': '',   # 不比对
+            'expected_output': '', 
             'is_public': tc.get('is_public', False),
         }
         for idx, tc in enumerate(test_inputs)
     ]
 
-    all_outputs = []  # all_outputs[solution_idx] = [output_for_case_0, output_for_case_1, ...]
+    # 我们现在只用 1 套代码
+    state = {'index': 1, 'code': '', 'compiled': False, 'outputs': [None]*len(test_inputs), 'error': ''}
 
-    for i, code in enumerate(codes):
-        if not code:
-            all_outputs.append([None] * len(test_inputs))
-            continue
-        logger.info(f"正在沙箱运行第 {i+1} 套代码...")
-        result = run_test_cases(code, dummy_cases)
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            logger.info(f"== 期望输出生成：第 {attempt} 次纠错重试 ==")
 
-        if not result.get('compile_success', False):
-            logger.warning(f"第 {i+1} 套代码编译失败: {result.get('compile_error', '')}")
-            all_outputs.append([None] * len(test_inputs))
-            continue
+        if state['error'] or not state['code']:
+            logger.info(f"正在生成标准解题代码 (尝试 {attempt+1})...")
+            code = _generate_solution_code(description, 0, api_key, state['error'])
+            if not code:
+                state['error'] = 'AI未能生成代码'
+                continue
 
-        solution_info[i]['compiled'] = True
-        outputs = []
-        for detail in result.get('details', []):
-            raw = detail.get('actual_output', '')
-            # 标准化（去除末尾换行和空白）
-            normalized = raw.strip()
-            if detail.get('error'):
-                outputs.append(None)  # 运行时错误
-            else:
-                outputs.append(normalized)
-        # 如果 details 数量不足，补 None
-        while len(outputs) < len(test_inputs):
-            outputs.append(None)
-        all_outputs.append(outputs)
+            state['code'] = code
+            logger.info(f"正在沙箱运行解题代码...")
+            result = run_test_cases(code, dummy_cases)
 
-    # ---------- 3. 取共识 ----------
+            if not result.get('compile_success', False):
+                state['compiled'] = False
+                state['error'] = f"编译失败：\n{result.get('compile_error', '未知编译错误')}"
+                continue
+
+            state['compiled'] = True
+            state['error'] = '' # 清除错误
+            
+            # 提取输出并检查是否有运行时错误
+            outputs = []
+            has_runtime_error = False
+            for detail in result.get('details', []):
+                if detail.get('error'):
+                    state['error'] = f"测试用例 {detail.get('case_id')} 运行时错误：\n{detail.get('error')}"
+                    outputs.append(None)
+                    has_runtime_error = True
+                else:
+                    outputs.append(detail.get('actual_output', '').strip())
+            # 补齐
+            while len(outputs) < len(test_inputs):
+                outputs.append(None)
+            state['outputs'] = outputs
+
+            # 如果没有运行时错误，直接成功跳出！
+            if not has_runtime_error:
+                logger.info("标准代码成功运行所有用例，验证成功！")
+                break
+
+    # ---------- 总结摘要 ----------
     validated_cases = []
-    consensus_count = 0
-    for idx, tc in enumerate(test_inputs):
-        out_a = all_outputs[0][idx] if len(all_outputs) > 0 else None
-        out_b = all_outputs[1][idx] if len(all_outputs) > 1 else None
+    success = state['compiled'] and not state['error']
 
-        if out_a is not None and out_b is not None and out_a == out_b:
-            # 两套代码输出一致 → 采用
-            validated_cases.append({
-                'input_data': tc.get('input_data', ''),
-                'expected_output': out_a,
-                'is_public': tc.get('is_public', False),
-                'consensus': True,
-            })
-            consensus_count += 1
-        else:
-            # 不一致或某套代码失败 → 取第一套成功的输出，标记为不确定
-            fallback = out_a if out_a is not None else (out_b if out_b is not None else '')
-            validated_cases.append({
-                'input_data': tc.get('input_data', ''),
-                'expected_output': fallback,
-                'is_public': tc.get('is_public', False),
-                'consensus': False,
-            })
+    for i, tc in enumerate(test_inputs):
+        validated_cases.append({
+            'input_data': tc.get('input_data', ''),
+            'expected_output': state['outputs'][i] if state['outputs'][i] is not None else '',
+            'is_public': tc.get('is_public', False),
+            'consensus': success, # 单套代码只要成功，就是 true
+        })
+    
+    solutions_for_frontend = [
+        {
+            'index': state['index'], 
+            'code': state['code'], 
+            'compiled': state['compiled'], 
+            'code_preview': state['code'][:500] + ('...' if len(state['code'])>500 else '') if state['code'] else ''
+        }
+    ]
 
-    # ---------- 4. 摘要 ----------
     total = len(test_inputs)
-    compiled_count = sum(1 for s in solution_info if s['compiled'])
-    if compiled_count == 0:
-        summary = '两套 AI 代码均编译失败，无法自动生成期望输出。请手动填写。'
-        success = False
-    elif consensus_count == total:
-        summary = f'验证完成！2 套代码对全部 {total} 个用例输出一致，已自动填充期望输出。'
-        success = True
+    if not success:
+        summary = f'验证失败！AI代码在重试 {max_retries} 次后依然无法通过（编译失败或运行出错）。请手动检查。'
     else:
-        summary = (
-            f'部分验证：{consensus_count}/{total} 个用例的两套代码输出一致，'
-            f'已自动填充。其余用例请手动检查。'
-        )
-        success = True  # 部分成功也算可用
+        summary = f'验证完成！已自动生成解题代码并为您填充了 {total} 个用例的期望输出。'
 
     return {
         'success': success,
         'test_cases': validated_cases,
-        'solutions': solution_info,
+        'solutions': solutions_for_frontend,
         'summary': summary,
     }

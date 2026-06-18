@@ -1,0 +1,341 @@
+{% extends "layout.html" %}
+
+{% block title %}引导式学习 - {{ assignment.title }} - CodeSense 酷森思{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/thinking.css') }}?v={{ now().timestamp() }}">
+{% endblock %}
+
+{% block extra_head %}
+<!-- SortableJS for drag-and-drop -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="arena-container" id="arena-container" data-assignment-id="{{ assignment.id }}" data-preset-status="{{ preset_status }}">
+
+    <!-- ========== Header: Progress + Timer ========== -->
+    <div class="arena-header">
+        <div class="arena-title">
+            <i class="bi bi-lightning-charge-fill"></i>
+            <span>引导式学习</span>
+        </div>
+
+        <div class="progress-steps">
+            <div class="progress-step">
+                <div class="step-circle active" id="step-circle-1">1</div>
+                <div class="step-label active" id="step-label-1">思路描述</div>
+            </div>
+            <div class="step-line" id="step-line-1"></div>
+            <div class="progress-step">
+                <div class="step-circle" id="step-circle-2">2</div>
+                <div class="step-label" id="step-label-2">积木编程</div>
+            </div>
+            <div class="step-line" id="step-line-2"></div>
+            <div class="progress-step">
+                <div class="step-circle" id="step-circle-3">3</div>
+                <div class="step-label" id="step-label-3">费曼教学</div>
+            </div>
+        </div>
+
+        <div class="arena-timer">
+            <i class="bi bi-stopwatch"></i>
+            <span id="arena-timer">00:00</span>
+        </div>
+    </div>
+
+    <!-- ========== Problem Description ========== -->
+    <div class="problem-panel">
+        <h2><i class="bi bi-file-earmark-text"></i> {{ assignment.title }}</h2>
+        <div class="problem-description" data-markdown="{{ assignment.description or '' }}">
+            {{ assignment.description or '暂无描述' }}
+        </div>
+    </div>
+
+    <!-- ========== Preset Loading State ========== -->
+    {% if preset_status != 'ready' %}
+    <div class="preset-pending" id="preset-pending">
+        {% if preset_status == 'generating' %}
+        <i class="bi bi-gear-wide-connected"></i>
+        <h3>AI正在为这道题准备学习数据...</h3>
+        <p>这通常需要10-30秒，请稍候。数据准备好后会自动开始。</p>
+        {% elif preset_status == 'failed' %}
+        <i class="bi bi-exclamation-triangle" style="animation: none; color: var(--arena-danger);"></i>
+        <h3>学习数据生成失败</h3>
+        <p>可能由于大模型连接超时，请尝试重新生成或联系老师。</p>
+        <button class="arena-btn arena-btn-primary" style="margin-top: 16px;" onclick="retryGeneratePreset()">
+            <i class="bi bi-arrow-clockwise"></i> 重新尝试生成
+        </button>
+        {% else %}
+        <i class="bi bi-hourglass-split"></i>
+        <h3>学习数据尚未准备</h3>
+        <p>老师布置的作业正在等待AI预设生成。请稍后刷新页面再试。</p>
+        <button class="arena-btn arena-btn-primary" style="margin-top: 16px;" onclick="location.reload()">
+            <i class="bi bi-arrow-clockwise"></i> 刷新页面
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- ========== Main Body (3 stages, only 1 visible at a time) ========== -->
+    <div class="arena-body" {% if preset_status != 'ready' %}style="display:none"{% endif %}>
+
+        <!-- ===== Left Panel: Stage Content ===== -->
+        <div class="arena-panel">
+            <!-- ===== STAGE 1: Natural Language Description ===== -->
+            <div class="stage-section active" id="stage-1">
+                <div class="panel-header">
+                    <h3><i class="bi bi-chat-left-text"></i> 阶段一：思路描述</h3>
+                    <span style="font-size: 12px; color: var(--arena-text-dim);">用自然语言描述你的解题思路</span>
+                </div>
+                <div class="panel-body">
+                    <textarea class="description-textarea" id="description-input"
+                              placeholder="请用你自己的话描述这道题的解题思路...&#10;&#10;例如：&#10;首先，我需要读取输入的数据...&#10;然后，我要创建一个循环来...&#10;最后，输出计算结果..."></textarea>
+
+                    <div id="score-result" style="display: none;"></div>
+                    <div id="stage1-hints"></div>
+
+                    <div class="action-bar">
+                        <div class="action-bar-left">
+                            <button class="arena-btn arena-btn-outline" id="stage1-hint">
+                                <i class="bi bi-lightbulb"></i> 请求提示
+                            </button>
+                        </div>
+                        <button class="arena-btn arena-btn-primary" id="stage1-submit">
+                            <i class="bi bi-send"></i> 提交思路
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== STAGE 2: Block Puzzle ===== -->
+            <div class="stage-section" id="stage-2">
+                <div class="panel-header">
+                    <h3><i class="bi bi-puzzle"></i> 阶段二：积木编程</h3>
+                    <span style="font-size: 12px; color: var(--arena-text-dim);">拖拽代码块到右侧，排列正确顺序</span>
+                </div>
+                <div class="panel-body">
+                    <style>
+                        /* 散落池：CSS Grid 自适应布局，防止重叠 */
+                        #block-pool-list {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                            gap: 10px;
+                            padding: 16px;
+                            background: radial-gradient(circle, #f8fafc 0%, #f1f5f9 100%);
+                            border: 2px dashed #cbd5e1;
+                            border-radius: 8px;
+                            min-height: 80px;
+                        }
+                        #block-pool-list .code-block {
+                            width: 100%;
+                            margin: 0;
+                            box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+                            transform: rotate(-0.3deg);
+                            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                        }
+                        #block-pool-list .code-block:nth-child(even) {
+                            transform: rotate(0.3deg);
+                        }
+                        #block-pool-list .code-block:hover {
+                            transform: scale(1.03) rotate(0deg);
+                            box-shadow: 0 6px 18px rgba(37,99,235,0.15);
+                            z-index: 10;
+                        }
+                        /* 构建区保持垂直严密排布 */
+                        #block-solution-list .code-block {
+                            width: 100%;
+                            transform: none !important;
+                            margin-bottom: 6px;
+                        }
+                    </style>
+                    <div class="blocks-workspace">
+                        <div>
+                            <div class="block-pool-title">
+                                <i class="bi bi-collection"></i> 核心算法块散落池（四面八方浮动）
+                            </div>
+                            <div class="block-pool" id="block-pool-list">
+                                <!-- Blocks populated by JS -->
+                            </div>
+                        </div>
+                        <div>
+                            <div class="block-solution-title" style="display: flex; justify-content: space-between; align-items: center;">
+                                <span><i class="bi bi-arrow-down-circle"></i> 核心构建区（基础框架已包裹）</span>
+                                <button class="arena-btn arena-btn-outline" onclick="ThinkingArena.autoNestBlocks()" title="根据算法语法自动整理嵌套大括号层级" style="padding: 2px 8px; font-size: 11px;">
+                                    <i class="bi bi-braces"></i> 一键大括号嵌套
+                                </button>
+                            </div>
+                            <div class="static-shell-block" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-left: 3px solid #64748b; padding: 8px 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #475569; border-radius: 4px; margin-bottom: 4px; user-select: none;">#include &lt;iostream&gt;<br>using namespace std;<br>int main() {</div>
+                            
+                            <div class="block-solution" id="block-solution-list" style="min-height: 180px; border-radius: 0; border-left: 2px dashed #cbd5e1; border-right: 2px dashed #cbd5e1; border-top: none; border-bottom: none; margin: 0; background: #fff;">
+                                <!-- Solution area -->
+                            </div>
+
+                            <div class="static-shell-block" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-left: 3px solid #64748b; padding: 8px 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #475569; border-radius: 4px; margin-top: 4px; user-select: none;">    return 0;<br>}</div>
+                        </div>
+                    </div>
+
+                    <!-- Code Preview -->
+                    <div style="margin-top: 16px;">
+                        <div class="block-pool-title"><i class="bi bi-eye"></i> 代码预览</div>
+                        <pre style="background: var(--arena-bg); border-radius: 8px; padding: 14px; font-family: var(--arena-mono); font-size: 13px; color: var(--arena-text); min-height: 60px;"><code id="code-preview">// 将代码块拖到右侧构建区...</code></pre>
+                    </div>
+
+                    <div id="stage2-hints"></div>
+
+                    <div class="action-bar">
+                        <div class="action-bar-left">
+                            <button class="arena-btn arena-btn-outline" onclick="ThinkingArena.requestStage2Hint()">
+                                <i class="bi bi-lightbulb"></i> 请求提示
+                            </button>
+                            <button class="arena-btn arena-btn-outline" onclick="ThinkingArena.regeneratePreset()" title="应用最新大括号规范重新拆解生成积木数据" style="margin-left: 8px;">
+                                <i class="bi bi-arrow-clockwise"></i> 重新拆解代码池
+                            </button>
+                        </div>
+                        <button class="arena-btn arena-btn-success" onclick="ThinkingArena.verifyBlocks()">
+                            <i class="bi bi-check2-all"></i> 验证代码
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== STAGE 3: Feynman Teaching (Left = Teacher Chat) ===== -->
+            <div class="stage-section" id="stage-3">
+                <div class="panel-header">
+                    <h3><i class="bi bi-mortarboard"></i> 老师辅导</h3>
+                    <span style="font-size: 12px; color: var(--arena-text-dim);">向老师请教，深化理解</span>
+                </div>
+                <div class="chat-container">
+                    <div class="chat-messages" id="teacher-messages">
+                        <!-- Teacher chat messages -->
+                    </div>
+                    <div class="chat-input-area">
+                        <input class="chat-input" id="teacher-chat-input" type="text"
+                               placeholder="向老师提问..."
+                               onkeydown="if(event.key==='Enter'){ThinkingArena.sendTeacherChat()}">
+                        <button class="arena-btn-send" onclick="ThinkingArena.sendTeacherChat()">
+                            <i class="bi bi-send-fill"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Right Panel: AI Hints / Feynman Student Chat ===== -->
+        <div class="arena-panel">
+            <!-- Default: AI Companion (Stages 1-2) -->
+            <div id="ai-companion-panel" class="stage-section active">
+                <div class="panel-header">
+                    <h3><i class="bi bi-robot"></i> AI 伴学助手</h3>
+                </div>
+                <div class="chat-container">
+                    <div class="chat-messages" id="companion-messages">
+                        <div class="chat-message">
+                            <div class="chat-avatar teacher">🤖</div>
+                            <div class="chat-bubble ai">我是你的 AI 伴学助手。在思路描述和积木编程阶段，如果你遇到问题，随时可以在下方问我，我会引导你思考！</div>
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <input class="chat-input" id="companion-chat-input" type="text"
+                               placeholder="向伴学助手提问..."
+                               onkeydown="if(event.key==='Enter'){ThinkingArena.sendCompanionChat()}">
+                        <button class="arena-btn-send" onclick="ThinkingArena.sendCompanionChat()">
+                            <i class="bi bi-send-fill"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 3: Bad Student Chat Panel -->
+            <div id="student-agent-panel" class="stage-section">
+                <div class="panel-header">
+                    <h3><i class="bi bi-person-raised-hand"></i> 教同学（小明）</h3>
+                    <span style="font-size: 12px; color: var(--arena-text-dim);">把你学到的教给他</span>
+                </div>
+                <div class="chat-container">
+                    <div class="chat-messages" id="student-messages">
+                        <!-- Student chat messages -->
+                    </div>
+                    <div id="code-review-section" style="display: none; padding: 0 16px;">
+                        <!-- Code review panel populated by JS -->
+                    </div>
+                    <div class="chat-input-area">
+                        <input class="chat-input" id="student-chat-input" type="text"
+                               placeholder="教小明解题..."
+                               onkeydown="if(event.key==='Enter'){ThinkingArena.sendStudentChat()}">
+                        <button class="arena-btn-send" onclick="ThinkingArena.sendStudentChat()">
+                            <i class="bi bi-send-fill"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- .arena-body -->
+
+</div><!-- .arena-container -->
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/thinking.js') }}?v={{ now().timestamp() }}"></script>
+<script>
+    // Override stage switching to also toggle right panel
+    (function() {
+        const origInit = ThinkingArena.init;
+        const stageObserver = new MutationObserver(() => {
+            const stage3 = document.getElementById('stage-3');
+            const companionPanel = document.getElementById('ai-companion-panel');
+            const studentPanel = document.getElementById('student-agent-panel');
+            
+            if (stage3 && stage3.classList.contains('active')) {
+                if (companionPanel) companionPanel.classList.remove('active');
+                if (studentPanel) studentPanel.classList.add('active');
+            } else {
+                if (companionPanel) companionPanel.classList.add('active');
+                if (studentPanel) studentPanel.classList.remove('active');
+            }
+        });
+        
+        // Observe only main stage sections to prevent infinite observer loop
+        ['stage-1', 'stage-2', 'stage-3'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) stageObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+        });
+    })();
+
+    // 重新尝试生成预设
+    function retryGeneratePreset() {
+        const btn = document.querySelector('.preset-pending button');
+        const originalText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split rotating-icon"></i> 正在请求中...';
+        }
+        fetch('/thinking/api/retry_preset/{{ assignment.id }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('重试失败: ' + (data.error || '未知错误'));
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }
+            }
+        })
+        .catch(err => {
+            alert('请求错误: ' + err.message);
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+    }
+</script>
+{% endblock %}

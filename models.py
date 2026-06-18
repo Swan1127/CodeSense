@@ -966,3 +966,136 @@ class InviteToken(db.Model):
         if ok:
             InviteToken.mark_as_used(token_str)
         return ok, err_msg
+
+
+# ============================================================
+# 三阶段引导式学习系统（Guided Learning Arena）数据模型
+# 独立表，不修改任何现有模型
+# ============================================================
+
+class AssignmentThinkingPreset(db.Model):
+    """AI预设数据表 — 老师发布作业后由AI自动生成"""
+    __tablename__ = 'assignment_thinking_presets'
+
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignments.id', ondelete='CASCADE'), nullable=False, unique=True)
+    reference_code = db.Column(db.Text, nullable=True)  # 标准答案代码
+    key_steps = db.Column(db.Text, nullable=True)  # JSON: 关键解题步骤列表
+    code_blocks = db.Column(db.Text, nullable=True)  # JSON: 正确代码块列表（含缩进层级）
+    noise_blocks = db.Column(db.Text, nullable=True)  # JSON: 噪声代码块列表
+    difficulty_config = db.Column(db.Text, nullable=True)  # JSON: 费曼阶段难度配置
+    status = db.Column(db.String(20), default='pending')  # pending / generating / ready / failed
+    error_message = db.Column(db.Text, nullable=True)  # 生成失败时的错误信息
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+    updated_at = db.Column(db.DateTime, default=dt.utcnow, onupdate=dt.utcnow)
+
+    # 关系
+    assignment = db.relationship('Assignment', backref=db.backref('thinking_preset', uselist=False))
+
+    def get_key_steps(self):
+        """获取关键步骤列表"""
+        if not self.key_steps:
+            return []
+        try:
+            return json.loads(self.key_steps)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def get_code_blocks(self):
+        """获取代码块列表"""
+        if not self.code_blocks:
+            return []
+        try:
+            return json.loads(self.code_blocks)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def get_noise_blocks(self):
+        """获取噪声块列表"""
+        if not self.noise_blocks:
+            return []
+        try:
+            return json.loads(self.noise_blocks)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def get_difficulty_config(self):
+        """获取难度配置"""
+        if not self.difficulty_config:
+            return {'feynman_rounds': 5, 'student_persona': 'curious'}
+        try:
+            return json.loads(self.difficulty_config)
+        except (json.JSONDecodeError, TypeError):
+            return {'feynman_rounds': 5, 'student_persona': 'curious'}
+
+
+class ThinkingSession(db.Model):
+    """学生学习会话表 — 记录一次完整的三阶段学习过程"""
+    __tablename__ = 'thinking_sessions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='CASCADE'), nullable=False)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignments.id', ondelete='CASCADE'), nullable=False)
+    current_stage = db.Column(db.Integer, default=1)  # 当前阶段 1/2/3
+    # 阶段1数据
+    stage1_description = db.Column(db.Text, nullable=True)  # 学生的自然语言描述
+    stage1_score = db.Column(db.Float, nullable=True)  # 思路匹配度 (0-100)
+    stage1_hint_count = db.Column(db.Integer, default=0)  # 阶段1提示请求次数
+    # 阶段2数据
+    stage2_block_order = db.Column(db.Text, nullable=True)  # JSON: 学生拼装的代码块顺序
+    stage2_completed = db.Column(db.Boolean, default=False)
+    stage2_hint_count = db.Column(db.Integer, default=0)
+    # 阶段3数据
+    stage3_completed = db.Column(db.Boolean, default=False)
+    stage3_teacher_rounds = db.Column(db.Integer, default=0)  # 老师Agent对话轮次
+    stage3_student_rounds = db.Column(db.Integer, default=0)  # 坏学生Agent对话轮次
+    # 总览
+    total_time_seconds = db.Column(db.Integer, default=0)  # 总用时(秒)
+    started_at = db.Column(db.DateTime, default=dt.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(20), default='in_progress')  # in_progress / completed / abandoned
+
+    # 关系
+    student = db.relationship('User', backref=db.backref('thinking_sessions', lazy='dynamic'))
+    assignment = db.relationship('Assignment', backref=db.backref('thinking_sessions', lazy='dynamic'))
+    logs = db.relationship('ThinkingStageLog', backref='session', lazy='dynamic', cascade='all, delete-orphan')
+
+    def to_summary_dict(self):
+        """生成供老师查看的摘要"""
+        return {
+            'id': self.id,
+            'student_id': self.student_id,
+            'assignment_id': self.assignment_id,
+            'current_stage': self.current_stage,
+            'stage1_score': self.stage1_score,
+            'stage2_completed': self.stage2_completed,
+            'stage3_completed': self.stage3_completed,
+            'total_time_seconds': self.total_time_seconds,
+            'hint_count': self.stage1_hint_count + self.stage2_hint_count,
+            'started_at': self.started_at.strftime('%Y-%m-%d %H:%M:%S') if self.started_at else None,
+            'completed_at': self.completed_at.strftime('%Y-%m-%d %H:%M:%S') if self.completed_at else None,
+            'status': self.status
+        }
+
+
+class ThinkingStageLog(db.Model):
+    """交互过程日志 — 记录每一次对话、操作、事件"""
+    __tablename__ = 'thinking_stage_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('thinking_sessions.id', ondelete='CASCADE'), nullable=False)
+    stage = db.Column(db.Integer, nullable=False)  # 阶段 1/2/3
+    event_type = db.Column(db.String(50), nullable=False)  # chat / hint_request / block_move / stage_pass / description_submit 等
+    role = db.Column(db.String(30), nullable=True)  # student / teacher_agent / student_agent
+    content = db.Column(db.Text, nullable=True)  # 内容
+    metadata_json = db.Column(db.Text, nullable=True)  # JSON: 额外元数据
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+
+    def get_metadata(self):
+        """获取元数据"""
+        if not self.metadata_json:
+            return {}
+        try:
+            return json.loads(self.metadata_json)
+        except (json.JSONDecodeError, TypeError):
+            return {}

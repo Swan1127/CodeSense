@@ -1,171 +1,311 @@
 {% extends "layout.html" %}
 
-{% block title %}代码整理挑战 V6.0 (至尊液态版) - CodeSense 酷森思{% endblock %}
+{% block title %}阶段二：分批积木编程演示 - CodeSense 酷森思{% endblock %}
 
-{% block extra_head %}
-<!-- 引入 SortableJS & Anime.js -->
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
-<!-- 引入 Confetti -->
-<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/thinking.css') }}?v={{ now().timestamp() }}">
 <style>
-    :root {
-        --bg-deep: #020617;
-        --liquid-base: #3b82f6;
-        --liquid-glow: #60a5fa;
+    /* 针对演示页面独有的分批锁定样式增强，无缝融入原始整体设计 */
+    .code-block.locked-block {
+        border-left-color: #10b981 !important;
+        background-color: #f8fafc !important;
+        color: #64748b !important;
+        box-shadow: none !important;
+        cursor: default !important;
+        transform: none !important;
     }
-
-    body {
-        background-color: var(--bg-deep);
-        color: #f8fafc;
+    .code-block.locked-block .block-label {
+        color: #10b981 !important;
+        font-weight: 600;
     }
-
-    .parsons-container {
-        padding: 50px 0;
-        min-height: 100vh;
+    .inner-dropzone {
+        border: 2px dashed #10b981;
+        background-color: #f0fdf4;
+        border-radius: 4px;
+        min-height: 140px;
+        padding: 8px;
+        margin: 6px 0;
+        transition: all 0.2s ease;
     }
-
-    /* 高清液态滤镜层 */
-    .fusion-layer {
-        filter: url("#goo-premium-parsons");
-        padding: 20px;
-    }
-
-    .code-block {
-        background: linear-gradient(135deg, var(--liquid-base) 0%, #1d4ed8 100%);
-        color: white;
-        padding: 16px 20px;
-        margin-bottom: 18px;
-        border-radius: 50px;
-        cursor: grab;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.85rem;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        position: relative;
-        will-change: transform;
-        box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-    }
-
-    .code-block:hover {
-        background: var(--liquid-glow);
-        transform: translateY(-2px);
-    }
-
-    /* 抓起状态：更强的空气感与光泽 */
-    .sortable-chosen {
-        background: #2563eb !important;
-        transform: scale(1.1) !important;
-        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5) !important;
-        z-index: 1000;
-        border: 2px solid #fff !important;
-    }
-
-    .sortable-ghost {
-        opacity: 0.1;
-    }
-
-    .drop-zone {
-        background: rgba(15, 23, 42, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 40px;
-        min-height: 550px;
-        padding: 30px;
-        backdrop-filter: blur(15px);
-    }
-
-    .svg-def {
-        width: 0;
-        height: 0;
-        position: absolute;
+    .inner-dropzone:empty::before {
+        content: "-- 内部循环与核心逻辑放置区 --";
+        display: block;
+        text-align: center;
+        color: #10b981;
+        font-size: 11px;
+        margin-top: 55px;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="parsons-container">
-    <!-- 高清液态滤镜 -->
-    <svg class="svg-def">
-        <defs>
-            <filter id="goo-premium-parsons">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur" />
-                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 25 -12"
-                    result="goo" />
-                <feComposite in="SourceGraphic" in2="goo" operator="atop" />
-            </filter>
-        </defs>
-    </svg>
+<div class="arena-container" id="arena-container">
 
-    <div class="container">
-        <div class="mb-5 animate__animated animate__fadeIn">
-            <h1 class="display-6 fw-bold">液态代码拼装台 (V6.0)</h1>
-            <p class="text-muted">基于深度图像算法的物理级交互。请拼装出完整的 C++ 程序。</p>
+    <!-- ========== Header: Progress + Timer ========== -->
+    <div class="arena-header">
+        <div class="arena-title">
+            <i class="bi bi-lightning-charge-fill"></i>
+            <span>引导式学习演示 (作业ID: 122 模拟)</span>
         </div>
 
-        <div class="row g-4">
-            <div class="col-md-5">
-                <div class="fusion-layer" id="source-bank">
-                    <div class="code-block" data-id="1">#include &lt;iostream&gt;</div>
-                    <div class="code-block" data-id="2">using namespace std;</div>
-                    <div class="code-block" data-id="3">int main() {</div>
-                    <div class="code-block" data-id="4">&nbsp;&nbsp;int a, b;</div>
-                    <div class="code-block" data-id="5">&nbsp;&nbsp;cin >> a >> b;</div>
-                    <div class="code-block" data-id="6">&nbsp;&nbsp;cout << a+b;</div>
-                            <div class="code-block" data-id="7">&nbsp;&nbsp;return 0;</div>
-                            <div class="code-block" data-id="8">}</div>
+        <div class="progress-steps">
+            <div class="progress-step">
+                <div class="step-circle completed">1</div>
+                <div class="step-label completed">思路描述</div>
+            </div>
+            <div class="step-line completed"></div>
+            <div class="progress-step">
+                <div class="step-circle active">2</div>
+                <div class="step-label active">积木编程 (分批搭建)</div>
+            </div>
+            <div class="step-line"></div>
+            <div class="progress-step">
+                <div class="step-circle">3</div>
+                <div class="step-label">费曼教学</div>
+            </div>
+        </div>
+
+        <div class="arena-timer">
+            <i class="bi bi-stopwatch"></i>
+            <span>分批原型演示</span>
+        </div>
+    </div>
+
+    <!-- ========== Main Body Layout ========== -->
+    <div class="arena-body">
+        
+        <!-- ===== Left Main Column: Stage 2 Workspace ===== -->
+        <div class="stage-section active" style="display: block;">
+            <div class="panel-header">
+                <h3><i class="bi bi-puzzle"></i> 阶段二：积木编程 <span id="phase-status-text" style="color: #2563eb; font-weight: 600; margin-left: 8px;">(第一批次：外层骨架)</span></h3>
+                <span style="font-size: 12px; color: var(--arena-text-dim);">先搭建最外层头文件与主函数框架，验证锁定后下发内层计算积木</span>
+            </div>
+            <div class="panel-body">
+                <div class="blocks-workspace">
+                    <div>
+                        <div class="block-pool-title">
+                            <i class="bi bi-collection"></i> 代码块池（含噪声块）
+                        </div>
+                        <div class="block-pool" id="demo-block-pool" style="min-height: 300px;">
+                            <!-- 第一批次初始代码块 -->
+                            <div class="code-block" data-block-id="1" data-indent="0">
+                                <code>#include &lt;iostream&gt;&#10;using namespace std;</code>
+                                <div class="block-label">头文件声明</div>
+                            </div>
+                            <div class="code-block" data-block-id="2" data-indent="0">
+                                <code>int main() {</code>
+                                <div class="block-label">主函数入口</div>
+                            </div>
+                            <div class="code-block" data-block-id="3" data-indent="0">
+                                <code>return 0;&#10;}</code>
+                                <div class="block-label">主函数结束</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="block-solution-title">
+                            <i class="bi bi-arrow-down-circle"></i> 代码构建区
+                        </div>
+                        <div class="block-solution" id="demo-block-solution" style="min-height: 300px;">
+                            <!-- 拖拽目标区 -->
+                        </div>
                     </div>
                 </div>
 
-                <div class="col-md-7">
-                    <div class="drop-zone fusion-layer" id="code-solution"></div>
-                    <div class="mt-4 text-end">
-                        <button class="btn btn-primary rounded-pill px-5 btn-lg shadow"
-                            onclick="submitCode()">提交逻辑审计</button>
+                <!-- Code Preview -->
+                <div style="margin-top: 16px;">
+                    <div class="block-pool-title"><i class="bi bi-eye"></i> 代码预览</div>
+                    <pre style="background: #f3f4f6; border-radius: 8px; padding: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #1f2937; min-height: 50px;"><code id="demo-code-preview">// 将外层代码块拖入构建区...</code></pre>
+                </div>
+
+                <div id="demo-hints-container"></div>
+
+                <div class="action-bar" style="margin-top: 16px;">
+                    <div class="action-bar-left">
+                        <button class="arena-btn arena-btn-outline" onclick="requestDemoHint()">
+                            <i class="bi bi-lightbulb"></i> 请求提示
+                        </button>
+                        <button class="arena-btn arena-btn-outline" onclick="location.reload()" style="margin-left: 8px;">
+                            <i class="bi bi-arrow-clockwise"></i> 重新开始
+                        </button>
                     </div>
+                    <button class="arena-btn arena-btn-success" id="verify-demo-btn" onclick="verifyDemoPhase1()">
+                        <i class="bi bi-check2-all"></i> 验证外层代码
+                    </button>
                 </div>
             </div>
         </div>
-    </div>
-    {% endblock %}
 
-    {% block extra_js %}
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const bank = document.getElementById('source-bank');
-            const sol = document.getElementById('code-solution');
+        <!-- ===== Right Panel: AI Companion ===== -->
+        <div class="arena-panel">
+            <div class="stage-section active" style="display: block; height: 100%;">
+                <div class="panel-header">
+                    <h3><i class="bi bi-robot"></i> AI 学习助手</h3>
+                </div>
+                <div class="panel-body" style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #9ca3af; height: calc(100% - 45px);">
+                    <i class="bi bi-lightbulb" style="font-size: 48px; color: #2563eb; margin-bottom: 16px;"></i>
+                    <p style="color: #4b5563; font-size: 13px; margin-bottom: 8px; font-weight: 600;">分批搭建策略启用</p>
+                    <p style="font-size: 12px; line-height: 1.6;">请优先从左侧拖入程序的最外层结构（头文件及主函数入口、返回值结束块）。正确闭合后将自动释放内部算法积木。</p>
+                </div>
+            </div>
+        </div>
 
-            const params = {
-                group: 'fusion',
-                animation: 0,
-                ghostClass: 'sortable-ghost',
-                chosenClass: 'sortable-chosen',
-                dragClass: 'sortable-drag',
-                fallbackOnBody: true,
-                onStart: (evt) => {
-                    anime({ targets: evt.item, scale: [1, 1.1], duration: 250, easing: 'easeOutQuart' });
-                },
-                onEnd: (evt) => {
-                    anime({ targets: evt.item, scale: [1.1, 1], translateY: [10, 0], duration: 1000, easing: 'easeOutElastic(1, .4)' });
-                }
-            };
+    </div><!-- .arena-body -->
 
-            new Sortable(bank, params);
-            new Sortable(sol, params);
+</div><!-- .arena-container -->
+{% endblock %}
 
-            window.submitCode = function () {
-                const ids = Array.from(sol.querySelectorAll('.code-block')).map(el => el.getAttribute('data-id'));
-                if (ids.join(',') === '1,2,3,4,5,6,7,8') {
-                    confetti({ particleCount: 300, spread: 90 });
-                    alert("审计通过：物理逻辑流完全正确！");
-                } else {
-                    alert("审计失败：检测到逻辑断层，请检查排列顺序。");
-                }
-            };
-        });
-    </script>
-    {% endblock %}
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const pool = document.getElementById('demo-block-pool');
+        const solution = document.getElementById('demo-block-solution');
+        const previewCode = document.getElementById('demo-code-preview');
+        const statusText = document.getElementById('phase-status-text');
+        const verifyBtn = document.getElementById('verify-demo-btn');
+        const hintsContainer = document.getElementById('demo-hints-container');
+
+        const sortableOptions = {
+            group: 'demo-blocks',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            dragClass: 'sortable-drag',
+            onAdd: updatePreview,
+            onUpdate: updatePreview,
+            onRemove: updatePreview
+        };
+
+        let poolSortable = Sortable.create(pool, sortableOptions);
+        let solSortable = Sortable.create(solution, sortableOptions);
+
+        function updatePreview() {
+            // 如果处于阶段二（存在内部放置区）
+            const innerDrop = document.getElementById('inner-dropzone-area');
+            if (innerDrop) {
+                // 渲染完整嵌套结构预览
+                let codeStr = "#include <iostream>\nusing namespace std;\nint main() {\n";
+                innerDrop.querySelectorAll('.code-block').forEach(b => {
+                    const codeContent = b.querySelector('code').textContent;
+                    codeStr += "    " + codeContent + "\n";
+                });
+                codeStr += "    return 0;\n}";
+                previewCode.textContent = codeStr;
+                return;
+            }
+
+            // 阶段一普通顺序预览
+            const blocks = solution.querySelectorAll('.code-block');
+            let str = '';
+            blocks.forEach(b => {
+                str += b.querySelector('code').textContent + '\n';
+            });
+            previewCode.textContent = str || '// 将外层代码块拖入构建区...';
+        }
+
+        window.requestDemoHint = function() {
+            hintsContainer.innerHTML = `
+                <div class="hint-bubble animate__animated animate__fadeIn" style="margin-top: 12px;">
+                    <i class="bi bi-lightbulb-fill"></i>
+                    <div><strong>AI 指引：</strong>当前处于外层骨架组装阶段。请先放置 <code>#include</code> 头文件块，紧接着放置 <code>int main() {</code> 主函数起始块，最后放置带有 <code>return 0;}</code> 的结束块收尾。</div>
+                </div>
+            `;
+        };
+
+        window.verifyDemoPhase1 = function() {
+            const blocks = solution.querySelectorAll('.code-block');
+            const ids = Array.from(blocks).map(b => b.dataset.blockId);
+
+            if (ids.join(',') === '1,2,3') {
+                // 成功验证第一阶段
+                hintsContainer.innerHTML = `
+                    <div class="hint-bubble animate__animated animate__fadeIn" style="margin-top: 12px; background: #f0fdf4; border-color: #bbf7d0; color: #166534;">
+                        <i class="bi bi-check-circle-fill" style="color: #10b981;"></i>
+                        <div><strong>架构审计通过！</strong>外层骨架锁定完毕。内部循环与核心逻辑积木已投放至左侧池中，请继续向内部区完成组合填充。</div>
+                    </div>
+                `;
+
+                // 销毁旧的 Sortable 实例
+                solSortable.destroy();
+                poolSortable.destroy();
+
+                // 重新静态渲染构建区（固化外壳 + 植入动态内部区）
+                solution.innerHTML = `
+                    <div class="code-block locked-block">
+                        <code>#include &lt;iostream&gt;&#10;using namespace std;</code>
+                        <div class="block-label">[已固化] 头文件声明</div>
+                    </div>
+                    <div class="code-block locked-block">
+                        <code>int main() {</code>
+                        <div class="block-label">[已固化] 主函数入口</div>
+                    </div>
+                    
+                    <!-- 第二批次内部放置区 -->
+                    <div class="inner-dropzone" id="inner-dropzone-area"></div>
+
+                    <div class="code-block locked-block">
+                        <code>return 0;&#10;}</code>
+                        <div class="block-label">[已固化] 主函数结束</div>
+                    </div>
+                `;
+                // 移除外层 solution 的拖拽响应框
+                solution.style.border = 'none';
+                solution.style.background = 'transparent';
+                solution.style.padding = '0';
+
+                // 填充左侧第二批次内部计算积木
+                pool.innerHTML = `
+                    <div class="code-block" data-block-id="4" style="border-left-color: #10b981;">
+                        <code>int n, m;&#10;cin &gt;&gt; n &gt;&gt; m;</code>
+                        <div class="block-label">读取变量</div>
+                    </div>
+                    <div class="code-block" data-block-id="5" style="border-left-color: #10b981;">
+                        <code>deque&lt;int&gt; maxQ;</code>
+                        <div class="block-label">声明双端队列容器</div>
+                    </div>
+                    <div class="code-block" data-block-id="6" style="border-left-color: #10b981;">
+                        <code>for (int i = 0; i &lt; m; ++i) {</code>
+                        <div class="block-label">循环处理输入流</div>
+                    </div>
+                    <div class="code-block" data-block-id="7" style="border-left-color: #10b981;">
+                        <code>// 维护单调递减性质逻辑...</code>
+                        <div class="block-label">核心逻辑更新</div>
+                    </div>
+                    <div class="code-block" data-block-id="8" style="border-left-color: #10b981;">
+                        <code>}</code>
+                        <div class="block-label">循环闭合</div>
+                    </div>
+                `;
+
+                // 重新绑定第二批次的拖拽放置
+                const innerArea = document.getElementById('inner-dropzone-area');
+                poolSortable = Sortable.create(pool, { ...sortableOptions, group: 'inner-blocks' });
+                const innerSortable = Sortable.create(innerArea, { ...sortableOptions, group: 'inner-blocks' });
+
+                // 更新状态与最终验证按钮
+                statusText.textContent = '(第二批次：内部计算填充)';
+                statusText.style.color = '#10b981';
+                verifyBtn.innerHTML = '<i class="bi bi-check2-all"></i> 验证完整嵌套代码';
+                verifyBtn.className = 'arena-btn arena-btn-success';
+                verifyBtn.onclick = function() {
+                    const innerBlocks = innerArea.querySelectorAll('.code-block');
+                    const innerIds = Array.from(innerBlocks).map(b => b.dataset.blockId);
+                    if (innerIds.join(',') === '4,5,6,7,8') {
+                        alert("🎉 恭喜通过！内外层结构严密结合，代码构建完美成功！");
+                    } else {
+                        alert("内部积木排列顺序有误，请注意变量读取、队列声明与循环的正确顺承关系。");
+                    }
+                };
+
+                updatePreview();
+
+            } else {
+                alert("外层框架积木顺序错误！正确顺序应为：头文件声明 → 主函数入口 → 主函数结束。");
+            }
+        };
+
+        // 初始更新预览
+        updatePreview();
+    });
+</script>
+{% endblock %}

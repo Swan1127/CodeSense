@@ -31,7 +31,7 @@ class LLMEvaluator:
         
         # 根据API类型设置默认模型
         if self.api_type == "zhipu":
-            self.model_name = model_name or "glm-4.5-flash"
+            self.model_name = model_name or "glm-4.7-flash"
         elif self.api_type == "openai":
             self.model_name = model_name or "gpt-4-turbo"
         else:
