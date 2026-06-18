@@ -112,6 +112,7 @@
     grid-template-columns: 1fr 340px;
     gap: 16px;
     min-height: 520px;
+    height: 600px;
 }
 
 .arena-body.feynman-layout {
@@ -356,7 +357,8 @@
 .chat-container {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
 }
 
 .chat-messages {
@@ -411,6 +413,48 @@
     background: #2563eb;
     color: #fff;
     border-bottom-right-radius: 2px;
+}
+
+/* Markdown elements styling inside chat bubbles */
+.chat-bubble strong, .hint-bubble strong {
+    font-weight: 700 !important;
+}
+.chat-bubble p {
+    margin-bottom: 8px;
+}
+.chat-bubble p:last-child {
+    margin-bottom: 0;
+}
+.chat-bubble code {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: var(--arena-mono, monospace);
+    font-size: 0.9em;
+}
+.chat-bubble.user-msg code {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+.chat-bubble pre {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 10px 14px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+.chat-bubble pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+}
+.chat-bubble ul, .chat-bubble ol {
+    margin-bottom: 8px;
+    padding-left: 20px;
+}
+.chat-bubble ul:last-child, .chat-bubble ol:last-child {
+    margin-bottom: 0;
 }
 
 .chat-input-area {
@@ -578,6 +622,41 @@
     margin-top: 2px;
 }
 
+/* Markdown elements styling inside hint bubbles */
+.hint-bubble p {
+    margin-bottom: 6px;
+}
+.hint-bubble p:last-child {
+    margin-bottom: 0;
+}
+.hint-bubble code {
+    background: rgba(37, 99, 235, 0.1);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: var(--arena-mono, monospace);
+    font-size: 0.9em;
+}
+.hint-bubble pre {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 6px 0;
+}
+.hint-bubble pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+}
+.hint-bubble ul, .hint-bubble ol {
+    margin-bottom: 6px;
+    padding-left: 20px;
+}
+.hint-bubble ul:last-child, .hint-bubble ol:last-child {
+    margin-bottom: 0;
+}
+
 /* --- Typing Indicator --- */
 .typing-indicator {
     display: flex;
@@ -607,7 +686,11 @@
 }
 
 .stage-section.active {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    height: 100%;
 }
 
 /* --- Celebration --- */
@@ -713,3 +796,14 @@
         max-width: 100%;
     }
 }
+
+/* --- Loading Spinner for Submit Button --- */
+.rotating-icon {
+    display: inline-block;
+    animation: spin-icon 1s linear infinite;
+}
+@keyframes spin-icon {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+

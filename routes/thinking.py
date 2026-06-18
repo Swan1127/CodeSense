@@ -33,9 +33,39 @@ def arena(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
     preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
 
-    # 检查预设状态
+    # 检查预设状态，自动触发缺失的任务以防卡死
     preset_status = 'not_found'
-    if preset:
+    
+    if not preset:
+        # 1. 预设不存在时：新建并异步触发生成
+        try:
+            from utils.async_tasks import add_generate_preset_task
+            preset = AssignmentThinkingPreset(assignment_id=assignment_id, status='generating')
+            db.session.add(preset)
+            db.session.commit()
+            add_generate_preset_task(assignment_id)
+            preset_status = 'generating'
+            current_app.logger.info(f"作业 {assignment_id} 预设不存在，已自动触发异步生成")
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"自动触发预设生成失败: {e}")
+            preset_status = 'failed'
+    else:
+        # 2. 预设已存在，但如果是处于 'generating' 状态，需要防止由于服务器重启导致队列丢失而无限卡死
+        if preset.status == 'generating':
+            # 检查 updated_at 或 created_at，如果距离现在超过 120 秒，说明可能已经从队列丢失，重新触发
+            from datetime import datetime
+            delta = datetime.utcnow() - (preset.updated_at or preset.created_at)
+            if delta.total_seconds() > 120:
+                try:
+                    from utils.async_tasks import add_generate_preset_task
+                    preset.status = 'generating'
+                    preset.updated_at = datetime.utcnow()
+                    db.session.commit()
+                    add_generate_preset_task(assignment_id)
+                    current_app.logger.info(f"作业 {assignment_id} 的预设已处于 'generating' 超过 120s，已自动重新触发")
+                except Exception as e:
+                    current_app.logger.error(f"重新触发预设生成任务失败: {e}")
         preset_status = preset.status
 
     # 检查是否有进行中的会话
@@ -336,11 +366,17 @@ def companion_chat():
         preset = AssignmentThinkingPreset.query.filter_by(assignment_id=ts.assignment_id).first()
         assignment = Assignment.query.get(ts.assignment_id)
 
+        current_stage = data.get('current_stage', 1)
+        stage2_state = data.get('stage2_state', {})
+
         response_text = companion_agent_chat(
             messages,
             assignment.title,
             preset.get_key_steps() if preset else [],
-            ts.stage1_description or ''
+            ts.stage1_description or '',
+            current_stage=current_stage,
+            stage2_state=stage2_state,
+            assignment_description=assignment.description or ""
         )
 
         # 记录日志
@@ -386,7 +422,8 @@ def stage3_teacher_chat():
             messages,
             assignment.title,
             preset.get_key_steps() if preset else [],
-            ts.stage1_description or ''
+            ts.stage1_description or '',
+            assignment_description=assignment.description or ""
         )
 
         # 记录日志
@@ -426,12 +463,60 @@ def stage3_student_teach():
         assignment = Assignment.query.get(ts.assignment_id)
         difficulty = preset.get_difficulty_config() if preset else {}
 
+        # 验证学生发给小明的解答质量（防止刷屏/复读绕过）
+        if messages:
+            current_msg = messages[-1].get('content', '').strip()
+            cleaned_current = "".join(current_msg.split())
+            
+            # 1. 极简文本拦截（少于5个字符）
+            if len(cleaned_current) < 5:
+                response_text = "呃，你说的这也太简短了（需要5字以上），我感觉完全听不明白。能稍微详细一点解释吗？"
+                return jsonify({
+                    'success': True,
+                    'response': response_text,
+                    'ready_for_code': False
+                })
+            
+            # 从数据库中查询该会话已记录的有效学生发言历史，进行相似度校验
+            # （即使学生刷新页面或者篡改前端 payload，数据库记录也是无法绕过的）
+            prev_logs = ThinkingStageLog.query.filter_by(
+                session_id=session_id,
+                stage=3,
+                role='student',
+                event_type='chat'
+            ).all()
+            
+            prev_student_teach_msgs = []
+            for log in prev_logs:
+                meta = log.get_metadata() or {}
+                if meta.get('panel') == 'student_agent':
+                    prev_student_teach_msgs.append(log.content.strip())
+            
+            # 2. 复读机/高相似度文本拦截（与历史发送的消息相似度大于 0.8）
+            is_repetitive = False
+            import difflib
+            for prev_msg in prev_student_teach_msgs:
+                s1 = "".join(prev_msg.split()).lower()
+                s2 = "".join(current_msg.split()).lower()
+                if difflib.SequenceMatcher(None, s1, s2).ratio() > 0.8:
+                    is_repetitive = True
+                    break
+            
+            if is_repetitive:
+                response_text = "咦，这句话你刚才已经解释过一遍了呀！能不能换个思路，或者用别的话跟我说一下？"
+                return jsonify({
+                    'success': True,
+                    'response': response_text,
+                    'ready_for_code': False
+                })
+
         response_text = student_agent_chat(
             messages,
             assignment.title,
             preset.get_key_steps() if preset else [],
             difficulty,
-            round_number=ts.stage3_student_rounds
+            round_number=ts.stage3_student_rounds,
+            assignment_description=assignment.description or ""
         )
 
         # 记录日志
@@ -648,6 +733,29 @@ def preset_status(assignment_id):
             'status': preset.status,
             'error': preset.error_message
         })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@thinking.route('/api/retry_preset/<int:assignment_id>', methods=['POST'])
+@login_required
+def retry_preset(assignment_id):
+    """重新尝试生成预设（异步）"""
+    try:
+        preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
+        if not preset:
+            preset = AssignmentThinkingPreset(assignment_id=assignment_id)
+            db.session.add(preset)
+            
+        preset.status = 'generating'
+        preset.updated_at = dt.utcnow()
+        preset.error_message = None
+        db.session.commit()
+        
+        from utils.async_tasks import add_generate_preset_task
+        add_generate_preset_task(assignment_id)
+        
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

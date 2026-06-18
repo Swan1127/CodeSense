@@ -50,7 +50,7 @@ def _generate_solution_code(description: str, solution_index: int, api_key: str,
             "Authorization": f"Bearer {api_key}"
         }
         data = {
-            "model": "glm-4-flash",
+            "model": "glm-4.7-flash",
             "messages": [
                 {
                     "role": "system",

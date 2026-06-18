@@ -184,34 +184,57 @@ def generate_preset(assignment_title: str, assignment_description: str) -> Dict:
     )
     result['key_steps'] = _parse_json_array(steps_response, default=["分析问题", "设计算法", "编写代码", "测试验证"])
 
-    # Step 3: 将代码拆分为语义代码块
-    blocks_prompt = f"""请将以下 C++ 代码解题过程精简拆解为"分层/分批次"构建的核心思维语句块。
-为了让学生免除细枝末节排版的暴躁感，专注于核心逻辑层层推进，请遵循以下分层拆解规范：
+    # Step 3: 将代码拆分为语义代码块（细粒度单行拆分）
+    blocks_prompt = f"""请将以下 C++ 代码的核心逻辑部分（不含 #include、using namespace std、int main(){{ 和 return 0; }}）
+逐行拆解为独立的代码积木块。
 
-1. **多级包裹外壳预留**：系统端会自动在构建区直接呈现标准的框架结构（例如最外层的 `#include`、主函数及核心算法外部的控制流包裹）。**绝对不需要单独把大括号符号 {{ 或 }} 拆成独立拖拽积木！**
-2. **解题过程分三批次推进（强行附加 phase 属性）**：
-   - **"phase": 1**（参数准备与初始化层）：如读取 n、m 等输入参数，声明所需核心容器或初始状态。
-   - **"phase": 2**（核心计算流与状态转移层）：如循环体内部的核心逻辑计算、极值维护、容器推入弹出等真实解题思维操作流。
-   - **"phase": 3**（收尾输出与边界判定层）：统计最终答案或打印输出流等收尾步骤。
-3. **极简高效的组块**：每个 phase 批次仅提供 1~3 个高度凝练合并的核心操作语句块，绝不拆散出细碎单行语句。
+## 拆分规则（极其重要，请严格遵守）
+1. **每个积木块只包含一条独立的 C++ 语句或控制结构头部**。例如：
+   - 一条变量声明：`int n, m;`
+   - 一条输入语句：`cin >> n >> m;`
+   - 一个循环头部：`for (int i = 0; i < n; i++) {{`
+   - 一条赋值/计算：`sum += a[i];`
+   - 一条输出语句：`cout << result << endl;`
+   - 一个右花括号：`}}`
+2. **绝对禁止将多条语句合并到一个积木块中**。例如 `int a, b; cin >> a >> b;` 必须拆成两个独立的积木块。
+3. **循环和条件结构**：`for(...){{` 和对应的 `}}` 各自作为独立积木块。循环体内部的语句也各自独立。
+4. **忽略外壳**：不要包含 `#include`、`using namespace std;`、`int main() {{`、`return 0;`、最外层的 `}}`。只拆解核心逻辑。
+5. **每个积木块总数一般在 5~12 个之间**，取决于代码复杂度。
+
+## phase 分类
+- **phase 1**：变量声明、输入读取等准备工作
+- **phase 2**：核心计算逻辑（循环、条件判断、状态更新等）
+- **phase 3**：输出结果、收尾处理
+
+## indent 规则
+- main() 函数体内的第一层语句：indent = 0
+- 在一层花括号内（如 for 循环体内）：indent = 1
+- 在两层花括号内（如嵌套的 if 内）：indent = 2
 
 参考代码：
 {reference_code}
 
 请严格以JSON数组格式返回结果，每个元素必须包含:
-- "id": 唯一编号数字（从1开始递增）
-- "code": 核心代码语句内容字符串
-- "indent": 相对缩进深度（相对于所处阶段或大括号包裹空隙内部的相对层级）
-- "label": 简要清晰的解题思维描述
-- "phase": 所属子批次编号（整数 1、2 或 3）
+- "id": 唯一编号（从1开始递增，数字类型）
+- "code": 该积木块的代码内容（单条语句，字符串类型）
+- "indent": 缩进深度（整数）
+- "label": 简短的中文语义描述（如"声明变量n"、"读取输入"、"循环遍历数组"等）
+- "phase": 所属阶段（整数 1、2 或 3）
 
 示例格式：[{{{{
     "id": 1,
-    "code": "int n, m;\\ncin >> n >> m;",
+    "code": "int n;",
     "indent": 0,
-    "label": "读取总体规模与操作数",
+    "label": "声明变量n",
+    "phase": 1
+}}}}, {{{{
+    "id": 2,
+    "code": "cin >> n;",
+    "indent": 0,
+    "label": "读取输入n",
     "phase": 1
 }}}}]"""
+
 
     blocks_response = client.chat(
         [{"role": "system", "content": "你是编程教育专家。请严格以JSON数组格式返回代码块拆分结果。"},
@@ -220,31 +243,41 @@ def generate_preset(assignment_title: str, assignment_description: str) -> Dict:
     )
     result['code_blocks'] = _parse_json_array(blocks_response, default=[])
 
-    # Step 4: 生成噪声代码块
-    noise_prompt = f"""针对以下C语言编程题的正确解题思路，针对三个不同阶段分别生成共 3 个具有迷惑性的"核心思维噪声块"（每个 phase 批次精确分配 1 个）。
-规则：
-1. 剥离大括号与基础框架外壳，只针对对应阶段的思维核心逻辑设置合理的陷阱（如参数漏读、极值判断符号相反等）。
-2. 指定其对应的专属 phase 批次编号。
+    # Step 4: 生成噪声代码块（与正确块外观一致，仅含细微逻辑错误）
+    noise_prompt = f"""针对以下 C++ 编程题，生成 2~4 个"噪声干扰积木块"。
+
+## 核心要求（极其重要）
+1. **每个噪声块必须是单条 C++ 语句**，与正确积木块的格式和粒度完全一致（一行代码）。
+2. **噪声块必须看起来像是正确代码的合理变体**，只包含一个微小的逻辑错误。学生必须仔细思考才能发现问题。
+3. 错误类型示例：
+   - 运算符写错：`>` 写成 `>=`，`+` 写成 `-`，`<` 写成 `>`
+   - 变量名写反：`a` 和 `b` 交换
+   - 边界差1：`i < n` 写成 `i <= n`，`i = 0` 写成 `i = 1`
+   - 少读/多读一个变量：`cin >> a >> b;` 变成 `cin >> a;`
+   - 初始值错误：`max_val = 0` 应为 `max_val = -1`
+4. **label 必须看起来正常合理**，不能暴露这是错误块。label 应该和正确块的风格一致。
+5. **禁止生成与题目完全无关的代码**（如完全不同的算法或毫不相关的操作）。
 
 参考代码：
 {reference_code}
 
 请严格以JSON数组格式返回，每个元素包含:
-- "id": 唯一编号字符串（以"noise-"开头）
-- "code": 噪声语句内容  
-- "indent": 相对缩进深度
-- "label": 正常无害的思维说明（避免直接暴露错误）
-- "phase": 所属批次编号（整数 1、2 或 3）
-- "error_type": 错误归类说明
+- "id": 唯一编号字符串（以"noise-"开头，如 "noise-1"）
+- "code": 单条噪声语句（与正确块粒度一致）
+- "indent": 缩进深度（整数，与对应阶段的正确块一致）
+- "label": 正常的中文语义描述（不暴露错误）
+- "phase": 所属阶段（整数 1、2 或 3）
+- "error_type": 错误类型简述（如"运算符错误"、"边界差1"、"变量遗漏"等）
 
 示例格式：[{{{{
     "id": "noise-1",
-    "code": "int n, m;\\ncin >> n;",
+    "code": "cin >> n;",
     "indent": 0,
-    "label": "读取总体规模与操作数",
+    "label": "读取输入参数",
     "phase": 1,
-    "error_type": "读取遗漏"
+    "error_type": "变量遗漏（漏读了m）"
 }}}}]"""
+
 
     noise_response = client.chat(
         [{"role": "system", "content": "你是编程教育专家。请严格以JSON数组格式返回噪声代码块。"},
@@ -413,7 +446,9 @@ def generate_stage2_hint(student_description: str, current_block_ids: List[str],
 
 
 def companion_agent_chat(messages: List[Dict], assignment_title: str,
-                         key_steps: List[str], student_description: str) -> str:
+                         key_steps: List[str], student_description: str,
+                         current_stage: int = 1, stage2_state: dict = None,
+                         assignment_description: str = "") -> str:
     """
     启发式自由对话Agent（伴学角色）— 在积木或思路阶段回答学生的自由提问
     """
@@ -421,24 +456,109 @@ def companion_agent_chat(messages: List[Dict], assignment_title: str,
     if not client.is_available():
         return "AI助手暂时不可用，请稍后重试。"
 
-    system_prompt = f"""你是一位极具启发性的编程伴学AI，正在陪同学生解决一道C/C++编程题。
+    # 根据当前阶段和积木拼装状态生成动态诊断提示
+    extra_context = ""
+    if current_stage == 1:
+        extra_context = f"""\n【当前所处阶段】：阶段一（自然语言思路描述）。学生正尝试用中文描述这道题的解题思路。
+【你在阶段一的核心职责】：侧重于"思路辅助"而非代码辅助。你的目标是帮助学生理清解题的逻辑步骤。
+- 用启发性的提问引导思考："这道题需要你处理什么样的数据？""你觉得应该先做什么、再做什么？"
+- 用日常生活类比来解释算法思路："就像你整理一副扑克牌，你会怎么找到最小的那张？"
+- 可以提供思路骨架大纲："你可以按照这个框架来写思路：1. 读入... 2. 通过...处理 3. 输出..."
+- 鼓励学生用自己的话来表达，不要求措辞精确
+【绝对禁止】：不能给出任何 C/C++ 代码片段、伪代码、或具体的语法指导（如"用 cin 读取"、"定义 int 变量"等）。只用纯中文自然语言讨论算法思路。
+【生图技能 — 阶段一完全开放】：
+- 检测到学生说"能画个图吗"、"可视化"、"示意图"、"图解"、"画图帮我理解"等词语时，立即在回复末尾加上 [GENERATE_IMAGE: <提示词>] 触发生图。
+- 即使学生没主动要求，若你判断一张图（如队列图、树结构、LCS二维表格、DP状态图等）能显著帮助他理解，可主动询问："我可以帮你画一张示意图，要吗？😊"，学生确认后立即触发。
+- 触发方式：在回复的最后一行单独写 [GENERATE_IMAGE: <详细提示词，描述图的内容和风格，如"队列数据结构，显示队头队尾，手绘粉笔风格，黑板背景，教学图解">]"""
+    elif current_stage == 2:
+        extra_context = f"\n【当前所处阶段】：阶段二（代码积木编程拼装）。学生在把代码积木按顺序拼在右侧，并调节缩进。当前学生的积木拼装状况诊断如下："
+        if stage2_state:
+            errors = stage2_state.get('errors', {})
+            current_blocks = stage2_state.get('current_blocks', [])
+            
+            block_list_str = ", ".join([f"[{b.get('label', '未标记')}]" for b in current_blocks]) if current_blocks else "无（构建区目前是空的）"
+            extra_context += f"\n- 构建区已有的积木标签顺序：{block_list_str}"
+            
+            if errors.get('is_empty'):
+                extra_context += "\n- 诊断：构建区尚无任何积木。请友好鼓励他们把左边散落池的算法块拖入右侧。"
+            elif errors.get('has_noise'):
+                extra_context += "\n- 诊断：构建区中混入了带陷阱的‘噪声干扰块’。不要告诉他们是哪块，但提示他们有不需要的积木，让他们对照思路排除它。"
+            elif errors.get('length_mismatch'):
+                extra_context += "\n- 诊断：拖入的代码块数量不对（缺失或多余）。引导他们对照思路检查是否有遗漏的步骤（比如输入读取或输出打印）。"
+            elif not errors.get('order_match'):
+                extra_context += "\n- 诊断：积木块上下顺序不对，步骤承接逻辑存在错误。建议他们按照‘读取输入 -> 核心计算/循环 -> 条件判定 -> 打印结果’的顺序梳理。"
+            elif not errors.get('indent_match'):
+                extra_context += "\n- 诊断：代码块顺序完全正确，但是部分语句的左右‘缩进对齐层级’不对。提醒他们点击积木块的 ◀ ▶ 按钮调整，或者点击右侧顶部的‘一键大括号嵌套’自动对齐。"
+            else:
+                extra_context += "\n- 诊断：积木的顺序和缩进对齐都非常完美！可以让他们快去点击右下角的‘验证代码’按钮通关。"
+        else:
+            extra_context += "\n- 诊断：尚未获取到构建区的积木状态。引导学生把左侧散落池的积木块拖进构建区中。"
+
+    system_prompt = f"""你是一位极具启发性、耐心且温柔的编程伴学AI，正在陪同学生解决一道C/C++编程题。
 
 题目：{assignment_title}
+题目描述：
+{assignment_description}
+
 关键解题步骤参考：{json.dumps(key_steps, ensure_ascii=False)}
-学生最初解题思路："{student_description}"
+学生最初解题思路："{student_description}"{extra_context}
 
 你的辅导原则：
-1. 学生目前在进行分层积木编程或思路构建时遇到困惑，向你发起了自由提问。
+1. 学生目前在进行分层积木编程或思路构建时遇到困惑，向你发起了提问。
 2. 采用苏格拉底式的提问和启发，切忌直接向学生抛出完整的代码答案。
 3. 引导他们关注当前步骤的上下文逻辑关系（如：为什么要先初始化？循环内的状态该如何更新？）。
-4. 语言亲切生动，富有同理心，缓解学生的无名火与焦虑感，每条回复尽量控制在120字以内。"""
+4. 语言亲切生动，富有同理心，缓解初学者的焦虑感，每条回复多用表情符号装饰，回复文字控制在 160 字以内。
+5. 【重要】当且仅当学生表示极大困难（如问“怎么写”、“我不会”、“帮我拼一下”或多次校验失败），请务必给出有实质帮助的“脚手架”（思路骨架、解题模板、或者具体的拼装顺序指引，如“你应该把读入输入的块放在第一步哦”），体现高辅助性，但绝对禁止输出任何 C/C++ 的具体程序代码。
+6. 【特别技能 — 图形可视化（生图），阶段一和阶段二均完全开放】：
+触发条件（满足任意一条即可）：
+  a) 学生消息出现"画图"、"图解"、"示意图"、"可视化"、"画一下"、"帮我画"、"能画吗"等词语，立即触发；
+  b) 你主动判断一张图（如树结构、队列进出动态图、LCS二维表、DP状态转移图、栈帧图等）能显著帮助学生理解时，先询问："我可以帮你画一张示意图，要吗？😊"，等学生说"要"/"好"/"可以"等肯定回复后立即触发；
+  c) 学生已明确确认想要图解（如回复"好的"、"要"、"画吧"），无需再问，直接触发。
+触发方式：在回复的最后一行单独写：
+[GENERATE_IMAGE: <详细提示词：描述图的内容结构、风格（如"手绘粉笔风格，高对比度黑板背景"或"清晰教学图解，白底"），以及图中应包含的关键要素（如节点、箭头、标签、标注等）>]
+系统会自动调用CogView-4绘图API生成图像并以Markdown格式嵌入到你的回复中，无需你做其他操作。
+
+{ANTI_CODE_SYSTEM_PROMPT}"""
 
     chat_messages = [{"role": "system", "content": system_prompt}]
     for msg in messages[-10:]:
         chat_messages.append({"role": msg['role'], "content": msg['content']})
 
-    response = client.chat(chat_messages, temperature=0.7, max_tokens=350)
-    return sanitize_response(response) if response else "你能详细说说你目前卡在哪一步的思考逻辑上吗？"
+    response = client.chat(chat_messages, temperature=0.7, max_tokens=600)
+    if response:
+        # 匹配生图标记并生成本地图片链接
+        image_match = re.search(r'\[GENERATE_IMAGE:\s*(.*?)\]', response)
+        if image_match:
+            image_prompt = image_match.group(1).strip()
+            try:
+                import requests
+                import uuid
+                import os
+                
+                print(f"Companion Agent triggered image generation for: {image_prompt}")
+                img_url = client.generate_image(image_prompt)
+                if img_url:
+                    os.makedirs('static/images/generated', exist_ok=True)
+                    filename = f"{uuid.uuid4()}.png"
+                    local_path = os.path.join('static/images/generated', filename)
+                    resp = requests.get(img_url, timeout=15)
+                    if resp.status_code == 200:
+                        with open(local_path, 'wb') as f:
+                            f.write(resp.content)
+                        local_relative_url = f"/static/images/generated/{filename}"
+                        replacement = f"\n\n![示意图]({local_relative_url})\n"
+                        response = response.replace(image_match.group(0), replacement)
+                    else:
+                        response = response.replace(image_match.group(0), "\n【系统提示：图片生成成功，但下载到本地失败】")
+                else:
+                    response = response.replace(image_match.group(0), "\n【系统提示：画图API暂时调用失败】")
+            except Exception as ex:
+                print(f"Image generation failed: {ex}")
+                response = response.replace(image_match.group(0), f"\n【系统提示：画图功能异常: {str(ex)}】")
+        
+        return sanitize_response(response)
+        
+    return "你能详细说说你目前卡在哪一步的思考逻辑上吗？"
 
 
 # ============================================================
@@ -446,7 +566,8 @@ def companion_agent_chat(messages: List[Dict], assignment_title: str,
 # ============================================================
 
 def teacher_agent_chat(messages: List[Dict], assignment_title: str,
-                       key_steps: List[str], student_description: str) -> str:
+                       key_steps: List[str], student_description: str,
+                       assignment_description: str = "") -> str:
     """
     主Agent（老师角色）— 引导"好学生"理解
     """
@@ -457,6 +578,9 @@ def teacher_agent_chat(messages: List[Dict], assignment_title: str,
     system_prompt = f"""你是一位温和但有原则的编程老师，正在辅导学生理解一道编程题。
 
 题目：{assignment_title}
+题目描述：
+{assignment_description}
+
 题目的关键步骤：{json.dumps(key_steps, ensure_ascii=False)}
 学生之前的思路描述："{student_description}"
 
@@ -482,7 +606,7 @@ def teacher_agent_chat(messages: List[Dict], assignment_title: str,
 
 def student_agent_chat(messages: List[Dict], assignment_title: str,
                        key_steps: List[str], difficulty_config: Dict,
-                       round_number: int = 0) -> str:
+                       round_number: int = 0, assignment_description: str = "") -> str:
     """
     子Agent（坏学生角色）— 拟人化提问，需要被"教会"
     round_number 用于控制对话进度，达到一定轮次后进入"写代码"阶段
@@ -496,29 +620,36 @@ def student_agent_chat(messages: List[Dict], assignment_title: str,
     
     persona_desc = {
         'curious': '你是一个好奇但基础较弱的学生，会问很多"为什么"的问题',
-        'confused': '你是一个容易混淆概念的学生，经常把类似的东西搞混（比如for和while、=和==）',
+        'confused': '你是一个容易混淆概念的学生，经常把类似的东西搞混（比如for and while、= and ==）',
         'skeptical': '你是一个喜欢质疑的学生，会问"为什么不能用另一种方法"'
     }.get(persona, '你是一个基础较弱但愿意学习的学生')
 
-    system_prompt = f"""你正在扮演一个编程初学者（"坏学生"）。{persona_desc}
+    system_prompt = f"""你正在扮演一个编程初学者（"坏学生"小明），向同学请教如何解题。{persona_desc}
 
 题目：{assignment_title}
+题目描述：
+{assignment_description}
+
 解题涉及的关键概念：{json.dumps(key_steps, ensure_ascii=False)}
 
 角色规则：
-1. 你有基础的编程常识（知道什么是变量、循环、条件判断），但对如何解决这道具体问题一无所知
-2. 你需要被另一个同学（用户）教会
+1. 你有基础的编程常识（知道什么是变量、循环、条件判断），但对如何解决这道具体问题一无所知。
+2. 你需要被另一个同学（用户）教会。
 3. 提出实际场景下初学者常见的问题，比如：
    - "这里为什么要用for循环而不是while？"
    - "如果输入是0会怎样？"
    - "你说的'遍历'是什么意思？"
-4. 不要一次问太多问题，一次只问一个
-5. 当对方解释清楚时，要有所回应（"哦！我好像懂了"），然后可以追问细节
-6. 如果对方解释得不清楚，要礼貌地表示还是没懂
-7. 不要太容易就"懂了"，但也不要故意刁难
-8. 用同学之间的自然口语交流，不要太正式
+4. 不要一次问太多问题，一次只问一个。
+5. 当对方解释清楚时，要有所回应（"哦！我好像懂了"），然后可以追问细节。
+6. 如果对方解释得不清楚，要礼貌地表示还是没懂。
+7. 不要太容易就"懂了"，但也不要故意刁难。
+8. 用同学之间的自然口语交流，不要太正式，多一些初学者的困惑语气。
+9. 【严格评估对方发言质量与相关性】：你必须仔细评估对方上一轮的回答。
+   - 如果对方的回答与本题《{assignment_title}》的解题思路或算法逻辑完全无关（例如谈论天气、火锅、聊天玩耍、或者发送乱码无意义字符），你必须指出这和题目无关，并礼貌但困惑地拒绝，把话题拉回题目（如：“啊？这跟我们这道题有什么关系呀？😅 你还是快教我怎么做这道题吧！”）。
+   - 如果对方的回答极其敷衍、糊弄你（例如只是发送“对”、“是的”、“嗯嗯”、“就是这样”等，或者一字不漏地直接复读你的问题），你必须表示这并没有解释任何东西，要求他把逻辑讲清楚。
+   - 只有当对方真的在用逻辑或步骤解释算法，包含了本题的相关信息时，你才能继续追问后面的步骤。
 
-请用口语化、自然的方式回答，不超过100字。"""
+请用口语化、自然的方式回答，不超过120字。"""
 
     chat_messages = [{"role": "system", "content": system_prompt}]
     for msg in messages[-10:]:

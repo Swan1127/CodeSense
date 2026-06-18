@@ -54,7 +54,7 @@ class AIEvaluator:
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4-flash",
+                "model": "glm-4.7-flash",
                 "messages": [
                     {"role": "system", "content": "你是一个专业的代码评估专家，擅长分析代码质量和编程能力。"},
                     {"role": "user", "content": prompt}
@@ -154,7 +154,7 @@ class AIEvaluator:
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4-flash",
+                "model": "glm-4.7-flash",
                 "messages": [
                     {
                         "role": "system",
@@ -243,7 +243,7 @@ class AIEvaluator:
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4-flash",
+                "model": "glm-4.7-flash",
                 "messages": [
                     {"role": "system", "content": "你是一个专业的编程教育专家，擅长分析学习趋势和提供改进建议。请严格按照JSON格式返回结果。"},
                     {"role": "user", "content": prompt}
@@ -431,7 +431,7 @@ class AIEvaluator:
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4-flash",
+                "model": "glm-4.7-flash",
                 "messages": [
                     {"role": "system", "content": "你是一个专业的编程教育专家，擅长分析学生的学习趋势和提供有针对性的改进建议。请用简洁专业的中文直接输出分析内容。"},
                     {"role": "user", "content": prompt}
@@ -497,7 +497,7 @@ dynamic_memory, linked_list, tree, sorting, searching, recursion
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4-flash",
+                "model": "glm-4.7-flash",
                 "messages": [
                     {"role": "system", "content": "你是一个C语言专家，擅长识别代码中的知识点。请严格按照JSON格式返回结果。"},
                     {"role": "user", "content": prompt}

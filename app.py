@@ -251,6 +251,8 @@ def create_app(config_name='default'):
     print("\n正在配置应用日志系统...")
     setup_logging(app)
     app.logger.info(f"应用启动 - 配置: {config_name}")
+    app.logger.info(f"数据库 URI: {app.config.get('SQLALCHEMY_DATABASE_URI')}")
+    app.logger.info(f"实例路径: {app.instance_path}")
     
     # 初始化扩展
     db.init_app(app)

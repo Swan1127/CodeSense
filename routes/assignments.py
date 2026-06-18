@@ -42,7 +42,7 @@ def generate_assignment():
                 api_key=zhipu_key,
                 base_url="https://open.bigmodel.cn/api/paas/v4/"
             )
-            model_name = current_app.config.get('ZHIPU_MODEL', "glm-4-flash")
+            model_name = current_app.config.get('ZHIPU_MODEL', "glm-4.7-flash")
         # 降级使用 OpenAI
         elif openai_key:
             client = OpenAI(

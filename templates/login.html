@@ -1,5 +1,4 @@
-<!-- 已修改 -->
-
+<!-- 已修改 - 新版分栏设计 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 
@@ -12,184 +11,674 @@
     <!-- 引入Google字体 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@700&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
 
     <!-- 引入图标库 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.5/font/bootstrap-icons.min.css">
 
-    <!-- 引入自定义CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='modern.css') }}">
-
-    <!-- 登录页面特定样式 -->
     <style>
+        :root {
+            --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-handwriting: 'Caveat', cursive;
+            --font-brush: 'Ma Shan Zheng', cursive;
+            
+            --color-brand-blue: #007aff;
+            --color-surface-dark: #0a0e17;
+            --color-stroke: #2d3748;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            background-color: #f9fafb;
-            background-image: linear-gradient(135deg, #f9fafb 0%, #eef2ff 100%);
+            font-family: var(--font-sans);
+            background-color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: row;
+            overflow-x: hidden;
+        }
+
+        /* 响应式排版 */
+        @media (max-width: 992px) {
+            body {
+                flex-direction: column;
+            }
+        }
+
+        /* --- 左侧面板 --- */
+        .left-banner {
+            width: 50%;
+            background-color: var(--color-surface-dark);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 3rem 4rem;
+            overflow: hidden;
+            border-right: 1px solid var(--color-stroke);
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 992px) {
+            .left-banner {
+                width: 100%;
+                min-height: 240px;
+                padding: 2.5rem 2rem;
+                border-right: none;
+                border-bottom: 1px solid var(--color-stroke);
+            }
+        }
+
+        .bg-grid-subtle {
+            position: absolute;
+            inset: 0;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .glow-blob-1 {
+            position: absolute;
+            top: -10%;
+            left: -10%;
+            width: 60%;
+            height: 60%;
+            background: rgba(0, 122, 255, 0.1);
+            filter: blur(120px);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .glow-blob-2 {
+            position: absolute;
+            bottom: -5%;
+            right: -5%;
+            width: 40%;
+            height: 40%;
+            background: rgba(0, 122, 255, 0.05);
+            filter: blur(100px);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .typewriter-container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 500px;
+            min-height: 160px;
+            display: flex;
+            align-items: center;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1.3;
+            letter-spacing: -0.5px;
+        }
+
+        @media (max-width: 576px) {
+            .typewriter-container {
+                font-size: 1.5rem;
+                min-height: 100px;
+            }
+        }
+
+        .text-brand-blue {
+            color: var(--color-brand-blue);
+        }
+
+        .font-highlight {
+            text-shadow: 0 0 15px rgba(0, 122, 255, 0.3);
+            margin: 0 8px;
+            display: inline-block;
+        }
+
+        .font-handwriting {
+            font-family: var(--font-handwriting);
+            font-style: italic;
+            font-size: 3rem;
+        }
+
+        @media (max-width: 576px) {
+            .font-handwriting {
+                font-size: 2rem;
+            }
+        }
+
+        .font-brush {
+            font-family: var(--font-brush);
+            font-size: 3rem;
+            font-weight: 400;
+        }
+
+        @media (max-width: 576px) {
+            .font-brush {
+                font-size: 2rem;
+            }
+        }
+
+        .typewriter-cursor::after {
+            content: '|';
+            animation: blink 1s step-end infinite;
+            color: var(--color-brand-blue);
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            from, to { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* --- 右侧面板 --- */
+        .right-panel {
+            width: 50%;
+            background-color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 3rem 4rem;
+            grow: 1;
+        }
+
+        @media (max-width: 992px) {
+            .right-panel {
+                width: 100%;
+                padding: 2.5rem 2rem;
+            }
+        }
+
+        .login-box {
+            max-width: 400px;
+            width: 100%;
+            margin: auto;
+        }
+
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 3rem;
+        }
+
+        @media (max-width: 992px) {
+            .header-logo {
+                margin-bottom: 2rem;
+            }
+        }
+
+        .logo-box {
+            width: 40px;
+            height: 40px;
+            background: var(--color-surface-dark);
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
-            padding: 2rem 0;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        .auth-form-container {
+        .logo-box i {
+            color: var(--color-brand-blue);
+            font-size: 1.5rem;
+        }
+
+        .header-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--color-surface-dark);
+            letter-spacing: -0.5px;
+        }
+
+        .header-title span {
+            font-weight: 400;
+            opacity: 0.5;
+            margin-left: 4px;
+        }
+
+        .login-title-box {
+            margin-bottom: 2.5rem;
+        }
+
+        .login-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--color-surface-dark);
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .login-subtitle {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: #64748b;
+        }
+
+        /* 表单输入框与标签 */
+        .form-group {
+            margin-bottom: 1.5rem;
             position: relative;
-            overflow: hidden;
-            animation: fadeIn 0.6s ease-out;
         }
 
-        .auth-decoration {
+        .form-label {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #64748b;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .input-container {
+            position: relative;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            outline: none;
+            font-size: 0.95rem;
+            color: #0f172a;
+            transition: all 0.2s ease;
+        }
+
+        .form-control:focus {
+            border-color: var(--color-brand-blue);
+            background: #fff;
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+        }
+
+        .form-control.is-invalid {
+            border-color: #ef4444 !important;
+        }
+
+        .form-control::placeholder {
+            color: #94a3b8;
+        }
+
+        .password-toggle {
             position: absolute;
-            top: -100px;
-            right: -100px;
-            width: 200px;
-            height: 200px;
-            background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
-            border-radius: 50%;
-            z-index: 0;
-        }
-
-        .auth-decoration:before {
-            content: '';
-            position: absolute;
-            bottom: -80px;
-            left: -80px;
-            width: 140px;
-            height: 140px;
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
-            border-radius: 50%;
-        }
-
-        .auth-logo {
-            position: relative;
-            z-index: 1;
-        }
-
-        .auth-logo i {
-            font-size: 2.5rem;
-            background: linear-gradient(135deg, #2563eb, #4f46e5);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .auth-form {
-            position: relative;
-            z-index: 1;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .password-container {
-            position: relative;
-        }
-
-        #togglePassword {
-            position: absolute;
-            right: 12px;
+            right: 16px;
             top: 50%;
             transform: translateY(-50%);
             cursor: pointer;
-            color: #6b7280;
+            color: #94a3b8;
+            transition: color 0.2s;
+            font-size: 1.1rem;
             z-index: 10;
-            font-size: 1.2rem;
+        }
+
+        .password-toggle:hover {
+            color: var(--color-brand-blue);
+        }
+
+        .form-error {
+            color: #ef4444;
+            font-size: 0.8rem;
+            margin-top: 4px;
+        }
+
+        /* 记住我与忘记密码 */
+        .remember-forgot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #64748b;
             transition: color 0.2s;
         }
 
-        #togglePassword:hover {
-            color: #2563eb;
+        .checkbox-label:hover {
+            color: #0f172a;
+        }
+
+        .checkbox-input {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--color-brand-blue);
+            border-radius: 4px;
+            border: 1px solid #cbd5e1;
+            cursor: pointer;
+        }
+
+        .forgot-link {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--color-brand-blue);
+            text-decoration: none;
+        }
+
+        .forgot-link:hover {
+            text-decoration: underline;
+        }
+
+        /* 登录按钮 */
+        .btn-login {
+            width: 100%;
+            background: var(--color-brand-blue);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 10px 15px -3px rgba(0, 122, 255, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        .btn-login:hover {
+            background: #0066d6;
+            transform: translateY(-1px);
+        }
+
+        .btn-login:active {
+            transform: translateY(0);
+        }
+
+        /* 错误提示框 */
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            line-height: 1.4;
+        }
+
+        .alert-danger {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #991b1b;
+        }
+
+        .alert-success {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #166534;
+        }
+
+        .register-box {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.95rem;
+            color: #64748b;
+        }
+
+        .register-link {
+            color: var(--color-brand-blue);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .register-link:hover {
+            text-decoration: underline;
+        }
+
+        /* 底部 */
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #94a3b8;
+            margin-top: 3rem;
+            max-width: 400px;
+            width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        @media (max-width: 992px) {
+            .footer {
+                margin-top: 2rem;
+            }
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 16px;
+        }
+
+        .footer-links a {
+            color: inherit;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer-links a:hover {
+            color: #475569;
         }
     </style>
 </head>
 
 <body>
-    <div class="auth-form-container">
-        <div class="auth-decoration"></div>
-
-        <div class="auth-logo">
-            <i class="bi bi-code-square"></i>
-        </div>
-
-        <h1 class="auth-title">{{ login_message }}</h1>
-        <p class="auth-subtitle">{{ site_name }}</p>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        {% for category, message in messages %}
-        <div class="alert alert-{{ category if category != 'message' else 'danger' }}">
-            <i class="bi bi-exclamation-circle"></i> {{ message }}
-        </div>
-        {% endfor %}
-        {% endif %}
-        {% endwith %}
-
-        <form class="auth-form" action="{{ url_for('auth.login') }}" method="post">
-            {{ form.hidden_tag() }}
-
-            <div class="form-group">
-                <label for="username" class="form-label">用户名</label>
-                <input type="text" id="username" name="username"
-                    class="form-control {% if form.username.errors %}is-invalid{% endif %}" placeholder="请输入您的用户名"
-                    required autofocus>
-                {% if form.username.errors %}
-                <div class="form-error">
-                    {% for error in form.username.errors %}
-                    {{ error }}
-                    {% endfor %}
-                </div>
-                {% endif %}
-            </div>
-
-            <div class="form-group">
-                <label for="password" class="form-label">密码</label>
-                <div class="password-container">
-                    <input type="password" id="password" name="password"
-                        class="form-control {% if form.password.errors %}is-invalid{% endif %}" placeholder="请输入您的密码"
-                        required>
-                    <i class="bi bi-eye-slash" id="togglePassword"></i>
-                </div>
-                {% if form.password.errors %}
-                <div class="form-error">
-                    {% for error in form.password.errors %}
-                    {{ error }}
-                    {% endfor %}
-                </div>
-                {% endif %}
-            </div>
-
-            <div class="form-group">
-                <button type="submit" class="btn btn-primary" style="width: 100%;">
-                    <i class="bi bi-box-arrow-in-right" style="margin-right: 10px;"></i> 登录
-                </button>
-            </div>
-        </form>
-
-        <div class="auth-footer">
-            还没有账户？ <a href="{{ url_for('auth.register') }}">注册账号</a>
+    <!-- 左侧 Banner -->
+    <div class="left-banner">
+        <div class="bg-grid-subtle"></div>
+        <div class="glow-blob-1"></div>
+        <div class="glow-blob-2"></div>
+        <div class="typewriter-container">
+            <span id="typewriter-text" class="typewriter-cursor"></span>
         </div>
     </div>
+
+    <!-- 右侧面板 -->
+    <div class="right-panel">
+        <div class="login-box">
+            <!-- 头部 logo -->
+            <header class="header-logo">
+                <div class="logo-box">
+                    <i class="bi bi-terminal"></i>
+                </div>
+                <span class="header-title">
+                    CodeSense <span>酷森思</span>
+                </span>
+            </header>
+
+            <!-- 主表单 -->
+            <main>
+                <div class="login-title-box">
+                    <h2 class="login-title">欢迎登录 CodeSense</h2>
+                    <p class="login-subtitle">登录以访问CodeSense能力评估平台。</p>
+                </div>
+
+                <!-- 闪现消息提示 -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'danger' or category == 'message' else 'success' }}">
+                    <i class="bi bi-exclamation-circle"></i> {{ message }}
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                <form action="{{ url_for('auth.login') }}" method="post">
+                    {{ form.hidden_tag() }}
+
+                    <!-- 用户名 -->
+                    <div class="form-group">
+                        <label for="username" class="form-label">
+                            <i class="bi bi-person"></i> 用户名
+                        </label>
+                        <input type="text" id="username" name="username"
+                            class="form-control {% if form.username.errors %}is-invalid{% endif %}" 
+                            placeholder="请输入您的用户名" required autofocus>
+                        {% if form.username.errors %}
+                        <div class="form-error">
+                            {% for error in form.username.errors %}
+                            {{ error }}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- 密码 -->
+                    <div class="form-group">
+                        <label for="password" class="form-label">
+                            <i class="bi bi-lock"></i> 密码
+                        </label>
+                        <div class="input-container">
+                            <input type="password" id="password" name="password"
+                                class="form-control {% if form.password.errors %}is-invalid{% endif %}" 
+                                placeholder="请输入您的密码" required>
+                            <i class="bi bi-eye-slash password-toggle" id="togglePassword"></i>
+                        </div>
+                        {% if form.password.errors %}
+                        <div class="form-error">
+                            {% for error in form.password.errors %}
+                            {{ error }}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- 记住我 / 忘记密码 -->
+                    <div class="remember-forgot">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="remember" class="checkbox-input">
+                            记住我
+                        </label>
+                        <a href="#" class="forgot-link">忘记密码？</a>
+                    </div>
+
+                    <!-- 提交按钮 -->
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <button type="submit" class="btn-login">
+                            登录
+                        </button>
+                    </div>
+                </form>
+
+                <div class="register-box">
+                    还没有账号？ <a href="{{ url_for('auth.register') }}" class="register-link">立即注册</a>
+                </div>
+            </main>
+        </div>
+
+        <!-- 底部版权栏 -->
+        <footer class="footer">
+            <span>© 2026 CodeSense 酷森思</span>
+            <div class="footer-links">
+                <a href="#">隐私政策</a>
+                <a href="#">服务条款</a>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 打字机效果与密码切换脚本 -->
     <script>
+        // 密码可见性切换
         const togglePassword = document.querySelector('#togglePassword');
         const password = document.querySelector('#password');
 
-        togglePassword.addEventListener('click', function (e) {
-            // toggle the type attribute
+        togglePassword.addEventListener('click', function () {
             const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
             password.setAttribute('type', type);
-            // toggle the eye slash icon
             this.classList.toggle('bi-eye');
             this.classList.toggle('bi-eye-slash');
         });
+
+        // 打字机数据
+        const PHRASES = [
+            "让 Coding 焕发 智能",
+            "AI 正在重塑您的 逻辑",
+            "AI 驱动的 革命 性体验",
+            "极致 效率 的 智能 工具",
+            "编程是 逻辑 与 艺术 的结合",
+            "开启 AI 协作新范式",
+            "让 智能 深入每一行代码",
+            "效率 就是核心竞争力",
+            "Coding 是一种 艺术",
+            "用 AI 创造无限可能"
+        ];
+        const HIGHLIGHT_KEYWORDS = ['Coding', 'AI', '智能', '效率', '逻辑', '艺术', '革命'];
+
+        let phraseIndex = 0;
+        let charIndex = 0;
+        let isDeleting = false;
+        const typewriterEl = document.getElementById('typewriter-text');
+
+        function type() {
+            const currentPhrase = PHRASES[phraseIndex];
+            let displayText = '';
+
+            if (isDeleting) {
+                displayText = currentPhrase.substring(0, charIndex - 1);
+                charIndex--;
+            } else {
+                displayText = currentPhrase.substring(0, charIndex + 1);
+                charIndex++;
+            }
+
+            // 渲染带高亮的文本
+            const regex = new RegExp(`(${HIGHLIGHT_KEYWORDS.join('|')})`, 'g');
+            const parts = displayText.split(regex);
+
+            typewriterEl.innerHTML = '';
+            parts.forEach(part => {
+                if (HIGHLIGHT_KEYWORDS.includes(part)) {
+                    const isEnglish = /^[A-Za-z]+$/.test(part);
+                    const span = document.createElement('span');
+                    span.className = `text-brand-blue ${isEnglish ? 'font-handwriting' : 'font-brush'} font-highlight`;
+                    span.textContent = part;
+                    typewriterEl.appendChild(span);
+                } else {
+                    const span = document.createElement('span');
+                    span.textContent = part;
+                    typewriterEl.appendChild(span);
+                }
+            });
+
+            let speed = isDeleting ? 40 : 100;
+
+            if (!isDeleting && charIndex === currentPhrase.length) {
+                speed = 2000; // 完整词句停留
+                isDeleting = true;
+            } else if (isDeleting && charIndex === 0) {
+                isDeleting = false;
+                phraseIndex = (phraseIndex + 1) % PHRASES.length;
+                speed = 500; // 开始下一个词句的等待
+            }
+
+            setTimeout(type, speed);
+        }
+
+        // 启动打字机
+        setTimeout(type, 500);
     </script>
 </body>
 

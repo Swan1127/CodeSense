@@ -152,6 +152,23 @@
         if (textarea) {
             textarea.focus();
         }
+
+        // Initialize dynamic companion chat greeting for Stage 1
+        const container = document.getElementById('companion-messages');
+        if (container) {
+            container.innerHTML = '';
+            state.companionMessages = [];
+            const problemTitle = document.querySelector('.problem-panel h2')?.innerText?.replace(/[\r\n]/g, '').replace('引导式学习 - ', '').trim() || '当前任务';
+            const greeting = `哈罗！我是你的 AI 伴学助手。我们今天的任务是完成《${problemTitle}》。
+
+如果你觉得思路描述不知道该写什么，别紧张！你可以试着回答以下几个小问题，然后把你的想法整理写到左侧文本框提交：
+1️⃣ **输入什么**：我们需要读取什么数据？（例如：几个整数、一个字符串还是数组？）
+2️⃣ **如何处理**：我们要对输入的数据做什么计算或判断？（例如：相加、循环遍历、求最大值还是满足某种条件？）
+3️⃣ **输出什么**：最终要打印什么结果？
+
+你也可以直接把你的第一直觉或者疑问在下方发送给我，我来帮你理清思路、一步步完善成合格的思路描述哦！加油！✨`;
+            appendCompanionMessage(greeting, 'ai');
+        }
     }
 
     function submitDescription() {
@@ -162,6 +179,15 @@
             showNotification('请至少写5个字的思路描述', 'warning');
             return;
         }
+
+        // Show loading state on submit button to prevent "frozen" feeling
+        const submitBtn = document.getElementById('stage1-submit');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="bi bi-hourglass-split rotating-icon"></i> 正在评判中，请稍候...';
+        }
+        if (textarea) textarea.disabled = true;
 
         setLoading(true);
         fetchJSON('/thinking/api/stage1/submit', {
@@ -178,10 +204,21 @@
                 if (data.passed) {
                     showNotification('🎉 思路描述通过！进入积木编程阶段', 'success');
                     setTimeout(() => initStage(2), 1500);
+                } else {
+                    // Proactively post AI Companion guidance
+                    appendCompanionMessage(`我看到你的思路描述匹配度为 ${data.score}%，还差一点就达到 80% 的通过标准啦！\n导师点评说："${data.feedback}"\n\n别灰心，你可以根据点评修改你的思路。如果你修改有困难，可以尝试问我："我该如何写这道题的输入/循环/输出部分？"，或者直接点击左侧下方的【请求提示】按钮，我会给你更明确的思路大纲！`, 'ai');
                 }
             }
         }).catch(err => showError(err.message))
-          .finally(() => setLoading(false));
+          .finally(() => {
+            setLoading(false);
+            // Restore submit button and textarea
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHtml;
+            }
+            if (textarea) textarea.disabled = false;
+          });
     }
 
     function showScoreResult(score, feedback, passed) {
@@ -202,6 +239,9 @@
         const description = textarea ? textarea.value.trim() : '';
 
         setLoading(true);
+        // Route hint request through AI Companion chat
+        appendCompanionMessage('我在撰写思路描述时遇到困难，请给我一些引导提示。', 'student');
+
         fetchJSON('/thinking/api/stage1/hint', {
             method: 'POST',
             body: JSON.stringify({
@@ -210,7 +250,10 @@
             })
         }).then(data => {
             if (data.success) {
-                showHint(data.hint, 'stage1-hints');
+                appendCompanionMessage(data.hint, 'ai');
+                if (!state.companionMessages) state.companionMessages = [];
+                state.companionMessages.push({ role: 'user', content: '我在撰写思路描述时遇到困难，请给我一些引导提示。' });
+                state.companionMessages.push({ role: 'assistant', content: data.hint });
             }
         }).catch(err => showError(err.message))
           .finally(() => setLoading(false));
@@ -225,52 +268,45 @@
             return;
         }
 
-        state.currentSubPhase = 1;
         state.companionMessages = [];
-        updateSubPhaseUI();
+        // Welcoming AI companion message for Stage 2
+        const problemTitle = document.querySelector('.problem-panel h2')?.innerText?.replace(/[\r\n]/g, '').replace('引导式学习 - ', '').trim() || '当前任务';
+        const greeting = `太棒了！第一阶段的思路描述顺利通关！🎉
+
+接下来是第二阶段：**积木编程**。我们需要把刚才的解题思路，用代码块拼装出来：
+1️⃣ **看清需求**：仔细阅读左侧【散落池】中每个代码块的代码和文字标签。
+2️⃣ **拖拽组合**：把需要的积木拖到右侧构建区。注意，为了让你专注于核心算法流程，外部的 \`#include\` 头文件和 \`main()\` 框架已经帮你包裹好啦，你只需要拼装核心逻辑。
+3️⃣ **注意陷阱**：散落池里有些代码块是会误导你的**“噪声块”**（比如写错了循环边界或运算符），千万不要把它们拖进去哦！
+4️⃣ **调整缩进**：拼好顺序后，别忘了点击积木的 ◀ ▶ 按钮调整缩进层级（或者点击构建区右上角的【一键大括号嵌套】让我帮你自动对齐）。
+
+拼装过程中遇到任何阻碍，随时可以点击【请求提示】或者直接在下面发消息问我！比如你可以问我：
+- “我的代码块顺序拼对了吗？”
+- “这几个积木分别有什么作用？”
+- “为什么我总是验证不通过？”`;
+        appendCompanionMessage(greeting, 'ai');
         renderPhasePool();
         initSortable();
         updateBlockPreview();
-    }
-
-    function updateSubPhaseUI() {
-        const badge = document.getElementById('current-phase-badge');
-        if (badge) badge.textContent = `步骤 ${state.currentSubPhase} / 3`;
-
-        for (let p = 1; p <= 3; p++) {
-            const container = document.getElementById(`phase-container-${p}`);
-            if (container) {
-                const dropzone = container.querySelector('.block-solution');
-                if (p < state.currentSubPhase) {
-                    container.style.opacity = '1';
-                    container.style.pointerEvents = 'none'; // 固化锁定
-                    if (dropzone) dropzone.classList.remove('active-dropzone');
-                } else if (p === state.currentSubPhase) {
-                    container.style.opacity = '1';
-                    container.style.pointerEvents = 'auto';
-                    if (dropzone) dropzone.classList.add('active-dropzone');
-                } else {
-                    container.style.opacity = '0.4';
-                    container.style.pointerEvents = 'none';
-                    if (dropzone) dropzone.classList.remove('active-dropzone');
-                }
-            }
-        }
     }
 
     function renderPhasePool() {
         const pool = document.getElementById('block-pool-list');
         if (!pool || !state.preset.blocks) return;
 
+        // Fisher-Yates shuffle to thoroughly randomize block order in the pool
+        const shuffled = [...state.preset.blocks];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+
         pool.innerHTML = '';
-        state.preset.blocks.forEach(block => {
-            const phase = parseInt(block.phase || 1);
-            if (phase === state.currentSubPhase) {
-                const el = createBlockElement(block);
-                pool.appendChild(el);
-            }
+        shuffled.forEach(block => {
+            const el = createBlockElement(block);
+            pool.appendChild(el);
         });
     }
+
 
     function createBlockElement(block) {
         const div = document.createElement('div');
@@ -290,9 +326,12 @@
 
     function initSortable() {
         const pool = document.getElementById('block-pool-list');
-        if (!pool) return;
+        const solution = document.getElementById('block-solution-list');
+        if (!pool || !solution) return;
 
         if (state.poolSortable) state.poolSortable.destroy();
+        if (state.solutionSortable) state.solutionSortable.destroy();
+
         const sortableOptions = {
             group: 'blocks',
             animation: 200,
@@ -302,19 +341,12 @@
         };
 
         state.poolSortable = Sortable.create(pool, { ...sortableOptions });
-
-        for (let p = 1; p <= 3; p++) {
-            const zone = document.getElementById(`solution-zone-${p}`);
-            if (zone) {
-                if (state[`zoneSortable${p}`]) state[`zoneSortable${p}`].destroy();
-                state[`zoneSortable${p}`] = Sortable.create(zone, {
-                    ...sortableOptions,
-                    onAdd: function () { updateBlockPreview(); },
-                    onUpdate: function () { updateBlockPreview(); },
-                    onRemove: function () { updateBlockPreview(); }
-                });
-            }
-        }
+        state.solutionSortable = Sortable.create(solution, {
+            ...sortableOptions,
+            onAdd: function () { updateBlockPreview(); },
+            onUpdate: function () { updateBlockPreview(); },
+            onRemove: function () { updateBlockPreview(); }
+        });
     }
 
     function increaseIndent(btn) {
@@ -343,32 +375,9 @@
         let preview = '#include <iostream>\nusing namespace std;\nint main() {\n';
         let totalBlocks = 0;
 
-        // zone 1
-        const z1 = document.getElementById('solution-zone-1');
-        if (z1) {
-            z1.querySelectorAll('.code-block').forEach(b => {
-                totalBlocks++;
-                preview += '    ' + '    '.repeat(parseInt(b.dataset.indent || 0)) + b.querySelector('code').textContent + '\n';
-            });
-        }
-
-        preview += '    for (int i = 0; i < m; ++i) {\n';
-
-        // zone 2
-        const z2 = document.getElementById('solution-zone-2');
-        if (z2) {
-            z2.querySelectorAll('.code-block').forEach(b => {
-                totalBlocks++;
-                preview += '        ' + '    '.repeat(parseInt(b.dataset.indent || 0)) + b.querySelector('code').textContent + '\n';
-            });
-        }
-
-        preview += '    }\n';
-
-        // zone 3
-        const z3 = document.getElementById('solution-zone-3');
-        if (z3) {
-            z3.querySelectorAll('.code-block').forEach(b => {
+        const solutionList = document.getElementById('block-solution-list');
+        if (solutionList) {
+            solutionList.querySelectorAll('.code-block').forEach(b => {
                 totalBlocks++;
                 preview += '    ' + '    '.repeat(parseInt(b.dataset.indent || 0)) + b.querySelector('code').textContent + '\n';
             });
@@ -383,12 +392,12 @@
     }
 
     function autoNestBlocks() {
-        const zone = document.getElementById(`solution-zone-${state.currentSubPhase}`);
+        const zone = document.getElementById('block-solution-list');
         if (!zone) return;
 
         const blocks = zone.querySelectorAll('.code-block');
         if (blocks.length === 0) {
-            showNotification('当前步骤区还是空的哦，请先拖入积木', 'warning');
+            showNotification('核心构建区还是空的哦，请先拖入积木', 'warning');
             return;
         }
 
@@ -409,32 +418,39 @@
         });
 
         updateBlockPreview();
-        showNotification('✨ 当前步骤思维逻辑层级已对齐', 'success');
+        showNotification('✨ 代码缩进层级已对齐', 'success');
     }
 
     function verifyBlocks() {
-        const zone = document.getElementById(`solution-zone-${state.currentSubPhase}`);
+        const zone = document.getElementById('block-solution-list');
         if (!zone) return;
 
         const blocks = zone.querySelectorAll('.code-block');
         const studentIds = Array.from(blocks).map(b => b.dataset.blockId);
+        const studentIndents = Array.from(blocks).map(b => parseInt(b.dataset.indent || 0));
 
-        const targetBlocks = state.preset.blocks.filter(b => parseInt(b.phase || 1) === state.currentSubPhase && !b.id.startsWith('noise-'));
+        const targetBlocks = state.preset.blocks
+            .filter(b => !b.id.startsWith('noise-'))
+            .sort((a, b) => parseInt(a.id) - parseInt(b.id));
         const targetIds = targetBlocks.map(b => b.id);
+        const targetIndents = targetBlocks.map(b => b.indent || 0);
 
         if (studentIds.length === 0) {
-            showNotification('请先拖入当前步骤所需的思维积木块', 'warning');
+            showNotification('请先拖入核心构建区所需的积木块', 'warning');
+            appendCompanionMessage('提示：当前核心构建区还是空的哦！仔细看看左侧的算法块散落池，根据你的解题思路把核心积木块拖拽入中间的构建区吧！', 'ai');
             return;
         }
 
         const hasNoise = studentIds.some(id => id.startsWith('noise-'));
         if (hasNoise) {
             showNotification('混入了干扰思维的噪声块哦，结合上下文再思考一下', 'warning');
+            appendCompanionMessage('提示：我发现你的构建区混入了带有陷阱的“噪声块”（比如写错运算符或少读了参数的无用代码块）。仔细对照思路，把不相关的噪声块移出构建区吧！如果想不通，可以在下方问我哦。', 'ai');
             return;
         }
 
         if (studentIds.length !== targetIds.length) {
-            showNotification('操作步骤数量还不太对，思考一下是否多余或遗漏了', 'warning');
+            showNotification('积木数量不太对，思考一下是否遗漏或多余了', 'warning');
+            appendCompanionMessage('提示：你拖入的积木块数量不太对。想一想，是不是漏掉了某些关键步骤？比如输入读取变量或者收尾计算输出？', 'ai');
             return;
         }
 
@@ -447,27 +463,74 @@
         }
 
         if (!orderMatch) {
-            showNotification('解题先后承接顺序还不太准确，试着向伴学助手发起自由对话理清逻辑', 'warning');
+            showNotification('解题先后承接顺序还不准确，再调整一下顺序，或者向伴学助手发起对话理清逻辑', 'warning');
+            appendCompanionMessage('提示：积木块的上下排列顺序不太正确。在程序执行中，通常遵循“定义与读取输入 -> 核心计算/循环 -> 条件判定 -> 打印结果”的先后承接关系。试着调整一下代码块的位置，或者向我提问理清逻辑！', 'ai');
             return;
         }
 
-        if (state.currentSubPhase < 3) {
-            showNotification(`🎉 步骤 ${state.currentSubPhase} 解题思维正确！已锁定并下发下一层思维零件`, 'success');
-            state.currentSubPhase++;
-            updateSubPhaseUI();
-            renderPhasePool();
-            updateBlockPreview();
-        } else {
-            showNotification('🏆 全批次解题思维完美通关！进入费曼阶段', 'success');
-            setLoading(true);
-            setTimeout(() => initStage(3), 1500);
-            setLoading(false);
+        let indentMatch = true;
+        for (let i = 0; i < targetIndents.length; i++) {
+            if (studentIndents[i] !== targetIndents[i]) {
+                indentMatch = false;
+                break;
+            }
         }
+
+        if (!indentMatch) {
+            showNotification('积木顺序正确，但部分缩进层级需要调整，想想代码之间的嵌套关系？', 'warning');
+            appendCompanionMessage('提示：太棒了！你的积木顺序已经完全正确了！但是有一些代码块的“缩进层级（左右对齐）”还不准确。例如循环体或者条件判断内部的代码通常需要往右缩进。你可以点击构建区右上角的【一键大括号嵌套】按钮，我来帮你对齐！', 'ai');
+            return;
+        }
+
+        // Client-side passed! Now persist state on the backend
+        setLoading(true);
+        const blockOrder = Array.from(blocks).map(b => ({
+            id: b.dataset.blockId,
+            indent: parseInt(b.dataset.indent || 0)
+        }));
+
+        fetchJSON('/thinking/api/stage2/verify', {
+            method: 'POST',
+            body: JSON.stringify({
+                session_id: state.sessionId,
+                block_order: blockOrder
+            })
+        }).then(data => {
+            if (data.success && data.passed) {
+                showNotification('🏆 积木拼接与逻辑缩进完美通关！进入费曼学习阶段', 'success');
+                setTimeout(() => initStage(3), 1500);
+            } else {
+                showNotification(data.feedback || '验证失败，请重新检查', 'warning');
+            }
+        }).catch(err => {
+            showError('同步学习进度失败: ' + err.message);
+        }).finally(() => setLoading(false));
     }
 
+    // Connect Stage 2 hints to backend API and companion chat
     function requestStage2Hint() {
-        appendCompanionMessage('我目前在拼接步骤 ' + state.currentSubPhase + ' 时遇到阻力，请引导我思考。', 'student');
-        sendCompanionQueryStream('我目前在拼接步骤 ' + state.currentSubPhase + ' 时遇到阻力，请引导我思考。');
+        const zone = document.getElementById('block-solution-list');
+        const blocks = zone ? zone.querySelectorAll('.code-block') : [];
+        const currentBlockIds = Array.from(blocks).map(b => b.dataset.blockId);
+
+        setLoading(true);
+        appendCompanionMessage('我在进行积木编程拼接时遇到阻力，请给我一些引导提示。', 'student');
+
+        fetchJSON('/thinking/api/stage2/hint', {
+            method: 'POST',
+            body: JSON.stringify({
+                session_id: state.sessionId,
+                current_blocks: currentBlockIds
+            })
+        }).then(data => {
+            if (data.success) {
+                appendCompanionMessage(data.hint, 'ai');
+                if (!state.companionMessages) state.companionMessages = [];
+                state.companionMessages.push({ role: 'user', content: '我在进行积木编程拼接时遇到阻力，请给我一些引导提示。' });
+                state.companionMessages.push({ role: 'assistant', content: data.hint });
+            }
+        }).catch(err => showError(err.message))
+          .finally(() => setLoading(false));
     }
 
     function sendCompanionChat() {
@@ -490,19 +553,71 @@
         const typingId = 'typing-' + Date.now();
         if (container) {
             const typingDiv = document.createElement('div');
-            typingDiv.className = 'chat-msg msg-ai';
+            typingDiv.className = 'chat-message';
             typingDiv.id = typingId;
-            typingDiv.innerHTML = `<div class="msg-avatar"><i class="bi bi-robot"></i></div><div class="msg-bubble"><span class="typing-dots">思考引导中...</span></div>`;
+            typingDiv.innerHTML = `
+                <div class="chat-avatar teacher">🤖</div>
+                <div class="chat-bubble ai"><span class="typing-dots">思考引导中...</span></div>
+            `;
             container.appendChild(typingDiv);
             container.scrollTop = container.scrollHeight;
         }
 
+        // 构造伴学对话请求体，注入当前的阶段及积木状态
+        const requestBody = {
+            session_id: state.sessionId,
+            messages: messages,
+            current_stage: state.currentStage
+        };
+
+        if (state.currentStage === 2) {
+            const zone = document.getElementById('block-solution-list');
+            const blocks = zone ? zone.querySelectorAll('.code-block') : [];
+            const studentIds = Array.from(blocks).map(b => b.dataset.blockId);
+            const studentIndents = Array.from(blocks).map(b => parseInt(b.dataset.indent || 0));
+
+            // 获取期望的标准积木序列与缩进
+            const targetBlocks = state.preset.blocks
+                .filter(b => !b.id.startsWith('noise-'))
+                .sort((a, b) => parseInt(a.id) - parseInt(b.id));
+            const targetIds = targetBlocks.map(b => b.id);
+            const targetIndents = targetBlocks.map(b => b.indent || 0);
+
+            const hasNoise = studentIds.some(id => id.startsWith('noise-'));
+            const lengthMismatch = studentIds.length > 0 && studentIds.length !== targetIds.length;
+            
+            let orderMatch = true;
+            if (studentIds.length === targetIds.length) {
+                for (let i = 0; i < targetIds.length; i++) {
+                    if (studentIds[i] !== targetIds[i]) {
+                        orderMatch = false;
+                        break;
+                    }
+                }
+            } else {
+                orderMatch = false;
+            }
+
+            requestBody.stage2_state = {
+                current_blocks: Array.from(blocks).map(b => ({
+                    id: b.dataset.blockId,
+                    code: b.querySelector('code')?.textContent || '',
+                    label: b.querySelector('.block-label')?.textContent || '',
+                    indent: parseInt(b.dataset.indent || 0)
+                })),
+                errors: {
+                    is_empty: studentIds.length === 0,
+                    has_noise: hasNoise,
+                    length_mismatch: lengthMismatch,
+                    order_match: orderMatch,
+                    indent_match: orderMatch && (JSON.stringify(studentIndents) === JSON.stringify(targetIndents))
+                }
+            };
+        }
+
         fetchJSON('/thinking/api/companion/chat', {
             method: 'POST',
-            body: JSON.stringify({
-                session_id: state.sessionId,
-                messages: messages
-            })
+            body: JSON.stringify(requestBody)
         }).then(data => {
             const typingEl = document.getElementById(typingId);
             if (typingEl) typingEl.remove();
@@ -516,6 +631,7 @@
         }).catch(err => {
             const typingEl = document.getElementById(typingId);
             if (typingEl) typingEl.remove();
+            appendCompanionMessage('连接服务器失败，请重试。', 'ai');
         });
     }
 
@@ -523,14 +639,17 @@
         const container = document.getElementById('companion-messages');
         if (!container) return;
 
-        const div = document.createElement('div');
-        div.className = `chat-msg msg-${sender}`;
-        const avatar = sender === 'ai' ? '<i class="bi bi-robot"></i>' : '<i class="bi bi-person-fill"></i>';
-        div.innerHTML = `
-            <div class="msg-avatar">${avatar}</div>
-            <div class="msg-bubble">${escapeHtml(text)}</div>
+        const isUser = sender === 'student';
+        const avatarClass = isUser ? 'student' : 'teacher';
+        const avatarIcon = isUser ? '👤' : '🤖';
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `chat-message ${isUser ? 'user' : ''}`;
+        msgDiv.innerHTML = `
+            <div class="chat-avatar ${avatarClass}">${avatarIcon}</div>
+            <div class="chat-bubble ${isUser ? 'user-msg' : 'ai'}">${renderMarkdown(text)}</div>
         `;
-        container.appendChild(div);
+        container.appendChild(msgDiv);
         container.scrollTop = container.scrollHeight;
     }
 
@@ -761,7 +880,7 @@
         msgDiv.className = `chat-message ${isUser ? 'user' : ''}`;
         msgDiv.innerHTML = `
             <div class="chat-avatar ${avatarClass}">${avatarIcon}</div>
-            <div class="chat-bubble ${isUser ? 'user-msg' : 'ai'}">${escapeHtml(content)}</div>
+            <div class="chat-bubble ${isUser ? 'user-msg' : 'ai'}">${renderMarkdown(content)}</div>
         `;
         container.appendChild(msgDiv);
         container.scrollTop = container.scrollHeight;
@@ -797,7 +916,7 @@
 
         const div = document.createElement('div');
         div.className = 'hint-bubble';
-        div.innerHTML = `<i class="bi bi-lightbulb"></i><span>${escapeHtml(hint)}</span>`;
+        div.innerHTML = `<i class="bi bi-lightbulb"></i><span>${renderMarkdown(hint)}</span>`;
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     }
@@ -887,6 +1006,19 @@
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return res.json();
         });
+    }
+
+    function renderMarkdown(str) {
+        if (!str) return '';
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({ breaks: true, gfm: true });
+            let html = marked.parse(str);
+            if (typeof DOMPurify !== 'undefined') {
+                html = DOMPurify.sanitize(html);
+            }
+            return html;
+        }
+        return escapeHtml(str).replace(/\n/g, '<br>');
     }
 
     function escapeHtml(str) {

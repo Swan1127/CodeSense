@@ -62,7 +62,10 @@
         {% elif preset_status == 'failed' %}
         <i class="bi bi-exclamation-triangle" style="animation: none; color: var(--arena-danger);"></i>
         <h3>学习数据生成失败</h3>
-        <p>请联系老师重新生成，或稍后再试。</p>
+        <p>可能由于大模型连接超时，请尝试重新生成或联系老师。</p>
+        <button class="arena-btn arena-btn-primary" style="margin-top: 16px;" onclick="retryGeneratePreset()">
+            <i class="bi bi-arrow-clockwise"></i> 重新尝试生成
+        </button>
         {% else %}
         <i class="bi bi-hourglass-split"></i>
         <h3>学习数据尚未准备</h3>
@@ -113,35 +116,30 @@
                 </div>
                 <div class="panel-body">
                     <style>
-                        /* 让代码池呈现四面八方错落排列的悬浮感 */
+                        /* 散落池：CSS Grid 自适应布局，防止重叠 */
                         #block-pool-list {
-                            display: flex;
-                            flex-wrap: wrap;
+                            display: grid;
+                            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
                             gap: 10px;
-                            justify-content: space-around;
-                            align-items: center;
                             padding: 16px;
                             background: radial-gradient(circle, #f8fafc 0%, #f1f5f9 100%);
                             border: 2px dashed #cbd5e1;
+                            border-radius: 8px;
+                            min-height: 80px;
                         }
                         #block-pool-list .code-block {
-                            width: auto;
-                            min-width: 40%;
-                            flex: 1 1 auto;
+                            width: 100%;
                             margin: 0;
-                            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-                            transform: rotate(-0.5deg);
+                            box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+                            transform: rotate(-0.3deg);
                             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                         }
                         #block-pool-list .code-block:nth-child(even) {
-                            transform: rotate(1deg) translateY(4px);
-                        }
-                        #block-pool-list .code-block:nth-child(3n) {
-                            transform: rotate(-1.5deg) translateY(-2px);
+                            transform: rotate(0.3deg);
                         }
                         #block-pool-list .code-block:hover {
-                            transform: scale(1.05) rotate(0deg);
-                            box-shadow: 0 8px 20px rgba(37,99,235,0.15);
+                            transform: scale(1.03) rotate(0deg);
+                            box-shadow: 0 6px 18px rgba(37,99,235,0.15);
                             z-index: 10;
                         }
                         /* 构建区保持垂直严密排布 */
@@ -228,12 +226,23 @@
             <!-- Default: AI Companion (Stages 1-2) -->
             <div id="ai-companion-panel" class="stage-section active">
                 <div class="panel-header">
-                    <h3><i class="bi bi-robot"></i> AI 学习助手</h3>
+                    <h3><i class="bi bi-robot"></i> AI 伴学助手</h3>
                 </div>
-                <div class="panel-body" style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--arena-text-dim);">
-                    <i class="bi bi-lightbulb" style="font-size: 48px; color: var(--arena-primary); margin-bottom: 16px;"></i>
-                    <p>遇到困难时，点击「请求提示」获取引导。</p>
-                    <p style="font-size: 12px;">AI不会给你答案，但会帮你找到思考的方向。</p>
+                <div class="chat-container">
+                    <div class="chat-messages" id="companion-messages">
+                        <div class="chat-message">
+                            <div class="chat-avatar teacher">🤖</div>
+                            <div class="chat-bubble ai">我是你的 AI 伴学助手。在思路描述和积木编程阶段，如果你遇到问题，随时可以在下方问我，我会引导你思考！</div>
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <input class="chat-input" id="companion-chat-input" type="text"
+                               placeholder="向伴学助手提问..."
+                               onkeydown="if(event.key==='Enter'){ThinkingArena.sendCompanionChat()}">
+                        <button class="arena-btn-send" onclick="ThinkingArena.sendCompanionChat()">
+                            <i class="bi bi-send-fill"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -293,5 +302,40 @@
             if (el) stageObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
         });
     })();
+
+    // 重新尝试生成预设
+    function retryGeneratePreset() {
+        const btn = document.querySelector('.preset-pending button');
+        const originalText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split rotating-icon"></i> 正在请求中...';
+        }
+        fetch('/thinking/api/retry_preset/{{ assignment.id }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('重试失败: ' + (data.error || '未知错误'));
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }
+            }
+        })
+        .catch(err => {
+            alert('请求错误: ' + err.message);
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+    }
 </script>
 {% endblock %}
