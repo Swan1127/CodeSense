@@ -41,8 +41,22 @@ class SharedLLMClient:
         self._provider: LLMProvider = None
         self._model_name: str = ""
         self._available: bool = False
+        self._redis_cache = None
+        self._init_redis()
         self._init_client()
         self._initialized = True
+
+    def _init_redis(self):
+        """初始化 Redis 缓存连接"""
+        import os
+        redis_url = os.environ.get('REDIS_URL') or 'redis://127.0.0.1:6379/0'
+        try:
+            import redis
+            self._redis_cache = redis.from_url(redis_url, socket_timeout=1)
+            self._redis_cache.ping()
+            print(f"[OK] LLM 接口缓存启用: {redis_url}")
+        except Exception:
+            self._redis_cache = None
 
     def _init_client(self):
         """初始化 LLM 客户端"""
@@ -132,10 +146,25 @@ class SharedLLMClient:
             响应内容，或 None（失败时）
         """
         if not self.is_available():
-            print("⚠️  LLM 客户端不可用")
+            print("[!] LLM 客户端不可用")
             return None
 
+        # 尝试从 Redis 缓存中获取响应
+        cache_key = None
+        if self._redis_cache:
+            try:
+                import hashlib
+                import json
+                serialized = json.dumps({"m": messages, "t": temperature, "max": max_tokens}, sort_keys=True)
+                cache_key = f"llm_cache:{hashlib.md5(serialized.encode('utf-8')).hexdigest()}"
+                cached_res = self._redis_cache.get(cache_key)
+                if cached_res:
+                    return cached_res.decode('utf-8')
+            except Exception:
+                pass
+
         try:
+            content = None
             if self._provider == LLMProvider.ZHIPU:
                 response = self._client.chat.completions.create(
                     model=self._model_name,
@@ -143,7 +172,7 @@ class SharedLLMClient:
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
-                return response.choices[0].message.content
+                content = response.choices[0].message.content
 
             elif self._provider == LLMProvider.OPENAI:
                 response = self._client.chat.completions.create(
@@ -152,7 +181,16 @@ class SharedLLMClient:
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
-                return response.choices[0].message.content
+                content = response.choices[0].message.content
+
+            # 成功获取后，如果启用了 Redis，则写入缓存（缓存有效期 24 小时）
+            if content and self._redis_cache and cache_key:
+                try:
+                    self._redis_cache.setex(cache_key, 3600 * 24, content)
+                except Exception:
+                    pass
+
+            return content
 
         except Exception as e:
             print(f"LLM API 调用失败: {e}")

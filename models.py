@@ -461,11 +461,16 @@ class AbilityTrend(db.Model):
     @staticmethod
     def get_or_create(student_id):
         """获取或创建学生的能力趋势记录"""
+        from sqlalchemy.exc import IntegrityError
         trend = AbilityTrend.query.filter_by(student_id=student_id).first()
         if not trend:
-            trend = AbilityTrend(student_id=student_id)
-            db.session.add(trend)
-            db.session.commit()
+            try:
+                trend = AbilityTrend(student_id=student_id)
+                db.session.add(trend)
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                trend = AbilityTrend.query.filter_by(student_id=student_id).first()
         return trend
     
     @staticmethod

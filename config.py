@@ -55,7 +55,7 @@ class Config(object):
         # 开发环境生成临时密钥，生产环境会报错
         import sys
         if 'pytest' not in sys.modules:  # 非测试环境
-            print("⚠️  警告: SECRET_KEY 未设置，使用临时生成的密钥（仅限开发环境）")
+            print("[!] 警告: SECRET_KEY 未设置，使用临时生成的密钥（仅限开发环境）")
             print("   生产环境请在 .env 文件中设置 SECRET_KEY")
         SECRET_KEY = secrets.token_hex(32)
     
@@ -154,10 +154,10 @@ class ProductionConfig(Config):
         
         # 检查是否配置了AI API密钥
         if not os.environ.get('ZHIPU_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
-            print("⚠️  警告: 未配置 AI API 密钥，AI评估功能将不可用")
+            print("[!] 警告: 未配置 AI API 密钥，AI评估功能将不可用")
             print("   请在 .env 中设置 ZHIPU_API_KEY 或 OPENAI_API_KEY")
         
-        print("✅ 生产环境配置检查通过")
+        print("[OK] 生产环境配置检查通过")
 
 # 配置字典，用于在app.py中选择配置
 config = {

@@ -221,17 +221,32 @@ def create_app(config_name='default'):
     app.config.from_object(config[config_name])
     
     # 动态会话配置
-    app.config['SESSION_TYPE'] = 'filesystem'
     app.config['SESSION_PERMANENT'] = False
     app.config['SESSION_USE_SIGNER'] = True
-    app.config['SESSION_FILE_DIR'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flask_session')
-    app.config['SESSION_KEY_PREFIX'] = 'flask_session:'
     app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 会话有效期1天
+
+    # 尝试加载 Redis 作为会话后端，解决并发时的磁盘 I/O 及锁问题
+    redis_url = os.environ.get('REDIS_URL') or 'redis://127.0.0.1:6379/0'
+    try:
+        import redis
+        r = redis.from_url(redis_url, socket_timeout=1)
+        r.ping()
+        app.config['SESSION_TYPE'] = 'redis'
+        app.config['SESSION_REDIS'] = r
+        app.config['SESSION_KEY_PREFIX'] = 'codesense_session:'
+        print(f"[OK] Redis 会话后端加载成功: {redis_url}")
+    except Exception as e:
+        # 降级到文件系统会话
+        app.config['SESSION_TYPE'] = 'filesystem'
+        app.config['SESSION_FILE_DIR'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flask_session')
+        app.config['SESSION_KEY_PREFIX'] = 'flask_session:'
+        # 确保session目录存在
+        os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
+        print(f"[!] Redis 连接失败或未安装，已自动降级至文件系统会话 (filesystem): {str(e)}")
     
     # 设置Cookie安全选项
     # 通过环境变量SECURE_COOKIES控制Cookie安全设置
     secure_cookies_env = os.environ.get('SECURE_COOKIES', '').lower()
-    
     if secure_cookies_env == 'true':
         app.config['SESSION_COOKIE_SECURE'] = True
     elif secure_cookies_env == 'false':
@@ -240,10 +255,7 @@ def create_app(config_name='default'):
         app.config['SESSION_COOKIE_SECURE'] = True  # 生产环境默认启用HTTPS安全Cookie
     else:
         app.config['SESSION_COOKIE_SECURE'] = False  # 开发环境默认不启用
-    
-    # 确保session目录存在
-    os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
-    
+        
     # 调用配置初始化
     config[config_name].init_app(app)
     

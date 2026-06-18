@@ -25,4 +25,7 @@ zhipuai>=2.0.1
 # Markdown 渲染（routes/api.py 使用）
 Markdown>=3.4.0
 
+# 高并发会话与缓存优化
+redis>=5.0.0
+
 # 注：torch / transformers 为可选依赖（try/except 保护），已由大模型接口顶替，按需手动安装
