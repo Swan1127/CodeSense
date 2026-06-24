@@ -774,6 +774,7 @@ def api_generate_preset():
             preset.code_blocks = json.dumps(result.get('code_blocks', []), ensure_ascii=False)
             preset.noise_blocks = json.dumps(result.get('noise_blocks', []), ensure_ascii=False)
             preset.difficulty_config = json.dumps(result.get('difficulty_config', {}), ensure_ascii=False)
+            preset.algorithm_summary = result.get('algorithm_summary', '')
             preset.status = 'ready'
             preset.error_message = None
 
@@ -944,7 +945,7 @@ def _serialize_preset(preset: AssignmentThinkingPreset) -> dict:
     code_blocks = preset.get_code_blocks()
     noise_blocks = preset.get_noise_blocks()
 
-    # 合并并打乱代码块（不暴露哪些是噪声块）
+    # 合并并打乱代码块（不暴露哪些是噪声块），同时向后兼容旧前端代码，并注入 part_name 等字段
     all_blocks = []
     for block in code_blocks:
         all_blocks.append({
@@ -952,7 +953,10 @@ def _serialize_preset(preset: AssignmentThinkingPreset) -> dict:
             'code': block.get('code', ''),
             'label': block.get('label', ''),
             'indent': block.get('indent', 0),
-            'phase': block.get('phase', 1)
+            'phase': block.get('phase', 1),
+            'part_name': block.get('part_name', '核心程序'),
+            'part_header': (block.get('part_header') or 'int main() {\n').replace('{{', '{').replace('}}', '}'),
+            'part_footer': (block.get('part_footer') or '    return 0;\n}\n').replace('{{', '{').replace('}}', '}')
         })
     for block in noise_blocks:
         all_blocks.append({
@@ -960,10 +964,79 @@ def _serialize_preset(preset: AssignmentThinkingPreset) -> dict:
             'code': block.get('code', ''),
             'label': block.get('label', ''),
             'indent': block.get('indent', 0),
-            'phase': block.get('phase', 1)
+            'phase': block.get('phase', 1),
+            'part_name': block.get('part_name', '核心程序'),
+            'part_header': (block.get('part_header') or 'int main() {\n').replace('{{', '{').replace('}}', '}'),
+            'part_footer': (block.get('part_footer') or '    return 0;\n}\n').replace('{{', '{').replace('}}', '}')
         })
 
     random.shuffle(all_blocks)
+
+    # 按照 Part 逻辑分组与单独打乱噪声块/打乱顺序
+    parts_list = []
+    parts_map = {}
+    
+    # 1. 搜集正确积木块并确定 Part 顺序
+    for block in code_blocks:
+        p_name = block.get('part_name') or '核心程序'
+        p_header = (block.get('part_header') or 'int main() {\n').replace('{{', '{').replace('}}', '}')
+        p_footer = (block.get('part_footer') or '    return 0;\n}\n').replace('{{', '{').replace('}}', '}')
+        
+        if p_name not in parts_map:
+            p_data = {
+                'part_name': p_name,
+                'part_header': p_header,
+                'part_footer': p_footer,
+                'blocks': []
+            }
+            parts_map[p_name] = p_data
+            parts_list.append(p_data)
+            
+        parts_map[p_name]['blocks'].append({
+            'id': str(block.get('id', '')),
+            'code': block.get('code', ''),
+            'label': block.get('label', ''),
+            'indent': block.get('indent', 0),
+            'phase': block.get('phase', 1),
+            'part_name': p_name,
+            'part_header': p_header,
+            'part_footer': p_footer
+        })
+
+    # 2. 将噪声干扰块归入对应 Part
+    for block in noise_blocks:
+        p_name = block.get('part_name') or '核心程序'
+        p_header = (block.get('part_header') or 'int main() {\n').replace('{{', '{').replace('}}', '}')
+        p_footer = (block.get('part_footer') or '    return 0;\n}\n').replace('{{', '{').replace('}}', '}')
+        
+        if p_name not in parts_map:
+            # 如果噪声块的 part_name 在正确块中未定义，归入首个 Part
+            if parts_list:
+                p_name = parts_list[0]['part_name']
+            else:
+                p_data = {
+                    'part_name': p_name,
+                    'part_header': p_header,
+                    'part_footer': p_footer,
+                    'blocks': []
+                }
+                parts_map[p_name] = p_data
+                parts_list.append(p_data)
+                
+        parts_map[p_name]['blocks'].append({
+            'id': str(block.get('id', '')),
+            'code': block.get('code', ''),
+            'label': block.get('label', ''),
+            'indent': block.get('indent', 0),
+            'phase': block.get('phase', 1),
+            'part_name': p_name,
+            'part_header': p_header,
+            'part_footer': p_footer
+        })
+
+    # 3. 独立对每个 Part 内部进行打乱，保证噪声和顺序在局部是随机的
+    for part in parts_list:
+        random.shuffle(part['blocks'])
 
     # 惰性回填：如果旧预设缺少 algorithm_summary，尝试后台异步生成，避免阻塞主请求
     algorithm_summary = preset.get_algorithm_summary()
@@ -990,6 +1063,7 @@ def _serialize_preset(preset: AssignmentThinkingPreset) -> dict:
     return {
         'key_steps': preset.get_key_steps(),
         'blocks': all_blocks,
+        'parts': parts_list,
         'difficulty': difficulty,
         'algorithm_summary': algorithm_summary,
         'guided_questions': guided_questions,

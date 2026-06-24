@@ -202,50 +202,80 @@ def generate_preset(assignment_title: str, assignment_description: str) -> Dict:
     result['algorithm_summary'] = summary_data.get('algorithm_summary', '算法流程：分析题目要求，读取输入，处理逻辑并输出结果。').strip()
     guided_questions = summary_data.get('guided_questions', [])
 
-    # Step 2: 提取关键解题步骤
-    steps_prompt = f"""分析以下编程题及其标准答案，提取5-8个关键解题步骤。
-每个步骤用自然语言描述（不要包含代码），代表解题思路中的关键节点。
+    # Step 2:
+    noise_prompt = f"""针对以下 C++ 编程题及其拆解出的正确积木块，请为每个"逻辑部分"（Part）各生成 1~2 个"噪声干扰积木块"。
 
-题目：{assignment_title}
-描述：{assignment_description[:300]}
+## 核心要求（极其重要）
+1. **分类归属**：每个噪声块必须属于正确积木块中定义的一个 Part，并且包含对应的 `part_name`, `part_header`, `part_footer`（值必须与该 Part 的正确块完全一致）。
+2. **每个噪声块必须是单条 C++ 语句**，与该 Part 正确积木块 of 格式和粒度一致。
+3. **噪声块必须看起来像是正确代码的合理变体**，只包含一个微小的逻辑错误。学生必须仔细思考才能发现问题。
+4. 错误类型示例：
+   - 运算符写错：`>` 写成 `>=`，`+` 写成 `-`，`<` 写成 `>`
+   - 变量名写反：`a` 和 `b` 交换
+   - 边界差1：`i < n` 写成 `i <= n`，`i = 0` 写成 `i = 1`
+   - 少读/多读一个变量：`cin >> a >> b;` 变成 `cin >> a;`
+   - 初始值错误：`max_val = 0` 应为 `max_val = -1`
+5. **label 必须看起来正常合理**，不能暴露这是错误块。label 应该和正确块的风格一致。
+6. **禁止生成与该 Part 完全无关的代码**。
 
-标准答案：
+参考代码：
 {reference_code}
 
-请以JSON数组格式返回，每个元素是一个步骤描述字符串。示例：
-["引入必要的头文件", "定义主函数", "声明变量存储输入", ...]"""
+请严格以JSON数组格式返回，每个元素包含:
+- "id": 唯一编号字符串（以"noise-"开头，如 "noise-1"）
+- "code": 单条噪声语句（与对应 Part 的正确块粒度一致）
+- "indent": 缩进深度（相对于该 Part header 的缩进，整数，与对应阶段的正确块一致）
+- "label": 正常的中文语义描述（不暴露错误）
+- "phase": 所属阶段（整数 1、2 或 3）
+- "part_name": 该噪声块所属的部分名称（必须与对应正确块的 part_name 完全一致）
+- "part_header": 该部分的静态开头代码（与对应正确块一致）
+- "part_footer": 该部分的静态结尾代码（与对应正确块一致）
+- "error_type": 错误类型简述（如"运算符错误"、"边界差1"、"变量遗漏"等）
 
-    steps_response = client.chat(
-        [{"role": "system", "content": "你是编程教育专家。请严格以JSON数组格式返回结果。"},
-         {"role": "user", "content": steps_prompt}],
-        temperature=0.3, max_tokens=1000
+示例格式：[{{{{
+    "id": "noise-1",
+    "code": "cin >> n;",
+    "indent": 0,
+    "label": "读取输入参数",
+    "phase": 1,
+    "part_name": "函数 main()",
+    "part_header": "int main() {{{{",
+    "part_footer": "    return 0;\\n}}}}",
+    "error_type": "变量遗漏（漏读了m）"
+}}}}]"""
+
+
+    noise_response = client.chat(
+        [{"role": "system", "content": "你是编程教育专家。请严格以JSON数组格式返回噪声代码块。"},
+         {"role": "user", "content": noise_prompt}],
+        temperature=0.5, max_tokens=1500
     )
-    result['key_steps'] = _parse_json_array(steps_response, default=["分析问题", "设计算法", "编写代码", "测试验证"])
+    result['noise_blocks'] = _parse_json_array(noise_response, default=[])
 
-    # Step 3: 将代码拆分为语义代码块（细粒度单行拆分）
-    blocks_prompt = f"""请将以下 C++ 代码的核心逻辑部分（不含 #include、using namespace std、int main(){{ 和 return 0; }}）
-逐行拆解为独立的代码积木块。
+    # Step 3: 生成正确代码积木块（拆分为不同的逻辑部刑）
+    blocks_prompt = f"""main 函数核心逻辑较长（整个程序除外壳外核心逻辑超过 10 行），你必须将程序拆分为多个"逻辑部分"（Part）。
+每个部分代表一个独立的函数或 main 函数的一个逻辑片段。
 
-## 拆分规则（极其重要，请严格遵守）
-1. **每个积木块只包含一条独立的 C++ 语句或控制结构头部**。例如：
-   - 一条变量声明：`int n, m;`
-   - 一条输入语句：`cin >> n >> m;`
-   - 一个循环头部：`for (int i = 0; i < n; i++) {{`
-   - 一条赋值/计算：`sum += a[i];`
-   - 一条输出语句：`cout << result << endl;`
-   - 一个右花括号：`}}`
-2. **绝对禁止将多条语句合并到一个积木块中**。例如 `int a, b; cin >> a >> b;` 必须拆成两个独立的积木块。
-3. **循环和条件结构**：`for(...){{` 和对应的 `}}` 各自作为独立积木块。循环体内部的语句也各自独立。
-4. **忽略外壳**：不要包含 `#include`、`using namespace std;`、`int main() {{`、`return 0;`、最外层的 `}}`。只拆解核心逻辑。
-5. **每个积木块总数一般在 5~12 个之间**，取决于代码复杂度。
+## 拆分与分段规则（极其重要，请严格遵守）
+1. **识别逻辑部分（Part）**：
+   - 辅助函数（如 `void swap(int &a, int &b)`）必须单独作为一个 Part，名称例如 `"函数 swap()"`。
+   - main 函数如果不是特别长，可以单独作为一个 Part，名称为 `"函数 main()"`。
+   - 如果 main 函数较长，可以拆分为 2~3 个 Part，例如 `"函数 main() 准备阶段"`（变量声明、读取输入）、`"函数 main() 核心计算"`、`"函数 main() 输出结果"`。
+   - 每个 Part 拥有它自己的开头代码（part_header，如 `"void swap(int &a, int &b) {{"` 或 `"int main() {{"`）和结尾代码（part_footer，如 `"}}"` 或 `"    return 0;\\n}}"`）。
+   - 积木块只拆解 Part 内部的具体语句，**绝对不要**把 part_header 和 part_footer 本身当作积木块返回。
+   - 如果整个程序非常简单短小（总核心代码行数少于8行且只有main函数），可以仅使用单个 Part，名称为 `"核心程序"`，对应的 part_header 为 `"int main() {{"`，part_footer 为 `"    return 0;\\n}}"`。
+2. **每个积木块只包含一条独立的 C++ 语句或控制结构头部**。
+3. **绝对禁止将多条语句合并到一个积木块中**。
+4. **忽略全局外壳**：不要包含 `#include`、`using namespace std;`。这些不属于任何 Part。
+5. **每个 Part 内部的积木块数量一般在 3~8 个之间**，避免单个 Part 积木过多。
 
-## phase 分类
-- **phase 1**：变量声明、输入读取等准备工作
-- **phase 2**：核心计算逻辑（循环、条件判断、状态更新等）
-- **phase 3**：输出结果、收尾处理
+## phase 分类（指在各自 Part 中的执行阶段）
+- **phase 1**：准备工作（变量声明、输入读取等）
+- **phase 2**：核心逻辑（循环、条件判断、计算更新等）
+- **phase 3**：收尾处理（输出结果等）
 
 ## indent 规则
-- main() 函数体内的第一层语句：indent = 0
+- 相对于当前 Part 的 header 的第一层语句：indent = 0
 - 在一层花括号内（如 for 循环体内）：indent = 1
 - 在两层花括号内（如嵌套的 if 内）：indent = 2
 
@@ -255,22 +285,31 @@ def generate_preset(assignment_title: str, assignment_description: str) -> Dict:
 请严格以JSON数组格式返回结果，每个元素必须包含:
 - "id": 唯一编号（从1开始递增，数字类型）
 - "code": 该积木块的代码内容（单条语句，字符串类型）
-- "indent": 缩进深度（整数）
-- "label": 简短的中文语义描述（如"声明变量n"、"读取输入"、"循环遍历数组"等）
+- "indent": 缩进深度（相对于该 Part header 的缩进，整数，从0开始）
+- "label": 简短的中文语义描述（如"声明变量temp"、"交换变量a和b的值"等）
 - "phase": 所属阶段（整数 1、2 或 3）
+- "part_name": 该积木块所属的部分名称（例如 "函数 swap()", "函数 main()"）
+- "part_header": 该部分的静态开头代码（例如 "void swap(int &a, int &b) {{" 或 "int main() {{"）
+- "part_footer": 该部分的静态结尾代码（例如 "}}" 或 "    return 0;\\n}}"）
 
 示例格式：[{{{{
     "id": 1,
-    "code": "int n;",
+    "code": "int temp = a;",
     "indent": 0,
-    "label": "声明变量n",
-    "phase": 1
+    "label": "备份变量a的值",
+    "phase": 1,
+    "part_name": "函数 swap()",
+    "part_header": "void swap(int &a, int &b) {{{{",
+    "part_footer": "}}}}"
 }}}}, {{{{
     "id": 2,
-    "code": "cin >> n;",
+    "code": "a = b;",
     "indent": 0,
-    "label": "读取输入n",
-    "phase": 1
+    "label": "将b的值赋给a",
+    "phase": 2,
+    "part_name": "函数 swap()",
+    "part_header": "void swap(int &a, int &b) {{{{",
+    "part_footer": "}}}}"
 }}}}]"""
 
 

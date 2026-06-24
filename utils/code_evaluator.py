@@ -896,6 +896,10 @@ def get_code_embedding(code):
 
 def generate_feedback(code, score, assignment_title=None):
     """根据代码和评分生成人类可读的反馈"""
+    # 兼容分值范围：如果传入的是 0-5 分制，将其乘以 20 转换为 0-100 分制
+    if score <= 5.0:
+        score = score * 20.0
+        
     feedback = ""
     
     # 评估代码与题目的匹配度
