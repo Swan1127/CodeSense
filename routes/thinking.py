@@ -33,44 +33,43 @@ def arena(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
     preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
 
-    # 检查预设状态，若未就绪则在请求中直接同步生成预设以防等待
     preset_status = 'not_found'
     
-    if not preset or preset.status != 'ready':
+    if not preset:
         try:
-            from utils.thinking_ai import generate_preset
-            if not preset:
-                preset = AssignmentThinkingPreset(assignment_id=assignment_id, status='generating')
-                db.session.add(preset)
-                db.session.commit()
-            else:
-                preset.status = 'generating'
-                db.session.commit()
-            
-            current_app.logger.info(f"正在为作业 {assignment_id} 同步生成引导式学习预设...")
-            result = generate_preset(assignment.title, assignment.description or '')
-            
-            preset.reference_code = result.get('reference_code', '')
-            preset.key_steps = json.dumps(result.get('key_steps', []), ensure_ascii=False)
-            preset.code_blocks = json.dumps(result.get('code_blocks', []), ensure_ascii=False)
-            preset.noise_blocks = json.dumps(result.get('noise_blocks', []), ensure_ascii=False)
-            preset.difficulty_config = json.dumps(result.get('difficulty_config', {}), ensure_ascii=False)
-            preset.algorithm_summary = result.get('algorithm_summary', '')
-            preset.status = 'ready'
-            preset.error_message = None
+            preset = AssignmentThinkingPreset(assignment_id=assignment_id, status='generating')
+            db.session.add(preset)
             db.session.commit()
-            preset_status = 'ready'
+            
+            # 异步触发预设生成
+            from utils.async_tasks import add_generate_preset_task
+            add_generate_preset_task(assignment_id)
+            
+            preset_status = 'generating'
+            current_app.logger.info(f"作业 {assignment_id} 预设不存在，已成功触发后台异步生成任务。")
         except Exception as e:
             db.session.rollback()
-            # 获取最新状态，防并发写冲突
-            preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
-            if preset and preset.status != 'ready':
-                preset.status = 'failed'
-                preset.error_message = str(e)
+            current_app.logger.error(f"为作业 {assignment_id} 触发异步预设任务失败: {e}")
+            preset_status = 'failed'
+    elif preset.status != 'ready':
+        if preset.status == 'failed':
+            # 如果先前失败，当用户进入页面时自动重新触发异步生成
+            try:
+                preset.status = 'generating'
+                preset.error_message = None
                 db.session.commit()
-            preset_status = preset.status if preset else 'failed'
-            current_app.logger.error(f"同步生成预设失败: {e}")
-            traceback.print_exc()
+                
+                from utils.async_tasks import add_generate_preset_task
+                add_generate_preset_task(assignment_id)
+                
+                preset_status = 'generating'
+                current_app.logger.info(f"作业 {assignment_id} 预设先前失败，已重新触发后台异步生成任务。")
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"为作业 {assignment_id} 重新触发异步预设任务失败: {e}")
+                preset_status = 'failed'
+        else:
+            preset_status = preset.status
     else:
         preset_status = preset.status
 
@@ -807,33 +806,6 @@ def preset_status(assignment_id):
         if not preset:
             return jsonify({'status': 'not_found'})
             
-        # 如果不是 ready，且用户正在积极轮询，说明用户正等在页面上
-        # 我们直接在此同步生成以防卡死
-        if preset.status != 'ready':
-            try:
-                from utils.thinking_ai import generate_preset
-                assignment = Assignment.query.get(assignment_id)
-                current_app.logger.info(f"轮询接口发现作业 {assignment_id} 预设未就绪，开始同步生成...")
-                result = generate_preset(assignment.title, assignment.description or '')
-                
-                preset.reference_code = result.get('reference_code', '')
-                preset.key_steps = json.dumps(result.get('key_steps', []), ensure_ascii=False)
-                preset.code_blocks = json.dumps(result.get('code_blocks', []), ensure_ascii=False)
-                preset.noise_blocks = json.dumps(result.get('noise_blocks', []), ensure_ascii=False)
-                preset.difficulty_config = json.dumps(result.get('difficulty_config', {}), ensure_ascii=False)
-                preset.algorithm_summary = result.get('algorithm_summary', '')
-                preset.status = 'ready'
-                preset.error_message = None
-                db.session.commit()
-            except Exception as gen_err:
-                db.session.rollback()
-                preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
-                if preset and preset.status != 'ready':
-                    preset.status = 'failed'
-                    preset.error_message = str(gen_err)
-                    db.session.commit()
-                current_app.logger.error(f"轮询中同步生成预设失败: {gen_err}")
-                
         return jsonify({
             'status': preset.status,
             'error': preset.error_message

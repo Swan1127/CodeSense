@@ -297,6 +297,13 @@ def add_assignment():
             db.session.add(new_assignment)
             db.session.commit()
             
+            # 触发异步生成预设任务
+            try:
+                from utils.async_tasks import add_generate_preset_task
+                add_generate_preset_task(new_assignment.id)
+            except Exception as e:
+                current_app.logger.error(f"触发预设生成任务失败: {e}")
+            
             # 添加系统日志
             admin_id = session.get('student_id')
             admin_user = User.query.get(admin_id)
