@@ -286,6 +286,10 @@ class AsyncTaskManager:
                     return
                     
                 preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
+                if preset and preset.status == 'ready':
+                    if self.logger:
+                        self.logger.info(f"作业 {assignment_id} 的预设已就绪，跳过后台生成")
+                    return
                 if not preset:
                     preset = AssignmentThinkingPreset(assignment_id=assignment_id)
                     db.session.add(preset)

@@ -8,7 +8,7 @@
 
 {% block extra_head %}
 <!-- SortableJS for drag-and-drop -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<script src="{{ url_for('static', filename='lib/Sortable.min.js') }}"></script>
 {% endblock %}
 
 {% block content %}
