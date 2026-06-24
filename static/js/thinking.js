@@ -15,7 +15,7 @@
         currentStage: 1,
         preset: null,
         // Timer
-        startTime: Date.now(),
+        startTime: null,
         timerInterval: null,
         // Stage 1
         stage1Score: null,
@@ -79,6 +79,22 @@
 
                 if (data.resumed) {
                     showNotification('已恢复上次的学习进度', 'info');
+                    state.isResumed = true;
+                    state.elapsedSeconds = data.elapsed_seconds || 0;
+                    state.stage1Description = data.stage1_description || '';
+                    state.stage1Score = data.stage1_score || null;
+                    state.stage2BlockOrder = data.stage2_block_order || null;
+                    state.companionHistory = data.companion_history || [];
+                    state.teacherHistory = data.teacher_history || [];
+                    state.studentHistory = data.student_history || [];
+                    state.buggyCodeInfo = data.buggy_code_info || null;
+
+                    // 同步并重新启动计时器
+                    if (state.timerInterval) {
+                        clearInterval(state.timerInterval);
+                    }
+                    state.startTime = Date.now() - state.elapsedSeconds * 1000;
+                    startTimer();
                 }
 
                 initStage(state.currentStage);
@@ -151,6 +167,9 @@
         }
         if (textarea) {
             textarea.focus();
+            if (state.isResumed && state.stage1Description) {
+                textarea.value = state.stage1Description;
+            }
         }
 
         // Setup algorithm summary collapse toggle & display
@@ -219,22 +238,30 @@
         if (container) {
             container.innerHTML = '';
             state.companionMessages = [];
-            const problemTitle = document.querySelector('.problem-panel h2')?.innerText?.replace(/[\r\n]/g, '').replace('引导式学习 - ', '').trim() || '当前任务';
             
-            let greeting = `哈罗！我是你的 AI 伴学助手。我们今天的任务是完成《${problemTitle}》。\n\n`;
-            if (state.preset && state.preset.algorithm_summary) {
-                greeting += `我已为你准备好了这道题的标准算法步骤简述（见左侧「算法思路参考」）。\n\n为了帮你理清思路，你可以尝试思考并回答以下引导问题：\n`;
+            if (state.isResumed && state.companionHistory && state.companionHistory.length > 0) {
+                state.companionHistory.forEach(msg => {
+                    appendCompanionMessage(msg.content, msg.role === 'student' ? 'student' : 'ai');
+                    state.companionMessages.push({ role: msg.role === 'student' ? 'user' : 'assistant', content: msg.content });
+                });
             } else {
-                greeting += `为了帮你理清思路，你可以尝试思考并回答以下引导问题：\n`;
+                const problemTitle = document.querySelector('.problem-panel h2')?.innerText?.replace(/[\r\n]/g, '').replace('引导式学习 - ', '').trim() || '当前任务';
+                
+                let greeting = `哈罗！我是你的 AI 伴学助手。我们今天的任务是完成《${problemTitle}》。\n\n`;
+                if (state.preset && state.preset.algorithm_summary) {
+                    greeting += `我已为你准备好了这道题的标准算法步骤简述（见左侧「算法思路参考」）。\n\n为了帮你理清思路，你可以尝试思考并回答以下引导问题：\n`;
+                } else {
+                    greeting += `为了帮你理清思路，你可以尝试思考并回答以下引导问题：\n`;
+                }
+                
+                questions.forEach((q, i) => {
+                    greeting += `${i + 1}️⃣ **${q}**\n`;
+                });
+                
+                greeting += `\n你可以结合左侧的算法流程和上面的引导提问，用自己的语言把解题步骤描述出来并提交。你也可以直接在下方回答这些问题，我会引导你完善成合格的思路描述哦！加油！✨`;
+                
+                appendCompanionMessage(greeting, 'ai');
             }
-            
-            questions.forEach((q, i) => {
-                greeting += `${i + 1}️⃣ **${q}**\n`;
-            });
-            
-            greeting += `\n你可以结合左侧的算法流程和上面的引导提问，用自己的语言把解题步骤描述出来并提交。你也可以直接在下方回答这些问题，我会引导你完善成合格的思路描述哦！加油！✨`;
-            
-            appendCompanionMessage(greeting, 'ai');
         }
     }
 
@@ -336,22 +363,63 @@
         }
 
         state.companionMessages = [];
-        // Welcoming AI companion message for Stage 2
-        const problemTitle = document.querySelector('.problem-panel h2')?.innerText?.replace(/[\r\n]/g, '').replace('引导式学习 - ', '').trim() || '当前任务';
-        const greeting = `太棒了！第一阶段的思路描述顺利通关！🎉
+        
+        // 恢复伴学助手聊天记录
+        if (state.isResumed && state.companionHistory && state.companionHistory.length > 0) {
+            const container = document.getElementById('companion-messages');
+            if (container) {
+                container.innerHTML = '';
+                state.companionHistory.forEach(msg => {
+                    appendCompanionMessage(msg.content, msg.role === 'student' ? 'student' : 'ai');
+                    state.companionMessages.push({ role: msg.role === 'student' ? 'user' : 'assistant', content: msg.content });
+                });
+            }
+        } else {
+            // Welcoming AI companion message for Stage 2
+            const problemTitle = document.querySelector('.problem-panel h2')?.innerText?.replace(/[\r\n]/g, '').replace('引导式学习 - ', '').trim() || '当前任务';
+            const greeting = `太棒了！第一阶段的思路描述顺利通关！🎉\n\n接下来是第二阶段：**积木编程**。我们需要把刚才的解题思路，用代码块拼装出来：\n1️⃣ **看清需求**：仔细阅读左侧【散落池】中每个代码块的代码和文字标签。\n2️⃣ **拖拽组合**：把需要的积木拖到右侧构建区。注意，为了让你专注于核心算法流程，外部的 \`#include\` 头文件和 \`main()\` 框架已经帮你包裹好啦，你只需要拼装核心逻辑。\n3️⃣ **注意陷阱**：散落池里有些代码块是会误导你的**“噪声块”**（比如写错了循环边界或运算符），千万不要把它们拖进去哦！\n4️⃣ **调整缩进**：拼好顺序后，别忘了点击积木的 ◀ ▶ 按钮调整缩进层级（或者点击构建区右上角的【一键大括号嵌套】让我帮你自动对齐）。\n\n拼装过程中遇到任何阻碍，随时可以点击【请求提示】或者直接在下面发消息问我！比如你可以问我：\n- “我的代码块顺序拼对了吗？”\n- “这几个积木分别有什么作用？”\n- “为什么我总是验证不通过？”`;
+            appendCompanionMessage(greeting, 'ai');
+        }
 
-接下来是第二阶段：**积木编程**。我们需要把刚才的解题思路，用代码块拼装出来：
-1️⃣ **看清需求**：仔细阅读左侧【散落池】中每个代码块的代码和文字标签。
-2️⃣ **拖拽组合**：把需要的积木拖到右侧构建区。注意，为了让你专注于核心算法流程，外部的 \`#include\` 头文件和 \`main()\` 框架已经帮你包裹好啦，你只需要拼装核心逻辑。
-3️⃣ **注意陷阱**：散落池里有些代码块是会误导你的**“噪声块”**（比如写错了循环边界或运算符），千万不要把它们拖进去哦！
-4️⃣ **调整缩进**：拼好顺序后，别忘了点击积木的 ◀ ▶ 按钮调整缩进层级（或者点击构建区右上角的【一键大括号嵌套】让我帮你自动对齐）。
+        // 恢复积木的拼装和散落状态
+        if (state.isResumed && state.stage2BlockOrder && state.stage2BlockOrder.length > 0) {
+            const solution = document.getElementById('block-solution-list');
+            if (solution) {
+                solution.innerHTML = '';
+                const blockMap = {};
+                state.preset.blocks.forEach(b => {
+                    blockMap[b.id] = b;
+                });
+                state.stage2BlockOrder.forEach(item => {
+                    const block = blockMap[item.id];
+                    if (block) {
+                        const el = createBlockElement(block);
+                        el.dataset.indent = item.indent || 0;
+                        el.style.marginLeft = `${(item.indent || 0) * 24}px`;
+                        solution.appendChild(el);
+                    }
+                });
+            }
 
-拼装过程中遇到任何阻碍，随时可以点击【请求提示】或者直接在下面发消息问我！比如你可以问我：
-- “我的代码块顺序拼对了吗？”
-- “这几个积木分别有什么作用？”
-- “为什么我总是验证不通过？”`;
-        appendCompanionMessage(greeting, 'ai');
-        renderPhasePool();
+            const pool = document.getElementById('block-pool-list');
+            if (pool) {
+                const solutionIds = state.stage2BlockOrder.map(item => item.id);
+                const remainingBlocks = state.preset.blocks.filter(b => !solutionIds.includes(b.id));
+                const shuffled = [...remainingBlocks];
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+                pool.innerHTML = '';
+                shuffled.forEach(block => {
+                    const el = createBlockElement(block);
+                    pool.appendChild(el);
+                });
+            }
+        } else {
+            renderPhasePool();
+        }
+
         initSortable();
         updateBlockPreview();
     }
@@ -752,13 +820,48 @@
         state.studentMessages = [];
         state.feynmanPhase = 'chat';
 
-        // Add initial teacher greeting
-        addChatMessage('teacher', 'assistant',
-            '你好！你已经完成了积木编程挑战，说明你对这道题有了不错的理解。现在我们来做一个更有趣的练习——你需要把你学到的东西教给你的同学小明（他刚开始学编程）。准备好了吗？');
+        // 恢复老师辅导对话
+        let restoredTeacher = false;
+        if (state.isResumed && state.teacherHistory && state.teacherHistory.length > 0) {
+            const container = document.getElementById('teacher-messages');
+            if (container) {
+                container.innerHTML = '';
+                state.teacherHistory.forEach(msg => {
+                    addChatMessage('teacher', msg.role, msg.content);
+                    state.teacherMessages.push({ role: msg.role, content: msg.content });
+                });
+                restoredTeacher = true;
+            }
+        }
+        if (!restoredTeacher) {
+            addChatMessage('teacher', 'assistant',
+                '你好！你已经完成了积木编程挑战，说明你对这道题有了不错的理解。现在我们来做一个更有趣的练习——你需要把你学到的东西教给你的同学小明（他刚开始学编程）。准备好了吗？');
+        }
 
-        // Add initial student greeting
-        addChatMessage('student', 'assistant',
-            '嗨！听说你这道题做得很好，老师让你教教我😅 我刚开始学编程，你能给我讲讲这道题要怎么做吗？');
+        // 恢复教学生（小明）对话
+        let restoredStudent = false;
+        if (state.isResumed && state.studentHistory && state.studentHistory.length > 0) {
+            const container = document.getElementById('student-messages');
+            if (container) {
+                container.innerHTML = '';
+                state.studentHistory.forEach(msg => {
+                    addChatMessage('student', msg.role, msg.content);
+                    state.studentMessages.push({ role: msg.role, content: msg.content });
+                });
+                restoredStudent = true;
+            }
+        }
+        if (!restoredStudent) {
+            addChatMessage('student', 'assistant',
+                '嗨！听说你这道题做得很好，老师让你教教我😅 我刚开始学编程，你能给我讲讲这道题要怎么做吗？');
+        }
+
+        // 恢复代码修复面板
+        if (state.isResumed && state.buggyCodeInfo) {
+            state.feynmanPhase = 'code_review';
+            state.buggyCode = state.buggyCodeInfo.buggy_code;
+            showCodeReviewPanel(state.buggyCodeInfo.buggy_code);
+        }
     }
 
     function sendTeacherChat() {
@@ -1049,7 +1152,9 @@
     // Timer
     // ============================================================
     function startTimer() {
-        state.startTime = Date.now();
+        if (!state.startTime) {
+            state.startTime = Date.now();
+        }
         state.timerInterval = setInterval(() => {
             const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
             const m = String(Math.floor(elapsed / 60)).padStart(2, '0');

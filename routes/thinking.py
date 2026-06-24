@@ -119,11 +119,79 @@ def start_session():
         ).first()
 
         if existing:
+            # 计算已过秒数
+            elapsed_seconds = int((dt.utcnow() - existing.started_at).total_seconds())
+            
+            # 加载伴学历史 (全部阶段)
+            companion_logs = ThinkingStageLog.query.filter_by(
+                session_id=existing.id,
+                event_type='companion_chat'
+            ).order_by(ThinkingStageLog.created_at.asc()).all()
+            companion_history = [{
+                'role': log.role,
+                'content': log.content
+            } for log in companion_logs]
+
+            # 加载阶段3历史
+            stage3_logs = ThinkingStageLog.query.filter_by(
+                session_id=existing.id,
+                stage=3
+            ).order_by(ThinkingStageLog.created_at.asc()).all()
+
+            teacher_history = []
+            student_history = []
+            buggy_code_info = None
+
+            for log in stage3_logs:
+                if log.event_type == 'chat':
+                    meta = log.get_metadata() or {}
+                    if log.role == 'teacher_agent' or (log.role == 'student' and meta.get('panel') == 'teacher_agent'):
+                        teacher_history.append({
+                            'role': 'user' if log.role == 'student' else 'assistant',
+                            'content': log.content
+                        })
+                    elif log.role == 'student_agent' or (log.role == 'student' and meta.get('panel') == 'student_agent'):
+                        student_history.append({
+                            'role': 'user' if log.role == 'student' else 'assistant',
+                            'content': log.content
+                        })
+                elif log.event_type == 'write_code':
+                    meta = log.get_metadata() or {}
+                    buggy_code_info = {
+                        'buggy_code': meta.get('buggy_code', ''),
+                        'message': log.content
+                    }
+                    student_history.append({
+                        'role': 'assistant',
+                        'content': log.content
+                    })
+                elif log.event_type == 'fix_code':
+                    student_history.append({
+                        'role': 'user',
+                        'content': f"【提交代码修复】\n{log.content}"
+                    })
+
+            # 解析块顺序
+            stage2_block_order = None
+            if existing.stage2_block_order:
+                try:
+                    stage2_block_order = json.loads(existing.stage2_block_order)
+                except Exception:
+                    pass
+
             return jsonify({
                 'success': True,
                 'session_id': existing.id,
                 'current_stage': existing.current_stage,
                 'resumed': True,
+                'elapsed_seconds': elapsed_seconds,
+                'stage1_description': existing.stage1_description,
+                'stage1_score': existing.stage1_score,
+                'stage2_block_order': stage2_block_order,
+                'companion_history': companion_history,
+                'teacher_history': teacher_history,
+                'student_history': student_history,
+                'buggy_code_info': buggy_code_info,
                 'preset': _serialize_preset(preset)
             })
 

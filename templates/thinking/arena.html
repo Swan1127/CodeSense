@@ -284,9 +284,6 @@
                     <div class="chat-messages" id="student-messages">
                         <!-- Student chat messages -->
                     </div>
-                    <div id="code-review-section" style="display: none; padding: 0 16px;">
-                        <!-- Code review panel populated by JS -->
-                    </div>
                     <div class="chat-input-area">
                         <input class="chat-input" id="student-chat-input" type="text"
                                placeholder="教小明解题..."
@@ -300,6 +297,11 @@
         </div>
 
     </div><!-- .arena-body -->
+
+    <!-- 阶段三代码修复面板放置在两个对话框下方，呈通栏布局 -->
+    <div id="code-review-section" style="display: none; margin-top: 16px;">
+        <!-- Code review panel populated by JS -->
+    </div>
 
 </div><!-- .arena-container -->
 {% endblock %}
