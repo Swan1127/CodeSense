@@ -17,6 +17,39 @@ from datetime import datetime
 
 assignments = Blueprint('assignments', __name__)
 
+class InMemoryPagination:
+    """内存分页辅助类，行为与 Flask-SQLAlchemy Pagination 保持一致"""
+    def __init__(self, items, page, per_page):
+        self.total = len(items)
+        self.page = page
+        self.per_page = per_page
+        self.items = items[(page - 1) * per_page : page * per_page]
+        
+        self.has_prev = page > 1
+        self.prev_num = page - 1
+        self.has_next = (page * per_page) < self.total
+        self.next_num = page + 1
+        self.pages = (self.total + per_page - 1) // per_page
+
+    def iter_pages(self, left_edge=2, left_current=2, right_current=5, right_edge=2):
+        last = 0
+        for num in range(1, self.pages + 1):
+            if (
+                num <= left_edge
+                or (num >= self.page - left_current and num <= self.page + right_current)
+                or num > self.pages - right_edge
+            ):
+                if last + 1 != num:
+                    yield None
+                yield num
+                last = num
+
+    def __iter__(self):
+        return iter(self.items)
+
+    def __bool__(self):
+        return len(self.items) > 0
+
 # 在模块开始时初始化模型
 initialize_models()
 
@@ -622,6 +655,9 @@ def download_code(submission_id):
 def student_assignments():
     """学生查看作业列表"""
     page = request.args.get('page', 1, type=int)
+    search_term = request.args.get('search', '').strip()
+    sort_by = request.args.get('sort', 'id')
+    sort_order = request.args.get('order', 'desc')
     
     try:
         # 获取学生ID和班级
@@ -634,68 +670,138 @@ def student_assignments():
         
         # 根据学生所在班级筛选作业
         if class_name:
-            assignments_query = Assignment.query.filter(
+            all_assignments = Assignment.query.filter(
                 Assignment.target_classes.like(f'%{class_name}%')
-            )
+            ).all()
         else:
-            # 如果学生没有班级，则不显示任何作业
-            assignments_query = Assignment.query.filter(db.false())
-        
-        # 获取排序参数
-        sort_by = request.args.get('sort', 'id')
-        sort_order = request.args.get('order', 'desc')
-        
-        # 添加排序逻辑
-        if sort_by == 'id':
-            if sort_order == 'asc':
-                assignments_query = assignments_query.order_by(Assignment.id.asc())
-            else:
-                assignments_query = assignments_query.order_by(Assignment.id.desc())
-        elif sort_by == 'title':
-            if sort_order == 'asc':
-                assignments_query = assignments_query.order_by(Assignment.title.asc())
-            else:
-                assignments_query = assignments_query.order_by(Assignment.title.desc())
-        elif sort_by == 'count':
-            if sort_order == 'asc':
-                assignments_query = assignments_query.order_by(Assignment.count.asc())
-            else:
-                assignments_query = assignments_query.order_by(Assignment.count.desc())
-        elif sort_by == 'average_score':
-            if sort_order == 'asc':
-                assignments_query = assignments_query.order_by(Assignment.average_score.asc())
-            else:
-                assignments_query = assignments_query.order_by(Assignment.average_score.desc()).order_by(Assignment.created_time.desc())
-        else:
-            # 默认排序
-            assignments_query = assignments_query.order_by(Assignment.id.desc())
-            
-        assignments = assignments_query.paginate(page=page, per_page=10)
-        
-        # 获取学生每个作业的最高分
-        max_scores = {}
-        for assignment in assignments.items:
-            submission = Submission.query.filter_by(
-                assignment_id=assignment.id,
+            all_assignments = []
+
+        # 获取当前学生对所有作业的最高分与提交状态，用于大模型进度感知上下文
+        assignment_max_scores = {}
+        assignment_statuses = {}
+        for a in all_assignments:
+            sub = Submission.query.filter_by(
+                assignment_id=a.id,
                 student_id=student_id
             ).order_by(Submission.score.desc()).first()
-            
-            if submission:
-                max_scores[assignment.id] = submission.score
+            if sub:
+                assignment_max_scores[a.id] = sub.score
+                if sub.score >= 60:
+                    assignment_statuses[a.id] = '已通过'
+                else:
+                    assignment_statuses[a.id] = '不及格'
             else:
-                max_scores[assignment.id] = 0
+                assignment_max_scores[a.id] = 0
+                assignment_statuses[a.id] = '未提交'
+
+        filtered_assignments = []
+        is_llm_recommended = False
+        
+        if search_term:
+            # 尝试大模型个性化推荐
+            from services.llm_client import llm_client
+            if llm_client.is_available() and len(all_assignments) > 0:
+                try:
+                    # 序列化作业列表（仅包含 ID, 标题, 描述前100字，以节省 token）
+                    assignments_data = [
+                        {
+                            "id": a.id,
+                            "title": a.title,
+                            "desc": (a.description or '')[:100],
+                            "my_score": assignment_max_scores[a.id],
+                            "status": assignment_statuses[a.id]
+                        }
+                        for a in all_assignments
+                    ]
+                    
+                    system_prompt = (
+                        "你是一个智能作业推荐算法引擎。根据用户的搜索/练习需求（如'我想练排序'、'我分数低的作业'、'我没做过的题'），"
+                        "从候选的编程作业列表中，挑选并排序最符合需求的作业，并输出它们的关联匹配度得分。\n\n"
+                        "你需要以 JSON 数组格式返回结果，每个元素包含 'id' (整数) 和 'score' (0.0 到 10.0 的浮点数，"
+                        "表示关联匹配度，10.0表示完美符合需求，0.0表示完全不相关)。只返回 JSON 块，不要包含任何解释文字。\n\n"
+                        "示例输出：\n[\n  {\"id\": 101, \"score\": 9.5},\n  {\"id\": 102, \"score\": 1.2}\n]"
+                    )
+                    
+                    user_prompt = f"用户搜索意图：'{search_term}'\n\n候选作业列表及个人进度：\n{json.dumps(assignments_data, ensure_ascii=False)}"
+                    
+                    messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ]
+                    
+                    response = llm_client.chat(messages, temperature=0.2)
+                    if response:
+                        clean_res = response.strip()
+                        if "```json" in clean_res:
+                            clean_res = clean_res.split("```json")[1].split("```")[0].strip()
+                        elif "```" in clean_res:
+                            clean_res = clean_res.split("```")[1].split("```")[0].strip()
+                        
+                        recommendations = json.loads(clean_res)
+                        scores = {item['id']: float(item['score']) for item in recommendations if 'id' in item and 'score' in item}
+                        
+                        # 过滤和打分
+                        for a in all_assignments:
+                            score = scores.get(a.id, 0.0)
+                            # 如果标题或描述模糊匹配到了关键字，保证至少有 5 分的基础得分
+                            if search_term.lower() in a.title.lower() or search_term.lower() in (a.description or '').lower():
+                                score = max(score, 5.0)
+                            
+                            if score >= 4.0:
+                                a.relevance_score = score
+                                filtered_assignments.append(a)
+                        
+                        is_llm_recommended = True
+                        current_app.logger.info(f"大模型推荐算法对搜索词 '{search_term}' 成功返回了 {len(filtered_assignments)} 个匹配结果")
+                except Exception as llm_err:
+                    current_app.logger.error(f"大模型个性化推荐搜索失败，退回传统模糊搜索: {llm_err}")
+            
+            # 如果大模型不可用，或者推荐结果解析失败/没有匹配结果，则使用传统的数据库/内存模糊搜索
+            if not is_llm_recommended:
+                for a in all_assignments:
+                    if search_term.lower() in a.title.lower() or search_term.lower() in (a.description or '').lower():
+                        a.relevance_score = 5.0
+                        filtered_assignments.append(a)
+        else:
+            # 没有搜索词，展示全部
+            filtered_assignments = all_assignments
+
+        # 排序逻辑
+        if search_term and is_llm_recommended:
+            # 如果是有搜索词的大模型推荐，则默认按大模型相关度得分降序排序
+            filtered_assignments.sort(key=lambda x: getattr(x, 'relevance_score', 0.0), reverse=True)
+        else:
+            # 否则，按用户选择的排序参数排序
+            if sort_by == 'id':
+                filtered_assignments.sort(key=lambda x: x.id, reverse=(sort_order == 'desc'))
+            elif sort_by == 'title':
+                filtered_assignments.sort(key=lambda x: x.title or '', reverse=(sort_order == 'desc'))
+            elif sort_by == 'count':
+                filtered_assignments.sort(key=lambda x: x.count or 0, reverse=(sort_order == 'desc'))
+            elif sort_by == 'average_score':
+                filtered_assignments.sort(key=lambda x: x.average_score or 0.0, reverse=(sort_order == 'desc'))
+            else:
+                filtered_assignments.sort(key=lambda x: x.id, reverse=True)
+
+        # 进行分页 (per_page = 10)
+        pagination = InMemoryPagination(filtered_assignments, page, 10)
+        
+        # 获取学生每个作业的最高分供渲染使用
+        max_scores = {a.id: assignment_max_scores[a.id] for a in pagination.items}
         
         return render_template('s_assignments.html',
-                              assignments=assignments,
-                              max_scores=max_scores,
-                              sort_by=sort_by,
-                              sort_order=sort_order)
+                               assignments=pagination,
+                               max_scores=max_scores,
+                               sort_by=sort_by,
+                               sort_order=sort_order,
+                               search_term=search_term,
+                               is_llm_recommended=is_llm_recommended,
+                               current_time=datetime.utcnow())
     except Exception as e:
         print(f"获取学生作业列表时出错: {str(e)}")
         print(traceback.format_exc())
         flash('获取学生作业列表时出错', 'danger')
         return redirect(url_for('main.home'))
-
 
 @assignments.route('/view_submission/<int:submission_id>')
 @login_required

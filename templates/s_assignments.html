@@ -126,10 +126,95 @@
     </div>
 </div>
 
+<!-- 添加搜索框和排序选项 -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <!-- 搜索表单 -->
+            <form action="{{ url_for('assignments.student_assignments') }}" method="get" class="d-flex me-2 flex-grow-1">
+                <input type="text" class="form-control me-2" placeholder="搜索作业标题、描述，或输入意图（如“我想练排序”、“我分数低的作业”）..." name="search"
+                    value="{{ search_term if search_term else '' }}">
+                <input type="hidden" name="sort" value="{{ sort_by if sort_by else 'id' }}">
+                <input type="hidden" name="order" value="{{ sort_order if sort_order else 'desc' }}">
+                <button type="submit" class="btn btn-primary d-flex align-items-center gap-1">
+                    <i class="bi bi-search"></i> <span>搜索</span>
+                </button>
+                {% if search_term %}
+                <a href="{{ url_for('assignments.student_assignments', sort=sort_by, order=sort_order) }}"
+                    class="btn btn-secondary ms-2 d-flex align-items-center gap-1">
+                    <i class="bi bi-x-circle"></i> <span>清除</span>
+                </a>
+                {% endif %}
+            </form>
+
+            <!-- 排序下拉菜单 -->
+            <div class="dropdown sort-dropdown">
+                <button class="btn btn-outline-primary dropdown-toggle d-flex align-items-center gap-1" type="button" id="sortDropdown"
+                    data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-sort-alpha-down"></i>
+                    <span>
+                    {% if sort_by %}
+                    {% if sort_by == 'id' %}按ID排序
+                    {% elif sort_by == 'title' %}按标题排序
+                    {% elif sort_by == 'count' %}按提交次数排序
+                    {% elif sort_by == 'average_score' %}按平均分排序
+                    {% endif %}
+                    ({% if sort_order == 'asc' %}升序{% else %}降序{% endif %})
+                    {% else %}
+                    排序
+                    {% endif %}
+                    </span>
+                </button>
+                <div class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="sortDropdown">
+                    <div class="dropdown-header">按ID</div>
+                    <a class="dropdown-item {% if sort_by == 'id' and sort_order == 'asc' %}active{% endif %}"
+                        href="{{ url_for('assignments.student_assignments', search=search_term, sort='id', order='asc') }}">
+                        <i class="bi bi-sort-numeric-down me-2"></i> ID (升序)
+                    </a>
+                    <a class="dropdown-item {% if sort_by == 'id' and sort_order == 'desc' %}active{% endif %}"
+                        href="{{ url_for('assignments.student_assignments', search=search_term, sort='id', order='desc') }}">
+                        <i class="bi bi-sort-numeric-down-alt me-2"></i> ID (降序)
+                    </a>
+
+                    <div class="dropdown-divider"></div>
+                    <div class="dropdown-header">按标题</div>
+                    <a class="dropdown-item {% if sort_by == 'title' and sort_order == 'asc' %}active{% endif %}"
+                        href="{{ url_for('assignments.student_assignments', search=search_term, sort='title', order='asc') }}">
+                        <i class="bi bi-sort-alpha-down me-2"></i> 标题 (升序)
+                    </a>
+                    <a class="dropdown-item {% if sort_by == 'title' and sort_order == 'desc' %}active{% endif %}"
+                        href="{{ url_for('assignments.student_assignments', search=search_term, sort='title', order='desc') }}">
+                        <i class="bi bi-sort-alpha-down-alt me-2"></i> 标题 (降序)
+                    </a>
+
+                    <div class="dropdown-divider"></div>
+                    <div class="dropdown-header">按热度/平均分</div>
+                    <a class="dropdown-item {% if sort_by == 'count' and sort_order == 'desc' %}active{% endif %}"
+                        href="{{ url_for('assignments.student_assignments', search=search_term, sort='count', order='desc') }}">
+                        <i class="bi bi-sort-numeric-down-alt me-2"></i> 提交次数 (降序)
+                    </a>
+                    <a class="dropdown-item {% if sort_by == 'average_score' and sort_order == 'desc' %}active{% endif %}"
+                        href="{{ url_for('assignments.student_assignments', search=search_term, sort='average_score', order='desc') }}">
+                        <i class="bi bi-sort-numeric-down-alt me-2"></i> 平均分 (降序)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-header">
         <div class="card-title">
             <i class="bi bi-journal-code"></i> 作业列表
+            {% if search_term %}
+            <span class="text-muted ms-2" style="font-size: 0.85rem; font-weight: normal;">
+                搜索结果: "{{ search_term }}"
+                {% if is_llm_recommended %}
+                <span class="badge bg-info text-white ms-1" style="font-size: 0.75rem;"><i class="bi bi-robot"></i> AI 个性化推荐</span>
+                {% endif %}
+            </span>
+            {% endif %}
         </div>
     </div>
     <div class="card-body">
@@ -219,21 +304,21 @@
     <nav aria-label="Page navigation">
         <ul class="pagination justify-content-center">
             <li class="page-item {% if not assignments.has_prev %}disabled{% endif %}" style="list-style-type: none;">
-                <a href="{{ url_for('assignments.student_assignments', page=assignments.prev_num) }}" class="page-link">
+                <a href="{{ url_for('assignments.student_assignments', page=assignments.prev_num, search=search_term, sort=sort_by, order=sort_order) }}" class="page-link">
                     <i class="bi bi-chevron-left"></i> 上一页
                 </a>
             </li>
             {% for p in assignments.iter_pages() %}
             {% if p %}
             <li class="page-item {% if p == assignments.page %}active{% endif %}" style="list-style-type: none;">
-                <a href="{{ url_for('assignments.student_assignments', page=p) }}" class="page-link">{{ p }}</a>
+                <a href="{{ url_for('assignments.student_assignments', page=p, search=search_term, sort=sort_by, order=sort_order) }}" class="page-link">{{ p }}</a>
             </li>
             {% else %}
             <li class="page-item disabled" style="list-style-type: none;"><span class="page-link">...</span></li>
             {% endif %}
             {% endfor %}
             <li class="page-item {% if not assignments.has_next %}disabled{% endif %}" style="list-style-type: none;">
-                <a href="{{ url_for('assignments.student_assignments', page=assignments.next_num) }}" class="page-link">
+                <a href="{{ url_for('assignments.student_assignments', page=assignments.next_num, search=search_term, sort=sort_by, order=sort_order) }}" class="page-link">
                     下一页
                 </a>
             </li>
