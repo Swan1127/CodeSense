@@ -42,7 +42,7 @@ def generate_assignment():
                 api_key=zhipu_key,
                 base_url="https://open.bigmodel.cn/api/paas/v4/"
             )
-            model_name = current_app.config.get('ZHIPU_MODEL', "glm-4.7-flash")
+            model_name = current_app.config.get('ZHIPU_MODEL', "glm-4.5-flash")
         # 降级使用 OpenAI
         elif openai_key:
             client = OpenAI(
@@ -58,15 +58,55 @@ def generate_assignment():
 1. "title": 题目名称（字符串）
 2. "description": 题目的详细描述（支持Markdown，包含题目背景、输入限制、输出格式要求，以及示例输入和输出）。千万不要在JSON外附加任何解释文本。'''
 
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"请针对这个主题生成一道编程题：{prompt}"}
-            ],
-            temperature=0.7,
-            timeout=30
-        )
+        import time
+        max_retries = 5
+        base_delay = 2
+        current_model = model_name
+        response = None
+
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=current_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"请针对这个主题生成一道编程题：{prompt}"}
+                    ],
+                    temperature=0.7,
+                    timeout=30
+                )
+                break
+            except Exception as e:
+                err_str = str(e)
+                is_rate_limit = (
+                    "429" in err_str or
+                    "1305" in err_str or
+                    "rate limit" in err_str.lower() or
+                    "访问量过大" in err_str or
+                    "频率" in err_str or
+                    "Too Many Requests" in err_str or
+                    "APIReachLimitError" in type(e).__name__ or
+                    "rate_limit" in type(e).__name__.lower()
+                )
+                
+                if is_rate_limit and attempt < max_retries - 1:
+                    if zhipu_key and current_model == "glm-4.5-flash":
+                        print(f"智能生成作业触发限流，将模型从 {current_model} 降级为 glm-4.5-flash")
+                        current_model = "glm-4.5-flash"
+                        # 触发全局 SharedLLMClient 的同步更新
+                        try:
+                            from services.llm_client import llm_client
+                            llm_client._model_name = "glm-4.5-flash"
+                        except Exception:
+                            pass
+                        time.sleep(0.5)
+                    else:
+                        delay = base_delay * (2 ** attempt)
+                        print(f"智能生成作业触发限流，将在 {delay} 秒后重试 {current_model} (尝试 {attempt+1}/{max_retries})...")
+                        time.sleep(delay)
+                    continue
+                else:
+                    raise e
         
         result_content = response.choices[0].message.content
         

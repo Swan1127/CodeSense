@@ -228,6 +228,21 @@
     .section-warning {
         border-left: 4px solid #f59e0b;
     }
+    
+    /* 作业卡片悬停动效与精细化样式 */
+    .assignment-card {
+        border-radius: 12px;
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        border: 1px solid #eef2f5 !important;
+    }
+    .assignment-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08) !important;
+    }
+    .text-primary-soft {
+        color: var(--primary-color);
+        background-color: rgba(52, 152, 219, 0.1);
+    }
 </style>
 {% endblock %}
 
@@ -332,38 +347,53 @@
         <div class="row">
             {% for assignment in recent_assignments %}
             <div class="col-md-6 mb-4">
-                <div class="card h-100" style="box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                    <div class="card-body" style="padding: 1.5rem;">
-                        <h5 class="card-title" style="margin-bottom: 1rem;">{{ assignment.title }}</h5>
-                        <p class="text-muted small" style="margin-bottom: 1rem;">
-                            <i class="bi bi-calendar"></i>
+                <div class="card h-100 assignment-card shadow-sm border-0">
+                    <div class="card-body d-flex flex-column" style="padding: 1.75rem;">
+                        <!-- 头部：标题与作业图标 -->
+                        <div class="d-flex align-items-start justify-content-between mb-2">
+                            <h5 class="card-title fw-bold text-dark mb-0" style="font-size: 1.15rem; line-height: 1.4;">
+                                {{ assignment.title }}
+                            </h5>
+                            <span class="text-primary-soft p-2 rounded-3 d-inline-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                                <i class="bi bi-file-earmark-code" style="font-size: 1.25rem;"></i>
+                            </span>
+                        </div>
+                        
+                        <!-- 截止日期 -->
+                        <p class="text-muted small mb-3 d-flex align-items-center gap-1">
+                            <i class="bi bi-calendar3" style="font-size: 0.85rem;"></i>
                             {% if assignment.due_date %}
-                            截止日期: {{ assignment.due_date.strftime('%Y-%m-%d') }}
+                            <span>截止日期: {{ assignment.due_date.strftime('%Y-%m-%d') }}</span>
                             {% else %}
-                            无截止日期
+                            <span>无截止日期</span>
                             {% endif %}
                         </p>
-                        <p class="card-text markdown-body" style="margin-bottom: 1.25rem;"
-                            data-markdown="{{ assignment.description|truncate(120)|e }}"></p>
-
-                        {% set submitted = assignment.id in submitted_assignments %}
-                        {% if submitted %}
-                        <div class="badge badge-success mb-3" style="margin-bottom: 1.25rem; padding: 0.5rem 0.75rem;">
-                            <i class="bi bi-check-circle"></i> 已提交
-                        </div>
-                        {% else %}
-                        <div class="badge badge-warning mb-3" style="margin-bottom: 1.25rem; padding: 0.5rem 0.75rem;">
-                            <i class="bi bi-exclamation-circle"></i> 未提交
-                        </div>
-                        {% endif %}
-
-                        <div class="d-flex justify-content-end">
+                        
+                        <!-- 题目描述预览（纯文本） -->
+                        <p class="card-text text-secondary mb-4 flex-grow-1" 
+                           style="font-size: 0.9rem; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; height: 4.8rem;"
+                           data-assignment-desc="{{ assignment.description|e }}"></p>
+                        
+                        <!-- 底部状态与操作栏 -->
+                        <div class="d-flex align-items-center justify-content-between mt-auto pt-3 border-top" style="border-color: #f1f3f5 !important;">
+                            {% set submitted = assignment.id in submitted_assignments %}
+                            {% if submitted %}
+                            <div class="d-flex align-items-center gap-1 text-success fw-bold" style="font-size: 0.875rem;">
+                                <i class="bi bi-check-circle-fill" style="font-size: 1rem;"></i> 已完成提交
+                            </div>
+                            {% else %}
+                            <div class="d-flex align-items-center gap-1 text-warning fw-bold" style="font-size: 0.875rem;">
+                                <i class="bi bi-exclamation-circle-fill" style="font-size: 1rem;"></i> 待提交
+                            </div>
+                            {% endif %}
+                            
                             <a href="{{ url_for('assignments.submit_code', assignment_id=assignment.id) }}"
-                                class="btn btn-primary btn-sm" style="padding: 0.5rem 1rem; font-weight: 500;">
+                               class="btn {% if submitted %}btn-outline-primary{% else %}btn-primary{% endif %} btn-sm px-3 rounded-pill d-flex align-items-center gap-1" 
+                               style="font-weight: 500; font-size: 0.85rem;">
                                 {% if submitted %}
-                                <i class="bi bi-pencil"></i> 重新提交
+                                <i class="bi bi-arrow-right-short" style="font-size: 1.1rem;"></i> 重新提交
                                 {% else %}
-                                <i class="bi bi-code"></i> 开始编码
+                                <i class="bi bi-code-slash" style="font-size: 0.9rem;"></i> 开始编码
                                 {% endif %}
                             </a>
                         </div>
@@ -537,6 +567,47 @@
                 el.innerHTML = marked.parse(raw, { breaks: true, gfm: true });
             }
         });
+
+        // 提取并清洗作业题目描述预览（去除Markdown标签，仅保留“题目描述”内容作为简洁文本预览）
+        document.querySelectorAll('[data-assignment-desc]').forEach(function (el) {
+            var raw = el.getAttribute('data-assignment-desc') || '';
+            if (raw) {
+                // 1. 尝试截取“题目描述”到下一个标题之间的内容
+                var descText = raw;
+                if (raw.indexOf('题目描述') !== -1) {
+                    var parts = raw.split(/#+\s*题目描述/);
+                    if (parts.length > 1) {
+                        descText = parts[1];
+                    }
+                }
+                var nextHeaderIdx = descText.search(/#+/);
+                if (nextHeaderIdx !== -1) {
+                    descText = descText.substring(0, nextHeaderIdx);
+                }
+                
+                // 2. 清理Markdown符号
+                var clean = descText
+                    .replace(/\*\*|__/g, '') // 去除加粗
+                    .replace(/\*|_/g, '')   // 去除斜体
+                    .replace(/`([^`]+)`/g, '$1') // 去除行内代码
+                    .replace(/```[\s\S]*?```/g, '') // 去除代码块
+                    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // 去除链接
+                    .replace(/^[-\s*+]+/gm, '') // 去除无序列表符
+                    .replace(/^\s*\d+\.\s+/gm, '') // 去除有序列表符
+                    .replace(/\r?\n/g, ' ') // 将换行替换为空格
+                    .replace(/\s+/g, ' ') // 压缩连续空格
+                    .trim();
+                
+                // 3. 截断长文本
+                if (clean.length > 100) {
+                    clean = clean.substring(0, 100) + '...';
+                }
+                el.textContent = clean || '暂无题目描述。';
+            } else {
+                el.textContent = '暂无题目描述。';
+            }
+        });
+
         connectSSE();
     });
 

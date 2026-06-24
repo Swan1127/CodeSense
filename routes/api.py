@@ -699,14 +699,15 @@ def get_code_advice():
 
                 # 调用AI（流式）
                 try:
-                    response = requests.post(
+                    from services.llm_client import safe_zhipu_post
+                    response = safe_zhipu_post(
                         "https://open.bigmodel.cn/api/paas/v4/chat/completions",
                         headers={
                             "Content-Type": "application/json",
                             "Authorization": f"Bearer {api_key}"
                         },
-                        json={
-                            "model": "glm-4.7-flash",
+                        json_data={
+                            "model": "glm-4.5-flash",
                             "messages": messages,
                             "temperature": 0.7,
                             "max_tokens": 1000,

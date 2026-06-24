@@ -303,6 +303,7 @@ class AsyncTaskManager:
                 preset.code_blocks = json.dumps(result.get('code_blocks', []), ensure_ascii=False)
                 preset.noise_blocks = json.dumps(result.get('noise_blocks', []), ensure_ascii=False)
                 preset.difficulty_config = json.dumps(result.get('difficulty_config', {}), ensure_ascii=False)
+                preset.algorithm_summary = result.get('algorithm_summary', '')
                 preset.status = 'ready'
                 preset.error_message = None
                 
@@ -376,6 +377,47 @@ def init_async_tasks(app):
     with app.app_context():
         task_manager.start(app=app)  # 传递应用实例
         app.logger.info("异步任务系统已启动")
+
+        # 启动后台线程异步扫描缺失预设的作业，并在后台自动生成
+        def scan_and_trigger_presets():
+            time.sleep(5)  # 延迟5秒启动扫描，避免影响主服务器启动
+            with app.app_context():
+                try:
+                    from models import db, Assignment, AssignmentThinkingPreset
+                    from sqlalchemy import or_
+                    
+                    # 查找缺失或未就绪预设的作业
+                    missing_presets = db.session.query(Assignment).outerjoin(
+                        AssignmentThinkingPreset, Assignment.id == AssignmentThinkingPreset.assignment_id
+                    ).filter(
+                        or_(
+                            AssignmentThinkingPreset.id == None,
+                            ~AssignmentThinkingPreset.status.in_(['ready', 'generating'])
+                        )
+                    ).all()
+                    
+                    triggered_count = 0
+                    for a in missing_presets:
+                        preset = AssignmentThinkingPreset.query.filter_by(assignment_id=a.id).first()
+                        if not preset:
+                            preset = AssignmentThinkingPreset(assignment_id=a.id, status='generating')
+                            db.session.add(preset)
+                        else:
+                            preset.status = 'generating'
+                        db.session.commit()
+                        
+                        add_generate_preset_task(a.id)
+                        triggered_count += 1
+                        
+                        # 每次生成之间间隔 15 秒，避免高并发请求导致 API 429 限流
+                        time.sleep(15)
+                        
+                    if triggered_count > 0:
+                        app.logger.info(f"[后台预生成] 检测到 {triggered_count} 个作业缺少引导式学习数据，已自动加入生成队列")
+                except Exception as e:
+                    app.logger.error(f"[后台预生成] 自动扫描作业预设失败: {e}")
+
+        threading.Thread(target=scan_and_trigger_presets, daemon=True).start()
 
 def add_ability_trend_task(student_id):
     """添加能力趋势分析任务"""

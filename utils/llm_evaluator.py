@@ -31,7 +31,7 @@ class LLMEvaluator:
         
         # 根据API类型设置默认模型
         if self.api_type == "zhipu":
-            self.model_name = model_name or "glm-4.7-flash"
+            self.model_name = model_name or "glm-4.5-flash"
         elif self.api_type == "openai":
             self.model_name = model_name or "gpt-4-turbo"
         else:
@@ -128,6 +128,61 @@ class LLMEvaluator:
                 print("没有可用的API，将使用本地启发式评估")
                 raise
     
+    def _chat_completions_create(self, **kwargs):
+        """
+        封装 completions.create，并提供限流/访问量过大时的重试与降级机制
+        """
+        import time
+        max_retries = 5
+        base_delay = 2
+        
+        params = kwargs.copy()
+        if self.api_type == "zhipu":
+            if "extra_body" not in params:
+                params["extra_body"] = {}
+            if "thinking" not in params["extra_body"]:
+                params["extra_body"]["thinking"] = {"type": "disabled"}
+                
+        current_model = params.get("model", self.model_name)
+        
+        for attempt in range(max_retries):
+            try:
+                params["model"] = current_model
+                response = self.client.chat.completions.create(**params)
+                return response
+            except Exception as e:
+                err_str = str(e)
+                is_rate_limit = (
+                    "429" in err_str or
+                    "1305" in err_str or
+                    "rate limit" in err_str.lower() or
+                    "访问量过大" in err_str or
+                    "频率" in err_str or
+                    "Too Many Requests" in err_str or
+                    "APIReachLimitError" in type(e).__name__ or
+                    "rate_limit" in type(e).__name__.lower()
+                )
+                
+                if is_rate_limit and attempt < max_retries - 1:
+                    if self.api_type == "zhipu" and current_model != "glm-4.5-flash":
+                        print(f"[Fallback] LLMEvaluator 触发限流，将模型从 {current_model} 降级为 glm-4.5-flash")
+                        current_model = "glm-4.5-flash"
+                        self.model_name = "glm-4.5-flash"  # 持久化降级
+                        # 触发全局 SharedLLMClient 的同步更新
+                        try:
+                            from services.llm_client import llm_client
+                            llm_client._model_name = "glm-4.5-flash"
+                        except Exception:
+                            pass
+                        time.sleep(0.5)
+                    else:
+                        delay = base_delay * (2 ** attempt)
+                        print(f"[Retry] LLMEvaluator 触发限流，将在 {delay} 秒后重试 {current_model} (尝试 {attempt+1}/{max_retries})...")
+                        time.sleep(delay)
+                    continue
+                else:
+                    raise e
+
     def evaluate_code_with_structured_data(self, code, assignment_title=None):
         """
         使用大模型评估代码并返回结构化数据
@@ -242,27 +297,15 @@ class LLMEvaluator:
         
         # 调用不同平台的API
         try:
-            if self.api_type == "zhipu":
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.2 if not self.strict_mode else 0.1,  # 严格模式下温度更低，确保结果更确定
-                )
-                response_text = response.choices[0].message.content
-            
-            elif self.api_type == "openai":
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.2 if not self.strict_mode else 0.1,  # 严格模式下温度更低
-                )
-                response_text = response.choices[0].message.content
+            response = self._chat_completions_create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.2 if not self.strict_mode else 0.1,  # 严格模式下温度更低，确保结果更确定
+            )
+            response_text = response.choices[0].message.content
             
             # 解析响应
             score_match = re.search(r'分数：(\d+)', response_text)
@@ -467,29 +510,16 @@ class LLMEvaluator:
 """
             
             # 根据不同平台调用API
-            if self.api_type == "zhipu":
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": "你是一个代码分析助手，你的回答必须是严格的JSON格式。"},
-                        {"role": "user", "content": structured_prompt}
-                    ],
-                    temperature=0.1,  # 低温度以确保输出更确定
-                    response_format={"type": "json_object"}  # 请求JSON格式的响应
-                )
-                response_text = response.choices[0].message.content
-                
-            elif self.api_type == "openai":
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": "你是一个代码分析助手，你的回答必须是严格的JSON格式。"},
-                        {"role": "user", "content": structured_prompt}
-                    ],
-                    temperature=0.1,
-                    response_format={"type": "json_object"}  # 请求JSON格式的响应
-                )
-                response_text = response.choices[0].message.content
+            response = self._chat_completions_create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "你是一个代码分析助手，你的回答必须是严格的JSON格式。"},
+                    {"role": "user", "content": structured_prompt}
+                ],
+                temperature=0.1,  # 低温度以确保输出更确定
+                response_format={"type": "json_object"}  # 请求JSON格式的响应
+            )
+            response_text = response.choices[0].message.content
             
             # 处理响应
             print(f"收到原始响应: {response_text[:200]}...")
@@ -690,27 +720,15 @@ class LLMEvaluator:
         
         # 调用不同平台的API
         try:
-            if self.api_type == "zhipu":
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.5,  # 较高的温度使响应更加多样化、友好
-                )
-                response_text = response.choices[0].message.content
-            
-            elif self.api_type == "openai":
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.5,  # 较高的温度使响应更加多样化、友好
-                )
-                response_text = response.choices[0].message.content
+            response = self._chat_completions_create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.5,  # 较高的温度使响应更加多样化、友好
+            )
+            response_text = response.choices[0].message.content
             
             # 指导模式下默认给比较高的分数，鼓励学生
             # 我们不从响应中提取分数，而是根据代码长度和复杂度给出一个鼓励性分数
@@ -759,30 +777,15 @@ class LLMEvaluator:
             大模型的原始响应文本
         """
         try:
-            if self.api_type == "zhipu":
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": "你是一个有用的编程助手，擅长提供清晰、准确的指导。"},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3,  # 使用较低的temperature以获得更确定的回答
-                )
-                return response.choices[0].message.content
-            
-            elif self.api_type == "openai":
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": "你是一个有用的编程助手，擅长提供清晰、准确的指导。"},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3,  # 使用较低的temperature以获得更确定的回答
-                )
-                return response.choices[0].message.content
-            
-            else:
-                raise ValueError(f"不支持的API类型: {self.api_type}")
+            response = self._chat_completions_create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "你是一个有用的编程助手，擅长提供清晰、准确的指导。"},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,  # 使用较低的temperature以获得更确定的回答
+            )
+            return response.choices[0].message.content
         
         except Exception as e:
             print(f"调用API时出错: {e}")

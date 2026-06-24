@@ -164,6 +164,44 @@ def generate_preset(assignment_title: str, assignment_description: str) -> Dict:
 
     result['reference_code'] = reference_code
 
+    # Step 1.5: 生成算法简述及引导式思考问题（阶段1脚手架，帮助学生理解解题思路框架）
+    summary_prompt = f"""你是一位数据结构与算法课程的教师。请根据以下编程题目和标准答案代码，
+编写一段"算法简述"，并生成 2~3 个引导学生思考核心解题逻辑的“引导问题”。
+
+## 要求
+1. 算法简述：用 2~4 个编号步骤描述算法的核心流程，使用纯自然语言，不要包含任何代码或伪代码。100~250字。
+2. 引导问题：生成 2~3 个有助于学生梳理程序架构的问题（如本题需要几个循环、截止条件是什么、需要什么关键数据结构等）。
+3. 必须严格以 JSON 格式返回，包含以下两个字段：
+   - "algorithm_summary": 字符串，格式以"算法流程："开头
+   - "guided_questions": 字符串数组，每个元素是一个引导问题
+
+## 示例输出格式
+{{
+  "algorithm_summary": "算法流程：构建哈夫曼树步骤如下：\\n（1）由每个权重生成一个仅含根节点的二叉树，将根指针推入小根堆。\\n（2）重复从小根堆中删除2个节点作为左右孩子，由它们的权重之和生成父节点并推入小根堆，直到堆中仅存一个节点。\\n（3）将小根堆中仅存的节点返回，即为哈夫曼树的根节点指针。",
+  "guided_questions": [
+    "我们需要设置几个循环？循环的截止条件是什么？",
+    "将两棵树合并为一棵新树时，新根结点的权重该如何计算？",
+    "为了每次能快速选出两个权重最小的节点，应该使用什么数据结构？"
+  ]
+}}
+
+## 题目
+标题：{assignment_title}
+描述：{assignment_description[:500]}
+
+## 标准答案代码
+{reference_code}"""
+
+    summary_response = client.chat(
+        [{"role": "system", "content": "你是数据结构课程教师，善于用简洁的自然语言总结算法流程并提出启发性问题。请严格以JSON格式返回结果。"},
+         {"role": "user", "content": summary_prompt}],
+        temperature=0.3, max_tokens=1000
+    )
+    
+    summary_data = _parse_json_object(summary_response or '{}')
+    result['algorithm_summary'] = summary_data.get('algorithm_summary', '算法流程：分析题目要求，读取输入，处理逻辑并输出结果。').strip()
+    guided_questions = summary_data.get('guided_questions', [])
+
     # Step 2: 提取关键解题步骤
     steps_prompt = f"""分析以下编程题及其标准答案，提取5-8个关键解题步骤。
 每个步骤用自然语言描述（不要包含代码），代表解题思路中的关键节点。
@@ -302,7 +340,8 @@ def generate_preset(assignment_title: str, assignment_description: str) -> Dict:
     result['difficulty_config'] = {
         'feynman_rounds': feynman_rounds,
         'student_persona': persona,
-        'code_complexity': code_lines
+        'code_complexity': code_lines,
+        'guided_questions': guided_questions
     }
 
     return result
@@ -322,7 +361,7 @@ def evaluate_description(description: str, key_steps: List[str],
     """
     client = SharedLLMClient()
     if not client.is_available():
-        return 50.0, "AI服务暂不可用，请稍后重试"
+        raise RuntimeError("AI服务不可用，请检查API Key配置或稍后再试")
 
     prompt = f"""你是编程教育评判员。请评估学生对编程题解题思路的描述是否涵盖了关键步骤。
 
@@ -334,28 +373,36 @@ def evaluate_description(description: str, key_steps: List[str],
 学生的描述：
 "{description}"
 
-评估规则：
-1. 不要求学生的用词和关键步骤完全一致，只要大意相符即可
-2. 关注大体流程是否正确，不苛求细节
-3. 学生描述字数多少不重要，主要看覆盖了多少关键步骤
-4. 覆盖80%以上的关键步骤算合格
+评估规则（请宽松评判，鼓励初学者）：
+1. 不要求学生的用词和关键步骤完全一致，只要大意相近、方向正确即可给分
+2. 学生用口语化、非专业的表达也应当视为有效（例如"把数存起来"等价于"使用数组存储"）
+3. 学生提到了某个步骤的部分内容，也应视为覆盖了该步骤（部分匹配也算匹配）
+4. 覆盖50%以上的关键步骤即算合格
+5. 对于只有2-3个关键步骤的简单题目，学生只要覆盖其中任意一个核心步骤或表述出基本框架，就应给予至少50分
+6. 评分时请显著偏高，倾向于给出50分以上的及格分数，以鼓励初学者
 
 请以JSON格式返回：
-{{"score": 整数(0-100), "matched_steps": ["被覆盖的步骤"], "missing_steps": ["未覆盖的步骤"], "feedback": "简短评语（一句话）"}}"""
+{{"score": 整数(0-100), "matched_steps": ["被覆盖的步骤"], "missing_steps": ["未覆盖的步骤"], "feedback": "简短鼓励性评语（一句话）"}}"""
 
     response = client.chat(
-        [{"role": "system", "content": "你是严谨的编程教育评判员。请以JSON格式返回评估结果。"},
+        [{"role": "system", "content": "你是一位鼓励型的编程教育评判员，评分时倾向于宽松，重点看学生是否理解了大方向。请以JSON格式返回评估结果。"},
          {"role": "user", "content": prompt}],
-        temperature=0.2, max_tokens=800
+        temperature=0.3, max_tokens=800
     )
 
+    if not response:
+        raise RuntimeError("AI服务响应为空，可能由于大模型接口访问受限或网络超时，请稍后再试")
+
+    data = _parse_json_object(response)
+    if not data or 'score' not in data or 'feedback' not in data:
+        raise RuntimeError("AI评估结果格式不符合预期，请稍后重试")
+
     try:
-        data = _parse_json_object(response)
-        score = max(0, min(100, data.get('score', 50)))
-        feedback = data.get('feedback', '评估完成')
+        score = max(0, min(100, float(data.get('score', 50))))
+        feedback = data.get('feedback')
         return score, feedback
-    except Exception:
-        return 50.0, "评估过程中出现问题，请重试"
+    except Exception as e:
+        raise RuntimeError(f"解析AI评估结果失败: {str(e)}")
 
 
 def generate_stage1_hint(description: str, key_steps: List[str],
@@ -738,7 +785,7 @@ def evaluate_feynman_code_fix(buggy_code: str, fixed_code: str,
     """
     client = SharedLLMClient()
     if not client.is_available():
-        return False, "AI评估服务暂不可用"
+        raise RuntimeError("AI评估服务不可用，请检查API Key配置或稍后再试")
 
     prompt = f"""请评估学生是否正确识别并修复了代码中的bug。
 
@@ -768,11 +815,19 @@ def evaluate_feynman_code_fix(buggy_code: str, fixed_code: str,
         temperature=0.2, max_tokens=400
     )
 
+    if not response:
+        raise RuntimeError("AI服务响应为空，可能由于大模型接口访问受限或网络超时，请稍后再试")
+
+    data = _parse_json_object(response)
+    if not data or 'correct' not in data or 'feedback' not in data:
+        raise RuntimeError("AI评估结果格式不符合预期，请稍后重试")
+
     try:
-        data = _parse_json_object(response)
-        return data.get('correct', False), data.get('feedback', '评估完成')
-    except Exception:
-        return False, "评估处理出错"
+        is_correct = bool(data.get('correct', False))
+        feedback = data.get('feedback')
+        return is_correct, feedback
+    except Exception as e:
+        raise RuntimeError(f"解析AI评估结果失败: {str(e)}")
 
 
 # ============================================================

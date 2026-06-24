@@ -153,20 +153,87 @@
             textarea.focus();
         }
 
+        // Setup algorithm summary collapse toggle & display
+        const algoSummaryWrapper = document.getElementById('algo-summary-wrapper');
+        const algoSummaryContent = document.getElementById('algo-summary-content');
+        const algoSummaryIcon = document.getElementById('algo-summary-icon');
+        const algoSummaryHeader = document.getElementById('algo-summary-header');
+        const stage1Instruction = document.getElementById('stage1-instruction');
+
+        if (state.preset && state.preset.algorithm_summary) {
+            if (algoSummaryWrapper) {
+                algoSummaryWrapper.style.display = 'block';
+            }
+            if (algoSummaryContent) {
+                algoSummaryContent.innerText = state.preset.algorithm_summary;
+                algoSummaryContent.style.display = 'block'; // Default expanded
+            }
+            if (algoSummaryIcon) {
+                algoSummaryIcon.className = 'bi bi-chevron-up';
+            }
+            if (stage1Instruction) {
+                stage1Instruction.style.display = 'flex';
+            }
+        } else {
+            if (algoSummaryWrapper) algoSummaryWrapper.style.display = 'none';
+            if (stage1Instruction) stage1Instruction.style.display = 'none';
+        }
+
+        if (algoSummaryHeader) {
+            algoSummaryHeader.onclick = () => {
+                if (algoSummaryContent) {
+                    if (algoSummaryContent.style.display === 'none') {
+                        algoSummaryContent.style.display = 'block';
+                        if (algoSummaryIcon) algoSummaryIcon.className = 'bi bi-chevron-up';
+                    } else {
+                        algoSummaryContent.style.display = 'none';
+                        if (algoSummaryIcon) algoSummaryIcon.className = 'bi bi-chevron-down';
+                    }
+                }
+            };
+        }
+
+        // Setup guided questions display
+        const questionsWrapper = document.getElementById('guided-questions-wrapper');
+        const questionsList = document.getElementById('guided-questions-list');
+        const questions = (state.preset && state.preset.guided_questions && state.preset.guided_questions.length > 0)
+            ? state.preset.guided_questions
+            : [
+                "本题需要设计几个循环？循环的截止条件是什么？",
+                "需要使用哪些辅助数据结构或变量（如数组、小根堆、指针等）？",
+                "输入数据的读取和输出结果的打印如何对应到算法流程中？"
+            ];
+
+        if (questionsWrapper && questionsList) {
+            questionsList.innerHTML = '';
+            questions.forEach(q => {
+                const li = document.createElement('li');
+                li.innerText = q;
+                questionsList.appendChild(li);
+            });
+            questionsWrapper.style.display = 'block';
+        }
+
         // Initialize dynamic companion chat greeting for Stage 1
         const container = document.getElementById('companion-messages');
         if (container) {
             container.innerHTML = '';
             state.companionMessages = [];
             const problemTitle = document.querySelector('.problem-panel h2')?.innerText?.replace(/[\r\n]/g, '').replace('引导式学习 - ', '').trim() || '当前任务';
-            const greeting = `哈罗！我是你的 AI 伴学助手。我们今天的任务是完成《${problemTitle}》。
-
-如果你觉得思路描述不知道该写什么，别紧张！你可以试着回答以下几个小问题，然后把你的想法整理写到左侧文本框提交：
-1️⃣ **输入什么**：我们需要读取什么数据？（例如：几个整数、一个字符串还是数组？）
-2️⃣ **如何处理**：我们要对输入的数据做什么计算或判断？（例如：相加、循环遍历、求最大值还是满足某种条件？）
-3️⃣ **输出什么**：最终要打印什么结果？
-
-你也可以直接把你的第一直觉或者疑问在下方发送给我，我来帮你理清思路、一步步完善成合格的思路描述哦！加油！✨`;
+            
+            let greeting = `哈罗！我是你的 AI 伴学助手。我们今天的任务是完成《${problemTitle}》。\n\n`;
+            if (state.preset && state.preset.algorithm_summary) {
+                greeting += `我已为你准备好了这道题的标准算法步骤简述（见左侧「算法思路参考」）。\n\n为了帮你理清思路，你可以尝试思考并回答以下引导问题：\n`;
+            } else {
+                greeting += `为了帮你理清思路，你可以尝试思考并回答以下引导问题：\n`;
+            }
+            
+            questions.forEach((q, i) => {
+                greeting += `${i + 1}️⃣ **${q}**\n`;
+            });
+            
+            greeting += `\n你可以结合左侧的算法流程和上面的引导提问，用自己的语言把解题步骤描述出来并提交。你也可以直接在下方回答这些问题，我会引导你完善成合格的思路描述哦！加油！✨`;
+            
             appendCompanionMessage(greeting, 'ai');
         }
     }
@@ -206,7 +273,7 @@
                     setTimeout(() => initStage(2), 1500);
                 } else {
                     // Proactively post AI Companion guidance
-                    appendCompanionMessage(`我看到你的思路描述匹配度为 ${data.score}%，还差一点就达到 80% 的通过标准啦！\n导师点评说："${data.feedback}"\n\n别灰心，你可以根据点评修改你的思路。如果你修改有困难，可以尝试问我："我该如何写这道题的输入/循环/输出部分？"，或者直接点击左侧下方的【请求提示】按钮，我会给你更明确的思路大纲！`, 'ai');
+                    appendCompanionMessage(`我看到你的思路描述匹配度为 ${data.score}%，还差一点就达到 60% 的通过标准啦！\n导师点评说："${data.feedback}"\n\n别灰心，你可以根据点评修改你的思路。如果你修改有困难，可以尝试问我："我该如何写这道题的输入/循环/输出部分？"，或者直接点击左侧下方的【请求提示】按钮，我会给你更明确的思路大纲！`, 'ai');
                 }
             }
         }).catch(err => showError(err.message))

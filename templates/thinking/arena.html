@@ -89,6 +89,34 @@
                     <span style="font-size: 12px; color: var(--arena-text-dim);">用自然语言描述你的解题思路</span>
                 </div>
                 <div class="panel-body">
+                    <!-- 算法思路参考面板 -->
+                    <div class="algorithm-summary-panel" id="algo-summary-wrapper" style="display: none;">
+                        <div class="algorithm-summary-header" id="algo-summary-header">
+                            <span><i class="bi bi-book-half"></i> 算法思路参考</span>
+                            <i class="bi bi-chevron-up" id="algo-summary-icon"></i>
+                        </div>
+                        <div class="algorithm-summary-body" id="algo-summary-content">
+                            <!-- 由 JS 动态填充 -->
+                        </div>
+                    </div>
+
+                    <!-- 引导语 -->
+                    <div class="stage1-instruction" id="stage1-instruction" style="display: none;">
+                        <i class="bi bi-chat-left-dots-fill" style="color: #2563eb;"></i>
+                        <span>现在请你根据上面的算法简述与以下思考问题，用自己的语言描述一下解题步骤吧！</span>
+                    </div>
+
+                    <!-- 思考引导问题面板 -->
+                    <div class="guided-questions-panel" id="guided-questions-wrapper" style="display: none; background: #eff6ff; border-left: 4px solid #3b82f6; padding: 14px; border-radius: 8px; margin-bottom: 16px;">
+                        <div style="font-weight: bold; color: #1e3a8a; font-size: 13.5px; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; user-select: none;">
+                            <i class="bi bi-patch-question-fill" style="color: #3b82f6; font-size: 16px;"></i>
+                            <span>思路梳理提示：思考并尝试回答以下问题（不必在文本框中全部写出，但可以作为你理清逻辑的线索）：</span>
+                        </div>
+                        <ul id="guided-questions-list" style="margin: 0; padding-left: 20px; color: #1e40af; font-size: 13px; line-height: 1.6;">
+                            <!-- 由 JS 动态填充 -->
+                        </ul>
+                    </div>
+
                     <textarea class="description-textarea" id="description-input"
                               placeholder="请用你自己的话描述这道题的解题思路...&#10;&#10;例如：&#10;首先，我需要读取输入的数据...&#10;然后，我要创建一个循环来...&#10;最后，输出计算结果..."></textarea>
 

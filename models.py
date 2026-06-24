@@ -989,6 +989,7 @@ class AssignmentThinkingPreset(db.Model):
     code_blocks = db.Column(db.Text, nullable=True)  # JSON: 正确代码块列表（含缩进层级）
     noise_blocks = db.Column(db.Text, nullable=True)  # JSON: 噪声代码块列表
     difficulty_config = db.Column(db.Text, nullable=True)  # JSON: 费曼阶段难度配置
+    algorithm_summary = db.Column(db.Text, nullable=True)  # 标准算法简述（阶段1脚手架文本）
     status = db.Column(db.String(20), default='pending')  # pending / generating / ready / failed
     error_message = db.Column(db.Text, nullable=True)  # 生成失败时的错误信息
     created_at = db.Column(db.DateTime, default=dt.utcnow)
@@ -1032,6 +1033,10 @@ class AssignmentThinkingPreset(db.Model):
             return json.loads(self.difficulty_config)
         except (json.JSONDecodeError, TypeError):
             return {'feynman_rounds': 5, 'student_persona': 'curious'}
+
+    def get_algorithm_summary(self):
+        """获取算法简述（阶段1脚手架）"""
+        return self.algorithm_summary or ''
 
 
 class ThinkingSession(db.Model):

@@ -807,3 +807,49 @@
     100% { transform: rotate(360deg); }
 }
 
+/* --- Algorithm Summary Panel (Stage 1 Scaffold) --- */
+.algorithm-summary-panel {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #2563eb;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    overflow: hidden;
+}
+
+.algorithm-summary-header {
+    padding: 10px 14px;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e3a8a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+
+.algorithm-summary-header:hover {
+    background: #e2e8f0;
+}
+
+.algorithm-summary-body {
+    padding: 12px 14px;
+    font-size: 13px;
+    color: #334155;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.stage1-instruction {
+    font-size: 13px;
+    font-weight: 500;
+    color: #475569;
+    margin: 8px 0 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}

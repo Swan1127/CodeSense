@@ -87,7 +87,7 @@ class SharedLLMClient:
                 return
 
             self._client = ZhipuAI(api_key=api_key)
-            self._model_name = "glm-4.7-flash"
+            self._model_name = "glm-4.5-flash"
             self._available = True
             print("✅ 共享智谱 AI 客户端初始化成功")
         except ImportError:
@@ -163,39 +163,73 @@ class SharedLLMClient:
             except Exception:
                 pass
 
-        try:
-            content = None
-            if self._provider == LLMProvider.ZHIPU:
-                response = self._client.chat.completions.create(
-                    model=self._model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens
+        import time
+        max_retries = 5
+        base_delay = 2  # 基础延迟秒数
+        current_model = self._model_name
+
+        for attempt in range(max_retries):
+            try:
+                content = None
+                if self._provider == LLMProvider.ZHIPU:
+                    # Disable thinking tokens to save token budget and prevent empty response contents
+                    response = self._client.chat.completions.create(
+                        model=current_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        extra_body={"thinking": {"type": "disabled"}}
+                    )
+                    content = response.choices[0].message.content
+
+                elif self._provider == LLMProvider.OPENAI:
+                    response = self._client.chat.completions.create(
+                        model=current_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
+                    content = response.choices[0].message.content
+
+                # 成功获取后，如果启用了 Redis，则写入缓存（缓存有效期 24 小时）
+                if content and self._redis_cache and cache_key:
+                    try:
+                        self._redis_cache.setex(cache_key, 3600 * 24, content)
+                    except Exception:
+                        pass
+
+                return content
+
+            except Exception as e:
+                err_str = str(e)
+                # 判断是否是限流或速率限制错误 (如 429, 1305, rate limit, 访问量过大, 频率限制, Too Many Requests)
+                is_rate_limit = (
+                    "429" in err_str or
+                    "1305" in err_str or
+                    "rate limit" in err_str.lower() or
+                    "访问量过大" in err_str or
+                    "频率" in err_str or
+                    "Too Many Requests" in err_str or
+                    "APIReachLimitError" in type(e).__name__ or
+                    "rate_limit" in type(e).__name__.lower()
                 )
-                content = response.choices[0].message.content
 
-            elif self._provider == LLMProvider.OPENAI:
-                response = self._client.chat.completions.create(
-                    model=self._model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
-                content = response.choices[0].message.content
-
-            # 成功获取后，如果启用了 Redis，则写入缓存（缓存有效期 24 小时）
-            if content and self._redis_cache and cache_key:
-                try:
-                    self._redis_cache.setex(cache_key, 3600 * 24, content)
-                except Exception:
-                    pass
-
-            return content
-
-        except Exception as e:
-            print(f"LLM API 调用失败: {e}")
-            print(traceback.format_exc())
-            return None
+                if is_rate_limit and attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    # 自动将 Zhipu 降级为 glm-4.5-flash
+                    if self._provider == LLMProvider.ZHIPU and current_model != "glm-4.5-flash":
+                        print(f"LLM API 触发限流且访问量过大，将模型从 {current_model} 降级为 glm-4.5-flash")
+                        current_model = "glm-4.5-flash"
+                        self._model_name = "glm-4.5-flash"
+                        delay = 0.5  # 降级为 flash 模型后快速重试
+                        
+                    print(f"LLM API 触发限流 (429/1305/访问过大)，将在 {delay} 秒后重试 (使用模型: {current_model}, 尝试 {attempt+1}/{max_retries})...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    print(f"LLM API 调用失败: {e}")
+                    print(traceback.format_exc())
+                    return None
 
     def evaluate_code(self, code: str, assignment_title: str = None) -> Tuple[int, str]:
         """
@@ -287,3 +321,100 @@ class SharedLLMClient:
 
 # 全局单例访问点
 llm_client = SharedLLMClient()
+
+
+def safe_zhipu_post(url, headers, json_data, timeout=30, stream=False):
+    """
+    统一的智谱 API POST 请求发送工具，支持 429 和 1305 高并发降级 glm-4.5-flash 与自动重试。
+    """
+    import requests
+    import time
+    import json
+    import copy
+    
+    data_copy = copy.deepcopy(json_data)
+    current_model = data_copy.get("model", "glm-4.5-flash")
+    max_retries = 5
+    base_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            data_copy["model"] = current_model
+            # Disable thinking tokens for direct HTTP POST requests
+            if "thinking" not in data_copy:
+                data_copy["thinking"] = {"type": "disabled"}
+            response = requests.post(
+                url,
+                headers=headers,
+                json=data_copy,
+                timeout=timeout,
+                stream=stream
+            )
+            
+            # 判断是否是限流或错误状态码
+            if response.status_code == 429:
+                raise requests.exceptions.HTTPError("HTTP 429 Too Many Requests", response=response)
+            
+            # 检查非流式响应体是否包含 1305 访问量过大错误
+            if not stream:
+                try:
+                    res_json = response.json()
+                    if isinstance(res_json, dict):
+                        err_code = res_json.get("error", {}).get("code") or res_json.get("code")
+                        err_msg = res_json.get("error", {}).get("message") or res_json.get("message")
+                        if str(err_code) == "1305":
+                            raise requests.exceptions.HTTPError(f"Zhipu Error 1305: {err_msg}", response=response)
+                except Exception:
+                    pass
+            else:
+                # 流式请求如果返回错误状态码，也尝试解析 1305
+                if response.status_code != 200:
+                    try:
+                        res_json = response.json()
+                        if isinstance(res_json, dict):
+                            err_code = res_json.get("error", {}).get("code") or res_json.get("code")
+                            if str(err_code) == "1305":
+                                raise requests.exceptions.HTTPError(f"Zhipu Error 1305: {res_json}", response=response)
+                    except Exception:
+                        pass
+                    response.raise_for_status()
+            
+            return response
+            
+        except Exception as e:
+            err_str = str(e)
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    err_str += " " + e.response.text
+                except Exception:
+                    pass
+            
+            is_rate_limit = (
+                "429" in err_str or
+                "1305" in err_str or
+                "rate limit" in err_str.lower() or
+                "访问量过大" in err_str or
+                "频率" in err_str or
+                "Too Many Requests" in err_str or
+                "APIReachLimitError" in type(e).__name__ or
+                "rate_limit" in type(e).__name__.lower()
+            )
+            
+            if is_rate_limit and attempt < max_retries - 1:
+                if current_model != "glm-4.5-flash":
+                    print(f"[safe_zhipu_post] 触发限流，模型从 {current_model} 降级为 glm-4.5-flash")
+                    current_model = "glm-4.5-flash"
+                    # 更新 SharedLLMClient 的全局默认模型
+                    llm_client._model_name = "glm-4.5-flash"
+                    delay = 0.5
+                else:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"[safe_zhipu_post] 触发限流，将在 {delay} 秒后重试 {current_model} (尝试 {attempt+1}/{max_retries})...")
+                    time.sleep(delay)
+                continue
+            else:
+                if attempt >= max_retries - 1:
+                    print(f"[safe_zhipu_post] 达到最大重试次数，最后使用的模型是: {current_model}")
+                if hasattr(e, 'response') and e.response is not None:
+                    return e.response
+                raise e

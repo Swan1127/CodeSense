@@ -22,6 +22,9 @@ except ImportError:
     HAS_FLASK_SESSION = False
 from dotenv import load_dotenv
 
+# 加载环境变量
+load_dotenv()
+
 
 # 添加当前目录到Python路径，确保可以正确导入模块
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -33,9 +36,6 @@ from utils.code_evaluator import initialize_models
 from utils.guidance_generator import initialize_guidance_system
 from utils.code_advisor import initialize_code_advisor  # 导入代码建议系统初始化函数
 from services.api_keys import api_keys  # 导入 API 密钥管理器
-
-# 加载环境变量
-load_dotenv()
 
 # 环境变量检查和警告
 def check_environment_variables():

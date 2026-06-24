@@ -186,7 +186,7 @@ def stage1_submit():
         _log_event(session_id, 1, 'description_submit', 'student', description,
                    metadata={'score': score, 'feedback': feedback})
 
-        passed = score >= 80
+        passed = score >= 50
         if passed:
             ts.current_stage = 2
             _log_event(session_id, 1, 'stage_pass', 'system', f'阶段1通过，匹配度: {score}%')
@@ -201,6 +201,7 @@ def stage1_submit():
         })
 
     except Exception as e:
+        db.session.rollback()
         print(f"阶段1提交失败: {e}")
         traceback.print_exc()
         return jsonify({'error': f'提交失败: {str(e)}'}), 500
@@ -630,6 +631,7 @@ def stage3_fix_code():
         })
 
     except Exception as e:
+        db.session.rollback()
         print(f"修复代码评估失败: {e}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
@@ -861,9 +863,67 @@ def _serialize_preset(preset: AssignmentThinkingPreset) -> dict:
 
     random.shuffle(all_blocks)
 
+    # 惰性回填：如果旧预设缺少 algorithm_summary，尝试后台异步生成，避免阻塞主请求
+    algorithm_summary = preset.get_algorithm_summary()
+    if not algorithm_summary and preset.status == 'ready' and preset.reference_code:
+        import threading
+        app = current_app._get_current_object()
+        preset_id = preset.id
+        
+        def run_backfill():
+            with app.app_context():
+                try:
+                    from models import AssignmentThinkingPreset
+                    p = AssignmentThinkingPreset.query.get(preset_id)
+                    if p:
+                        _lazy_backfill_summary(p)
+                except Exception as ex:
+                    app.logger.warning(f"后台惰性回填算法简述失败: {ex}")
+                    
+        threading.Thread(target=run_backfill, daemon=True).start()
+
+    difficulty = preset.get_difficulty_config() or {}
+    guided_questions = difficulty.get('guided_questions', [])
+
     return {
         'key_steps': preset.get_key_steps(),
         'blocks': all_blocks,
-        'difficulty': preset.get_difficulty_config(),
+        'difficulty': difficulty,
+        'algorithm_summary': algorithm_summary,
+        'guided_questions': guided_questions,
         'status': preset.status
     }
+
+
+def _lazy_backfill_summary(preset: AssignmentThinkingPreset):
+    """为缺少 algorithm_summary 的旧预设惰性生成算法简述"""
+    from utils.thinking_ai import SharedLLMClient
+    client = SharedLLMClient()
+    if not client.is_available():
+        return
+
+    assignment = preset.assignment
+    if not assignment:
+        return
+
+    prompt = f"""你是一位数据结构与算法课程的教师。请根据以下编程题目和标准答案代码，
+用简洁的自然语言为学生编写一段"算法简述"。
+
+要求：用2~4个编号步骤描述核心流程，使用自然语言，不要包含代码，100~250字。
+直接输出"算法流程："开头的内容。
+
+题目：{assignment.title}
+描述：{(assignment.description or '')[:500]}
+
+标准答案代码：
+{preset.reference_code[:1500]}"""
+
+    response = client.chat(
+        [{"role": "system", "content": "你是数据结构课程教师，善于用简洁的自然语言总结算法流程。"},
+         {"role": "user", "content": prompt}],
+        temperature=0.3, max_tokens=600
+    )
+    if response and response.strip():
+        preset.algorithm_summary = response.strip()
+        db.session.commit()
+        current_app.logger.info(f"已为作业 {preset.assignment_id} 惰性回填算法简述")

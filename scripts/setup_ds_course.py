@@ -1601,37 +1601,6 @@ def run_setup():
         if students_info:
             print(f"\n[*] 学生账号：新建 {created_count} 个，更新 {updated_count} 个，共 {len(students_info)} 人")
 
-            # ===== 网络2402（35人）=====
-        ]
-        created_count = 0
-        updated_count = 0
-        for si in students_info:
-            stu = User.query.filter_by(student_id=si['student_id']).first()
-            cls = class_objs[si['class_name']]
-            if not stu:
-                stu = User(
-                    student_id=si['student_id'],
-                    username=si['student_id'],          # 用户名 = 学号
-                    password_hash=generate_password_hash(si['student_id']),  # 密码 = 学号
-                    usertype='学生',
-                    full_name=si['full_name'],
-                    class_name=si['class_name'],
-                    class_id=cls.id,
-                    submit_count=0,
-                    user_ascore=0.0
-                )
-                db.session.add(stu)
-                created_count += 1
-                print(f"[+] 注册学生: {si['full_name']} ({si['student_id']}) → {si['class_name']}")
-            else:
-                stu.class_name = si['class_name']
-                stu.class_id = cls.id
-                stu.full_name = si['full_name']
-                updated_count += 1
-                print(f"[i] 更新学生: {si['full_name']} ({si['student_id']}) → {si['class_name']}")
-        db.session.commit()
-        print(f"\n[*] 学生账号：新建 {created_count} 个，更新 {updated_count} 个，共 {len(students_info)} 人")
-
 
         # 4. 批量添加作业题目
         assignment_count = 0

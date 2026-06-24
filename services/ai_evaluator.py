@@ -54,7 +54,7 @@ class AIEvaluator:
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4.7-flash",
+                "model": "glm-4.5-flash",
                 "messages": [
                     {"role": "system", "content": "你是一个专业的代码评估专家，擅长分析代码质量和编程能力。"},
                     {"role": "user", "content": prompt}
@@ -62,10 +62,11 @@ class AIEvaluator:
                 "temperature": 0.7,
                 "max_tokens": 1000
             }
-            response = requests.post(
+            from services.llm_client import safe_zhipu_post
+            response = safe_zhipu_post(
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
                 headers=headers,
-                json=data,
+                json_data=data,
                 timeout=30
             )
             if response.status_code == 200:
@@ -154,7 +155,7 @@ class AIEvaluator:
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4.7-flash",
+                "model": "glm-4.5-flash",
                 "messages": [
                     {
                         "role": "system",
@@ -176,10 +177,11 @@ class AIEvaluator:
                 "max_tokens": 3000,
                 "stream": True
             }
-            response = requests.post(
+            from services.llm_client import safe_zhipu_post
+            response = safe_zhipu_post(
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
                 headers=headers,
-                json=data,
+                json_data=data,
                 timeout=90,
                 stream=True
             )
@@ -243,7 +245,7 @@ class AIEvaluator:
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4.7-flash",
+                "model": "glm-4.5-flash",
                 "messages": [
                     {"role": "system", "content": "你是一个专业的编程教育专家，擅长分析学习趋势和提供改进建议。请严格按照JSON格式返回结果。"},
                     {"role": "user", "content": prompt}
@@ -251,10 +253,11 @@ class AIEvaluator:
                 "temperature": 0.7,
                 "max_tokens": 2000
             }
-            response = requests.post(
+            from services.llm_client import safe_zhipu_post
+            response = safe_zhipu_post(
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
                 headers=headers,
-                json=data,
+                json_data=data,
                 timeout=30
             )
             if response.status_code == 200:
@@ -431,7 +434,7 @@ class AIEvaluator:
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4.7-flash",
+                "model": "glm-4.5-flash",
                 "messages": [
                     {"role": "system", "content": "你是一个专业的编程教育专家，擅长分析学生的学习趋势和提供有针对性的改进建议。请用简洁专业的中文直接输出分析内容。"},
                     {"role": "user", "content": prompt}
@@ -440,9 +443,10 @@ class AIEvaluator:
                 "max_tokens": 2000,
                 "stream": True
             }
-            response = requests.post(
+            from services.llm_client import safe_zhipu_post
+            response = safe_zhipu_post(
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers=headers, json=data, stream=True, timeout=(10, 120)
+                headers=headers, json_data=data, stream=True, timeout=(10, 120)
             )
             if response.status_code == 200:
                 chunk_count = 0
@@ -497,7 +501,7 @@ dynamic_memory, linked_list, tree, sorting, searching, recursion
                 "Authorization": f"Bearer {self.api_key}"
             }
             data = {
-                "model": "glm-4.7-flash",
+                "model": "glm-4.5-flash",
                 "messages": [
                     {"role": "system", "content": "你是一个C语言专家，擅长识别代码中的知识点。请严格按照JSON格式返回结果。"},
                     {"role": "user", "content": prompt}
@@ -505,9 +509,10 @@ dynamic_memory, linked_list, tree, sorting, searching, recursion
                 "temperature": 0.3,
                 "max_tokens": 500
             }
-            response = requests.post(
+            from services.llm_client import safe_zhipu_post
+            response = safe_zhipu_post(
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers=headers, json=data, timeout=15
+                headers=headers, json_data=data, timeout=15
             )
             if response.status_code == 200:
                 result = response.json()
