@@ -22,6 +22,26 @@ from utils.thinking_ai import (
 thinking = Blueprint('thinking', __name__, url_prefix='/thinking')
 
 
+def _check_and_trigger_stale_preset(preset, assignment_id):
+    """
+    检查预设是否是老版本（状态为 ready 但没有 quiz_steps），如果是，则自动触发重新生成。
+    """
+    if preset and preset.status == 'ready' and (not hasattr(preset, 'quiz_steps') or not preset.quiz_steps or preset.quiz_steps.strip() == '' or preset.quiz_steps == '[]'):
+        try:
+            preset.status = 'generating'
+            preset.error_message = None
+            db.session.commit()
+            
+            from utils.async_tasks import add_generate_preset_task
+            add_generate_preset_task(assignment_id)
+            
+            current_app.logger.info(f"作业 {assignment_id} 预设缺少 quiz_steps 数据，已将其重置为 'generating' 并触发重新生成。")
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"重置作业 {assignment_id} 预设状态失败: {e}")
+    return preset
+
+
 # ============================================================
 # 页面路由
 # ============================================================
@@ -32,6 +52,9 @@ def arena(assignment_id):
     """三阶段学习主页面"""
     assignment = Assignment.query.get_or_404(assignment_id)
     preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
+    
+    # 自动检测并重置缺少 quiz_steps 的就绪预设
+    preset = _check_and_trigger_stale_preset(preset, assignment_id)
 
     preset_status = 'not_found'
     
@@ -123,6 +146,7 @@ def start_session():
 
         # 检查预设是否就绪
         preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
+        preset = _check_and_trigger_stale_preset(preset, assignment_id)
         if not preset or preset.status != 'ready':
             return jsonify({'error': '学习数据尚未准备好，请稍后再试', 'preset_status': preset.status if preset else 'not_found'}), 503
 
@@ -824,6 +848,7 @@ def preset_status(assignment_id):
     """轮询预设状态"""
     try:
         preset = AssignmentThinkingPreset.query.filter_by(assignment_id=assignment_id).first()
+        preset = _check_and_trigger_stale_preset(preset, assignment_id)
         if not preset:
             return jsonify({'status': 'not_found'})
             
