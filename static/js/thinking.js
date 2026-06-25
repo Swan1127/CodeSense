@@ -120,6 +120,27 @@
         const target = document.getElementById(`stage-${stage}`);
         if (target) target.classList.add('active');
 
+        // Toggle code preview panel in right column for Stage 2
+        const previewPanel = document.getElementById('stage2-preview-panel');
+        if (previewPanel) {
+            if (stage === 2) {
+                previewPanel.classList.add('active');
+            } else {
+                previewPanel.classList.remove('active');
+            }
+        }
+
+        // Toggle companion and student panels appropriately
+        const companionPanel = document.getElementById('ai-companion-panel');
+        const studentPanel = document.getElementById('student-agent-panel');
+        if (stage === 3) {
+            if (companionPanel) companionPanel.classList.remove('active');
+            if (studentPanel) studentPanel.classList.add('active');
+        } else {
+            if (companionPanel) companionPanel.classList.add('active');
+            if (studentPanel) studentPanel.classList.remove('active');
+        }
+
         // Update body layout for stage 3
         const body = document.querySelector('.arena-body');
         if (body) {
@@ -919,6 +940,87 @@
           .finally(() => setLoading(false));
     }
 
+    function collectStudentState() {
+        const studentState = {
+            stage1: {},
+            stage2: {},
+            stage3: {}
+        };
+
+        // 1. Stage 1 Q&A answers
+        const qaAnswers = [];
+        document.querySelectorAll('.qa-answer-textarea').forEach(ta => {
+            const index = ta.dataset.questionIndex;
+            const value = ta.value.trim();
+            let questionText = "";
+            const parent = ta.parentElement;
+            if (parent) {
+                const labelSpan = parent.querySelector('.qa-question-label span:not(.qa-index)');
+                if (labelSpan) {
+                    questionText = labelSpan.textContent.trim();
+                }
+            }
+            qaAnswers.push({
+                question: questionText,
+                answer: value
+            });
+        });
+        studentState.stage1.qa_answers = qaAnswers;
+
+        // 2. Stage 2 blocks state
+        const workspaceBlocks = document.querySelectorAll('#block-solution-list .code-block');
+        const studentIds = Array.from(workspaceBlocks).map(b => b.dataset.blockId);
+        const studentIndents = Array.from(workspaceBlocks).map(b => parseInt(b.dataset.indent || 0));
+
+        let targetIds = [];
+        let targetIndents = [];
+        if (state.preset && state.preset.blocks) {
+            const targetBlocks = state.preset.blocks
+                .filter(b => !b.id.startsWith('noise-'))
+                .sort((a, b) => parseInt(a.id) - parseInt(b.id));
+            targetIds = targetBlocks.map(b => b.id);
+            targetIndents = targetBlocks.map(b => b.indent || 0);
+        }
+
+        const hasNoise = studentIds.some(id => id.startsWith('noise-'));
+        const lengthMismatch = studentIds.length > 0 && studentIds.length !== targetIds.length;
+        
+        let orderMatch = true;
+        if (studentIds.length === targetIds.length) {
+            for (let i = 0; i < targetIds.length; i++) {
+                if (studentIds[i] !== targetIds[i]) {
+                    orderMatch = false;
+                    break;
+                }
+            }
+        } else {
+            orderMatch = false;
+        }
+
+        studentState.stage2 = {
+            current_blocks: Array.from(workspaceBlocks).map(b => ({
+                id: b.dataset.blockId,
+                code: b.querySelector('code')?.textContent || '',
+                label: b.querySelector('.block-label')?.textContent || '',
+                indent: parseInt(b.dataset.indent || 0),
+                part_name: b.dataset.partName || ''
+            })),
+            errors: {
+                is_empty: studentIds.length === 0,
+                has_noise: hasNoise,
+                length_mismatch: lengthMismatch,
+                order_match: orderMatch,
+                indent_match: orderMatch && (JSON.stringify(studentIndents) === JSON.stringify(targetIndents))
+            }
+        };
+
+        // 3. Stage 3 code fix state
+        const codeFixInput = document.getElementById('code-fix-input');
+        studentState.stage3.current_fixed_code = codeFixInput ? codeFixInput.value : '';
+
+        return studentState;
+    }
+
     function sendCompanionChat() {
         const input = document.getElementById('companion-chat-input');
         if (!input) return;
@@ -953,7 +1055,8 @@
         const requestBody = {
             session_id: state.sessionId,
             messages: messages,
-            current_stage: state.currentStage
+            current_stage: state.currentStage,
+            student_state: collectStudentState()
         };
 
         if (state.currentStage === 2) {
@@ -1131,7 +1234,8 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                messages: state.teacherMessages
+                messages: state.teacherMessages,
+                student_state: collectStudentState()
             })
         }).then(data => {
             hideTypingIndicator('teacher');
@@ -1160,7 +1264,8 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                messages: state.studentMessages
+                messages: state.studentMessages,
+                student_state: collectStudentState()
             })
         }).then(data => {
             hideTypingIndicator('student');
@@ -1216,11 +1321,11 @@
             <div class="code-review-panel">
                 <div class="code-review-header">
                     <i class="bi bi-exclamation-triangle"></i>
-                    小明写的代码（老师说有问题）
+                    修改小明的错误代码并提交
                 </div>
                 <div class="code-review-body">
-                    <pre><code>${escapeHtml(buggyCode)}</code></pre>
                     <textarea class="code-fix-input" id="code-fix-input"
+                              style="font-family: var(--arena-mono); font-size: 13px;"
                               placeholder="你可以修改代码，或者用文字描述哪里有问题、应该怎么改..."></textarea>
                     <div style="margin-top: 12px; display: flex; gap: 10px;">
                         <button class="arena-btn arena-btn-primary" onclick="window.ThinkingArena.submitCodeFix()">
@@ -1236,6 +1341,18 @@
         const fixInput = document.getElementById('code-fix-input');
         if (fixInput) {
             fixInput.value = buggyCode;
+            
+            // Auto-adjust height to display the code completely without vertical scrollbar
+            const adjustHeight = () => {
+                fixInput.style.height = 'auto';
+                fixInput.style.height = (fixInput.scrollHeight + 10) + 'px';
+            };
+            
+            // Adjust height immediately
+            adjustHeight();
+            
+            // Bind input listener to adjust height dynamically as they edit
+            fixInput.addEventListener('input', adjustHeight);
         }
     }
 

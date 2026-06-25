@@ -532,10 +532,68 @@ def generate_stage2_hint(student_description: str, current_block_ids: List[str],
     return sanitize_response(response) if response else "回想你在第一阶段描述的思路，下一步该做什么？"
 
 
+
+def _format_student_state_context(student_state: dict) -> str:
+    if not student_state:
+        return ""
+    
+    parts = []
+    
+    # 1. Stage 1 Q&A info
+    s1 = student_state.get('stage1', {})
+    qa = s1.get('qa_answers', [])
+    if qa:
+        parts.append("\n【学生在阶段一（思路问答）的当前输入情况】：")
+        for idx, item in enumerate(qa):
+            q = item.get('question', '')
+            a = item.get('answer', '')
+            parts.append(f"- 问题 {idx+1}: {q}\n  学生当前回答: \"{a}\"")
+            
+    # 2. Stage 2 block info
+    s2 = student_state.get('stage2', {})
+    if s2:
+        current_blocks = s2.get('current_blocks', [])
+        errors = s2.get('errors', {})
+        if current_blocks or errors:
+            parts.append("\n【学生在阶段二（积木搭建）的当前工作区状态】：")
+            if errors.get('is_empty'):
+                parts.append("- 诊断：当前右侧构建区是空的，没有任何积木块。")
+            else:
+                block_list = []
+                for b in current_blocks:
+                    block_list.append(f"[{b.get('label', '')}] (缩进={b.get('indent', 0)}, Part='{b.get('part_name', '')}')")
+                parts.append(f"- 当前构建区积木顺序与缩进: {', '.join(block_list)}")
+                
+                # Diagnostic errors
+                diag = []
+                if errors.get('has_noise'):
+                    diag.append("构建区中混入了带陷阱的‘噪声干扰块’。不要直接指出是哪一块，可以点出有干扰块，引导他们排查。")
+                if errors.get('length_mismatch'):
+                    diag.append("积木数量不对，可能存在多余 of 或遗漏的积木。")
+                if not errors.get('order_match') and not errors.get('length_mismatch'):
+                    diag.append("积木顺序颠倒了，步骤承接逻辑存在错误。建议他们检查逻辑先后顺序。")
+                if errors.get('order_match') and not errors.get('indent_match'):
+                    diag.append("积木顺序完全正确，但部分积木的缩进对齐层级（左右缩进）存在错误。提醒他们调整缩进。")
+                if errors.get('order_match') and errors.get('indent_match'):
+                    diag.append("积木顺序和缩进完全正确！可以提示他们点击验证提交了。")
+                
+                if diag:
+                    parts.append("- 诊断分析: " + " ".join(diag))
+                    
+    # 3. Stage 3 code fix info
+    s3 = student_state.get('stage3', {})
+    current_fixed_code = s3.get('current_fixed_code', '')
+    if current_fixed_code:
+        parts.append("\n【学生在阶段三（代码修改）的当前编辑器代码】：")
+        parts.append(f"```cpp\n{current_fixed_code}\n```")
+        
+    return "\n".join(parts)
+
+
 def companion_agent_chat(messages: List[Dict], assignment_title: str,
                          key_steps: List[str], student_description: str,
                          current_stage: int = 1, stage2_state: dict = None,
-                         assignment_description: str = "") -> str:
+                         assignment_description: str = "", student_state: dict = None) -> str:
     """
     启发式自由对话Agent（伴学角色）— 在积木或思路阶段回答学生的自由提问
     """
@@ -581,11 +639,14 @@ def companion_agent_chat(messages: List[Dict], assignment_title: str,
         else:
             extra_context += "\n- 诊断：尚未获取到构建区的积木状态。引导学生把左侧散落池的积木块拖进构建区中。"
 
+    student_state_context = _format_student_state_context(student_state)
     system_prompt = f"""你是一位极具启发性、耐心且温柔的编程伴学AI，正在陪同学生解决一道C/C++编程题。
 
 题目：{assignment_title}
 题目描述：
 {assignment_description}
+
+{student_state_context}
 
 关键解题步骤参考：{json.dumps(key_steps, ensure_ascii=False)}
 学生最初解题思路："{student_description}"{extra_context}
@@ -654,7 +715,7 @@ def companion_agent_chat(messages: List[Dict], assignment_title: str,
 
 def teacher_agent_chat(messages: List[Dict], assignment_title: str,
                        key_steps: List[str], student_description: str,
-                       assignment_description: str = "") -> str:
+                       assignment_description: str = "", student_state: dict = None) -> str:
     """
     主Agent（老师角色）— 引导"好学生"理解
     """
@@ -662,11 +723,14 @@ def teacher_agent_chat(messages: List[Dict], assignment_title: str,
     if not client.is_available():
         return "老师AI暂时不可用，请稍后重试。"
 
+    student_state_context = _format_student_state_context(student_state)
     system_prompt = f"""你是一位温和但有原则的编程老师，正在辅导学生理解一道编程题。
 
 题目：{assignment_title}
 题目描述：
 {assignment_description}
+
+{student_state_context}
 
 题目的关键步骤：{json.dumps(key_steps, ensure_ascii=False)}
 学生之前的思路描述："{student_description}"
@@ -693,7 +757,8 @@ def teacher_agent_chat(messages: List[Dict], assignment_title: str,
 
 def student_agent_chat(messages: List[Dict], assignment_title: str,
                        key_steps: List[str], difficulty_config: Dict,
-                       round_number: int = 0, assignment_description: str = "") -> str:
+                       round_number: int = 0, assignment_description: str = "",
+                       student_state: dict = None) -> str:
     """
     子Agent（坏学生角色）— 拟人化提问，需要被"教会"
     round_number 用于控制对话进度，达到一定轮次后进入"写代码"阶段
@@ -711,11 +776,14 @@ def student_agent_chat(messages: List[Dict], assignment_title: str,
         'skeptical': '你是一个喜欢质疑的学生，会问"为什么不能用另一种方法"'
     }.get(persona, '你是一个基础较弱但愿意学习的学生')
 
+    student_state_context = _format_student_state_context(student_state)
     system_prompt = f"""你正在扮演一个编程初学者（"坏学生"小明），向同学请教如何解题。{persona_desc}
 
 题目：{assignment_title}
 题目描述：
 {assignment_description}
+
+{student_state_context}
 
 解题涉及的关键概念：{json.dumps(key_steps, ensure_ascii=False)}
 

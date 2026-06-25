@@ -183,11 +183,7 @@
                         <!-- Dynamic workspaces populated by JS -->
                     </div>
 
-                    <!-- Code Preview -->
-                    <div style="margin-top: 16px;">
-                        <div class="block-pool-title"><i class="bi bi-eye"></i> 代码预览</div>
-                        <pre style="background: var(--arena-bg); border-radius: 8px; padding: 14px; font-family: var(--arena-mono); font-size: 13px; color: var(--arena-text); min-height: 60px;"><code id="code-preview">// 将代码块拖到右侧构建区...</code></pre>
-                    </div>
+
 
                     <div id="stage2-hints"></div>
 
@@ -257,6 +253,16 @@
                 </div>
             </div>
 
+            <!-- Stage 2: Code Preview Panel -->
+            <div id="stage2-preview-panel" class="stage-section" style="border-top: 1px solid #f3f4f6;">
+                <div class="panel-header" style="padding: 10px 20px;">
+                    <h3><i class="bi bi-eye"></i> 代码预览</h3>
+                </div>
+                <div style="flex: 1; padding: 12px; overflow-y: auto; background: var(--arena-bg); min-height: 0;">
+                    <pre style="margin: 0; background: transparent; padding: 0; font-family: var(--arena-mono); font-size: 13px; color: var(--arena-text); white-space: pre-wrap; word-break: break-all;"><code id="code-preview">// 将代码块拖到右侧构建区...</code></pre>
+                </div>
+            </div>
+
             <!-- Stage 3: Bad Student Chat Panel -->
             <div id="student-agent-panel" class="stage-section">
                 <div class="panel-header">
@@ -296,16 +302,25 @@
     (function() {
         const origInit = ThinkingArena.init;
         const stageObserver = new MutationObserver(() => {
+            const stage2 = document.getElementById('stage-2');
             const stage3 = document.getElementById('stage-3');
             const companionPanel = document.getElementById('ai-companion-panel');
             const studentPanel = document.getElementById('student-agent-panel');
+            const previewPanel = document.getElementById('stage2-preview-panel');
             
             if (stage3 && stage3.classList.contains('active')) {
                 if (companionPanel) companionPanel.classList.remove('active');
                 if (studentPanel) studentPanel.classList.add('active');
+                if (previewPanel) previewPanel.classList.remove('active');
             } else {
                 if (companionPanel) companionPanel.classList.add('active');
                 if (studentPanel) studentPanel.classList.remove('active');
+                
+                if (stage2 && stage2.classList.contains('active')) {
+                    if (previewPanel) previewPanel.classList.add('active');
+                } else {
+                    if (previewPanel) previewPanel.classList.remove('active');
+                }
             }
         });
         

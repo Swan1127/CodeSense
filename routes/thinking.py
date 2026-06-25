@@ -458,6 +458,9 @@ def companion_chat():
 
         current_stage = data.get('current_stage', 1)
         stage2_state = data.get('stage2_state', {})
+        student_state = data.get('student_state', {})
+        if not stage2_state and 'stage2' in student_state:
+            stage2_state = student_state.get('stage2', {})
 
         response_text = companion_agent_chat(
             messages,
@@ -466,7 +469,8 @@ def companion_chat():
             ts.stage1_description or '',
             current_stage=current_stage,
             stage2_state=stage2_state,
-            assignment_description=assignment.description or ""
+            assignment_description=assignment.description or "",
+            student_state=student_state
         )
 
         # 记录日志
@@ -513,7 +517,8 @@ def stage3_teacher_chat():
             assignment.title,
             preset.get_key_steps() if preset else [],
             ts.stage1_description or '',
-            assignment_description=assignment.description or ""
+            assignment_description=assignment.description or "",
+            student_state=data.get('student_state', {})
         )
 
         # 记录日志
@@ -606,7 +611,8 @@ def stage3_student_teach():
             preset.get_key_steps() if preset else [],
             difficulty,
             round_number=ts.stage3_student_rounds,
-            assignment_description=assignment.description or ""
+            assignment_description=assignment.description or "",
+            student_state=data.get('student_state', {})
         )
 
         # 记录日志

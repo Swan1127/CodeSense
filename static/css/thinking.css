@@ -525,7 +525,8 @@
     font-size: 12px;
     line-height: 1.6;
     padding: 12px;
-    resize: vertical;
+    resize: none;
+    overflow-y: hidden;
     margin-top: 8px;
 }
 
