@@ -1508,7 +1508,152 @@
 
     let activeRecognition = null;
 
+    /**
+     * 麦克风测试弹窗 —— 用户每次登录后首次点击语音按钮时触发
+     * 测试通过后将标记写入 sessionStorage，本次会话内不再弹出
+     */
+    function showMicTestModal(targetId, btnEl) {
+        // 创建遮罩
+        const overlay = document.createElement('div');
+        overlay.id = 'mic-test-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+        const card = document.createElement('div');
+        card.style.cssText = 'background:#fff;border-radius:14px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.2);text-align:center;font-family:inherit;';
+
+        card.innerHTML = `
+            <div style="font-size:36px;margin-bottom:8px;">🎙️</div>
+            <h3 style="margin:0 0 6px;font-size:17px;font-weight:700;color:#1f2937;">麦克风测试</h3>
+            <p style="font-size:13px;color:#6b7280;line-height:1.6;margin-bottom:16px;">
+                首次使用语音输入功能，需要先测试一下您的麦克风是否正常工作。<br>
+                点击下方按钮开始录音，说一句话后系统会自动回放给您听。
+            </p>
+            <div id="mic-test-status" style="font-size:13px;color:#2563eb;min-height:20px;margin-bottom:14px;"></div>
+            <div id="mic-test-visualizer" style="display:none;height:32px;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:3px;"></div>
+            <audio id="mic-test-playback" style="display:none;width:100%;margin-bottom:14px;" controls></audio>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+                <button id="mic-test-start-btn" style="padding:8px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.2s;">
+                    <i class="bi bi-mic"></i> 开始测试录音
+                </button>
+                <button id="mic-test-skip-btn" style="padding:8px 20px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;color:#6b7280;font-size:13px;cursor:pointer;transition:background 0.2s;">
+                    跳过测试
+                </button>
+            </div>
+            <div id="mic-test-result-btns" style="display:none;margin-top:12px;display:none;gap:10px;justify-content:center;">
+                <button id="mic-test-ok-btn" style="padding:8px 20px;border-radius:8px;border:none;background:#10b981;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+                    ✅ 能听到，开始使用
+                </button>
+                <button id="mic-test-retry-btn" style="padding:8px 20px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;color:#6b7280;font-size:13px;cursor:pointer;">
+                    🔄 重新测试
+                </button>
+            </div>
+        `;
+
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+
+        const statusEl = card.querySelector('#mic-test-status');
+        const startBtn = card.querySelector('#mic-test-start-btn');
+        const skipBtn = card.querySelector('#mic-test-skip-btn');
+        const resultBtns = card.querySelector('#mic-test-result-btns');
+        const okBtn = card.querySelector('#mic-test-ok-btn');
+        const retryBtn = card.querySelector('#mic-test-retry-btn');
+        const audioEl = card.querySelector('#mic-test-playback');
+
+        let mediaRecorder = null;
+        let chunks = [];
+
+        function closeMicTest(passed) {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                try { mediaRecorder.stop(); } catch(e) {}
+            }
+            overlay.remove();
+            if (passed) {
+                sessionStorage.setItem('mic_tested', '1');
+                // 直接启动真正的语音输入
+                _doStartVoiceInput(targetId, btnEl);
+            }
+        }
+
+        skipBtn.onclick = () => closeMicTest(true);
+
+        startBtn.onclick = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                chunks = [];
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) chunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    stream.getTracks().forEach(t => t.stop());
+                    if (chunks.length === 0) {
+                        statusEl.textContent = '未录到有效音频，请重试。';
+                        statusEl.style.color = '#ef4444';
+                        startBtn.style.display = '';
+                        return;
+                    }
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    const url = URL.createObjectURL(blob);
+                    audioEl.src = url;
+                    audioEl.style.display = 'block';
+
+                    statusEl.innerHTML = '录音完成！请点击播放按钮试听。<br>如果能听到你的声音，说明麦克风正常。';
+                    statusEl.style.color = '#10b981';
+                    resultBtns.style.display = 'flex';
+                };
+
+                mediaRecorder.start();
+                startBtn.style.display = 'none';
+                statusEl.textContent = '正在录音，请说话...（3秒后自动停止）';
+                statusEl.style.color = '#ef4444';
+
+                // 3秒后自动停止
+                setTimeout(() => {
+                    if (mediaRecorder && mediaRecorder.state === 'recording') {
+                        mediaRecorder.stop();
+                    }
+                }, 3000);
+            } catch (err) {
+                console.error('麦克风测试失败:', err);
+                if (err.name === 'NotAllowedError') {
+                    statusEl.innerHTML = '麦克风权限被拒绝。请点击浏览器地址栏左侧的🔒图标，允许麦克风权限后重试。';
+                } else if (err.name === 'NotFoundError') {
+                    statusEl.innerHTML = '未检测到麦克风设备，请检查硬件连接。';
+                } else {
+                    statusEl.innerHTML = `麦克风访问失败: ${err.message}`;
+                }
+                statusEl.style.color = '#ef4444';
+            }
+        };
+
+        okBtn.onclick = () => closeMicTest(true);
+        retryBtn.onclick = () => {
+            audioEl.style.display = 'none';
+            audioEl.src = '';
+            resultBtns.style.display = 'none';
+            statusEl.textContent = '';
+            startBtn.style.display = '';
+        };
+
+        // 点击遮罩关闭
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeMicTest(false);
+        });
+    }
+
     function startVoiceInput(targetId, btnEl) {
+        // 每次登录后首次点击 → 弹出麦克风测试
+        if (!sessionStorage.getItem('mic_tested')) {
+            showMicTestModal(targetId, btnEl);
+            return;
+        }
+        _doStartVoiceInput(targetId, btnEl);
+    }
+
+    function _doStartVoiceInput(targetId, btnEl) {
         const inputEl = document.getElementById(targetId);
         if (!inputEl) return;
 

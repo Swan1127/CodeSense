@@ -601,6 +601,9 @@
 
     <!-- 打字机效果与密码切换脚本 -->
     <script>
+        // 登录页加载时清除麦克风测试标记，确保每次登录后重新测试
+        try { sessionStorage.removeItem('mic_tested'); } catch(e) {}
+
         // 密码可见性切换
         const togglePassword = document.querySelector('#togglePassword');
         const password = document.querySelector('#password');
