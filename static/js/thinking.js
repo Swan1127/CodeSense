@@ -1562,12 +1562,20 @@
         };
 
         recognition.onerror = (event) => {
-            console.error('语音识别出错: ', event.error);
+            console.error('语音识别错误: ', event.error);
+            let msg = '语音识别出错，请重试';
             if (event.error === 'not-allowed') {
-                showNotification('麦克风权限被拒绝，请在浏览器设置中允许麦克风权限', 'warning');
+                msg = '麦克风访问权限被拒绝，或者您的连接不是安全的 HTTPS 连接（非 localhost 的 HTTP 访问将被浏览器禁用麦克风）。请检查浏览器地址栏左侧的权限设置。';
+            } else if (event.error === 'network') {
+                msg = '语音识别网络连接失败。如果您正在使用 Chrome 浏览器，可能是由于国内网络无法访问 Google 语音识别服务导致，强烈建议您改用 Edge 或 Safari 浏览器。';
+            } else if (event.error === 'no-speech') {
+                msg = '未检测到说话声，请尝试靠近麦克风或调整输入音量后重试。';
+            } else if (event.error === 'audio-capture') {
+                msg = '未找到录音设备，或者麦克风正被其他程序占用，请检查硬件设置。';
             } else {
-                showNotification('语音识别出错，请重试', 'warning');
+                msg = `语音识别出错 (错误原因: ${event.error})，请重试。`;
             }
+            showNotification(msg, 'warning');
             stopRecording(btnEl);
         };
 
