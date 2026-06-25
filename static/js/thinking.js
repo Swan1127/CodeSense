@@ -141,9 +141,10 @@
             if (studentPanel) studentPanel.classList.remove('active');
         }
 
-        // Update body layout for stage 3
+        // Update body layout for stages
         const body = document.querySelector('.arena-body');
         if (body) {
+            body.classList.toggle('stage-2-layout', stage === 2);
             body.classList.toggle('feynman-layout', stage === 3);
         }
 
@@ -300,6 +301,7 @@
                 
                 const qTextarea = document.createElement('textarea');
                 qTextarea.className = 'description-textarea qa-answer-textarea';
+                qTextarea.id = `qa-answer-${i}`;
                 qTextarea.dataset.questionIndex = i;
                 qTextarea.placeholder = `请输入你对问题 ${i + 1} 的思考回答...`;
                 qTextarea.style.minHeight = '70px';
@@ -329,8 +331,23 @@
                     showNotification('为了确保你真正理解解题思路，此处禁止拖放文本，请手动输入回答。', 'warning');
                 });
 
+                // Small voice input button row
+                const voiceRow = document.createElement('div');
+                voiceRow.style.display = 'flex';
+                voiceRow.style.justifyContent = 'flex-end';
+                voiceRow.style.marginTop = '4px';
+
+                const voiceBtn = document.createElement('button');
+                voiceBtn.className = 'arena-btn-voice-small';
+                voiceBtn.type = 'button';
+                voiceBtn.innerHTML = '<i class="bi bi-mic-fill"></i> 语音输入';
+                voiceBtn.onclick = () => startVoiceInput(`qa-answer-${i}`, voiceBtn);
+
+                voiceRow.appendChild(voiceBtn);
+
                 qContainer.appendChild(qLabel);
                 qContainer.appendChild(qTextarea);
+                qContainer.appendChild(voiceRow);
                 qaWrapper.appendChild(qContainer);
             });
 
@@ -1489,6 +1506,89 @@
         return div.innerHTML;
     }
 
+    let activeRecognition = null;
+
+    function startVoiceInput(targetId, btnEl) {
+        const inputEl = document.getElementById(targetId);
+        if (!inputEl) return;
+
+        // Check if browser supports Web Speech API
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            showNotification('您的浏览器不支持语音输入功能，建议使用 Chrome 或 Edge 浏览器', 'warning');
+            return;
+        }
+
+        // If already recording, stop it
+        if (btnEl.classList.contains('recording')) {
+            if (activeRecognition) {
+                activeRecognition.stop();
+            }
+            return;
+        }
+
+        // If another recognition is active, stop it first
+        if (activeRecognition) {
+            try { activeRecognition.stop(); } catch(e) {}
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'zh-CN'; // Set language to Chinese
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = () => {
+            btnEl.classList.add('recording');
+            const micIcon = btnEl.querySelector('i');
+            if (micIcon) {
+                micIcon.className = 'bi bi-mic-mute-fill';
+            }
+            showNotification('正在录音中，请说话...', 'info');
+        };
+
+        recognition.onresult = (event) => {
+            const result = event.results[0][0].transcript;
+            if (result) {
+                // Append result to existing text or insert it
+                const val = inputEl.value;
+                if (val) {
+                    inputEl.value = val.endsWith(' ') || val.endsWith('\n') ? val + result : val + ' ' + result;
+                } else {
+                    inputEl.value = result;
+                }
+                // Trigger input event to update previews or internal state
+                inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.error('语音识别出错: ', event.error);
+            if (event.error === 'not-allowed') {
+                showNotification('麦克风权限被拒绝，请在浏览器设置中允许麦克风权限', 'warning');
+            } else {
+                showNotification('语音识别出错，请重试', 'warning');
+            }
+            stopRecording(btnEl);
+        };
+
+        recognition.onend = () => {
+            stopRecording(btnEl);
+        };
+
+        activeRecognition = recognition;
+        recognition.start();
+    }
+
+    function stopRecording(btnEl) {
+        btnEl.classList.remove('recording');
+        const micIcon = btnEl.querySelector('i');
+        if (micIcon) {
+            // Restore default icon
+            micIcon.className = btnEl.classList.contains('arena-btn-voice-small') ? 'bi bi-mic-fill' : 'bi bi-mic';
+        }
+        activeRecognition = null;
+    }
+
     // ============================================================
     // Public API (for onclick handlers in HTML)
     // ============================================================
@@ -1504,6 +1604,7 @@
         sendTeacherChat,
         sendStudentChat,
         submitCodeFix,
+        startVoiceInput,
         // Debug API
         debugJumpStage,
         debugAutoS1,

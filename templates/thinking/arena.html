@@ -79,7 +79,7 @@
     <div class="arena-body" {% if preset_status != 'ready' %}style="display:none"{% endif %}>
 
         <!-- ===== Left Panel: Stage Content ===== -->
-        <div class="arena-panel">
+        <div class="arena-panel" id="left-panel">
             <!-- ===== STAGE 1: Natural Language Description ===== -->
             <div class="stage-section active" id="stage-1">
                 <div class="panel-header">
@@ -176,6 +176,9 @@
                         <input class="chat-input" id="teacher-chat-input" type="text"
                                placeholder="向老师提问..."
                                onkeydown="if(event.key==='Enter'){ThinkingArena.sendTeacherChat()}">
+                        <button class="arena-btn-voice" onclick="ThinkingArena.startVoiceInput('teacher-chat-input', this)" title="语音输入" style="margin-right: 6px;">
+                            <i class="bi bi-mic"></i>
+                        </button>
                         <button class="arena-btn-send" onclick="ThinkingArena.sendTeacherChat()">
                             <i class="bi bi-send-fill"></i>
                         </button>
@@ -184,8 +187,18 @@
             </div>
         </div>
 
+        <!-- ===== Middle Panel: Stage 2 Code Preview ===== -->
+        <div id="stage2-preview-panel" class="arena-panel stage-section">
+            <div class="panel-header">
+                <h3><i class="bi bi-eye"></i> 代码预览</h3>
+            </div>
+            <div class="panel-body" style="background: var(--arena-bg); padding: 12px; font-family: var(--arena-mono); font-size: 13px; color: var(--arena-text);">
+                <pre style="margin: 0; background: transparent; padding: 0; font-family: inherit; font-size: inherit; color: inherit; white-space: pre-wrap; word-break: break-all;"><code id="code-preview">// 正在准备预览代码...</code></pre>
+            </div>
+        </div>
+
         <!-- ===== Right Panel: AI Hints / Feynman Student Chat ===== -->
-        <div class="arena-panel">
+        <div class="arena-panel" id="right-panel">
             <!-- Default: AI Companion (Stages 1-2) -->
             <div id="ai-companion-panel" class="stage-section active">
                 <div class="panel-header">
@@ -202,20 +215,13 @@
                         <input class="chat-input" id="companion-chat-input" type="text"
                                placeholder="向伴学助手提问..."
                                onkeydown="if(event.key==='Enter'){ThinkingArena.sendCompanionChat()}">
+                        <button class="arena-btn-voice" onclick="ThinkingArena.startVoiceInput('companion-chat-input', this)" title="语音输入" style="margin-right: 6px;">
+                            <i class="bi bi-mic"></i>
+                        </button>
                         <button class="arena-btn-send" onclick="ThinkingArena.sendCompanionChat()">
                             <i class="bi bi-send-fill"></i>
                         </button>
                     </div>
-                </div>
-            </div>
-
-            <!-- Stage 2: Code Preview Panel -->
-            <div id="stage2-preview-panel" class="stage-section" style="border-top: 1px solid #f3f4f6;">
-                <div class="panel-header" style="padding: 10px 20px;">
-                    <h3><i class="bi bi-eye"></i> 代码预览</h3>
-                </div>
-                <div style="flex: 1; padding: 12px; overflow-y: auto; background: var(--arena-bg); min-height: 0;">
-                    <pre style="margin: 0; background: transparent; padding: 0; font-family: var(--arena-mono); font-size: 13px; color: var(--arena-text); white-space: pre-wrap; word-break: break-all;"><code id="code-preview">// 将代码块拖到右侧构建区...</code></pre>
                 </div>
             </div>
 
@@ -233,6 +239,9 @@
                         <input class="chat-input" id="student-chat-input" type="text"
                                placeholder="教小明解题..."
                                onkeydown="if(event.key==='Enter'){ThinkingArena.sendStudentChat()}">
+                        <button class="arena-btn-voice" onclick="ThinkingArena.startVoiceInput('student-chat-input', this)" title="语音输入" style="margin-right: 6px;">
+                            <i class="bi bi-mic"></i>
+                        </button>
                         <button class="arena-btn-send" onclick="ThinkingArena.sendStudentChat()">
                             <i class="bi bi-send-fill"></i>
                         </button>
@@ -264,18 +273,32 @@
             const studentPanel = document.getElementById('student-agent-panel');
             const previewPanel = document.getElementById('stage2-preview-panel');
             
+            const body = document.querySelector('.arena-body');
+            
             if (stage3 && stage3.classList.contains('active')) {
                 if (companionPanel) companionPanel.classList.remove('active');
                 if (studentPanel) studentPanel.classList.add('active');
                 if (previewPanel) previewPanel.classList.remove('active');
+                if (body) {
+                    body.classList.remove('stage-2-layout');
+                    body.classList.add('feynman-layout');
+                }
             } else {
                 if (companionPanel) companionPanel.classList.add('active');
                 if (studentPanel) studentPanel.classList.remove('active');
                 
                 if (stage2 && stage2.classList.contains('active')) {
                     if (previewPanel) previewPanel.classList.add('active');
+                    if (body) {
+                        body.classList.add('stage-2-layout');
+                        body.classList.remove('feynman-layout');
+                    }
                 } else {
                     if (previewPanel) previewPanel.classList.remove('active');
+                    if (body) {
+                        body.classList.remove('stage-2-layout');
+                        body.classList.remove('feynman-layout');
+                    }
                 }
             }
         });
