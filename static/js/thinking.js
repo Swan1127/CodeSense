@@ -1381,56 +1381,30 @@
             showNotification('必须在阶段二才能使用此功能', 'warning');
             return;
         }
-        if (!state.preset || !state.preset.parts || !state.preset.blocks) {
-            showNotification('缺少积木编程预设数据', 'warning');
+        if (!state.preset || !state.preset.quiz_steps) {
+            showNotification('缺少逐步问答预设数据', 'warning');
             return;
         }
 
-        let parts = state.preset.parts;
-        if (!parts || parts.length === 0) {
-            parts = [{
-                part_name: '核心程序',
-                part_header: 'int main() {\n',
-                part_footer: '    return 0;\n}',
-                blocks: state.preset.blocks || []
-            }];
-        }
-
-        const blockMap = {};
-        state.preset.blocks.forEach(b => {
-            blockMap[b.id] = b;
+        const quizSteps = state.preset.quiz_steps || [];
+        quizSteps.forEach(step => {
+            state.quizAnswers[step.step_id] = step.correct_answer;
+            // Also populate inputs in the UI
+            const inputEl = document.getElementById(`quiz-fill-${step.step_id}`);
+            if (inputEl) {
+                inputEl.value = step.correct_answer;
+            }
+            const radioEl = document.querySelector(`input[name="quiz-step-${step.step_id}"][value="${escapeHtml(step.correct_answer)}"]`);
+            if (radioEl) {
+                radioEl.checked = true;
+                const optionEl = radioEl.closest('.quiz-choice-option');
+                if (optionEl) optionEl.classList.add('selected');
+            }
         });
 
-        parts.forEach((p, idx) => {
-            const solutionEl = document.getElementById(`block-solution-${idx}`);
-            const poolEl = document.getElementById(`block-pool-${idx}`);
-            if (!solutionEl || !poolEl) return;
-
-            solutionEl.innerHTML = '';
-            poolEl.innerHTML = '';
-
-            const targetBlocks = (p.blocks || [])
-                .filter(b => !b.id.startsWith('noise-'))
-                .sort((a, b) => parseInt(a.id) - parseInt(b.id));
-
-            targetBlocks.forEach(b => {
-                const el = createBlockElement(b);
-                el.dataset.indent = b.indent || 0;
-                el.style.marginLeft = `${(b.indent || 0) * 24}px`;
-                solutionEl.appendChild(el);
-            });
-
-            const noiseBlocks = (p.blocks || [])
-                .filter(b => b.id.startsWith('noise-'));
-            noiseBlocks.forEach(b => {
-                const el = createBlockElement(b);
-                poolEl.appendChild(el);
-            });
-        });
-
-        updateBlockPreview();
-        showNotification('已自动拼装并对齐积木，正在提交验证...', 'info');
-        verifyBlocks();
+        updateQuizPreview();
+        showNotification('已自动填入标准答案，正在提交验证...', 'info');
+        verifyQuiz();
     }
 
     function showCelebration() {
@@ -1522,16 +1496,14 @@
         init,
         submitDescription,
         requestStage1Hint,
-        verifyBlocks,
+        verifyQuiz,
+        onQuizAnswer,
+        onQuizFillInput,
         requestStage2Hint,
-        regeneratePreset,
-        autoNestBlocks,
         sendCompanionChat,
         sendTeacherChat,
         sendStudentChat,
         submitCodeFix,
-        increaseIndent,
-        decreaseIndent,
         // Debug API
         debugJumpStage,
         debugAutoS1,
