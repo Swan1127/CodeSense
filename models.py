@@ -988,6 +988,7 @@ class AssignmentThinkingPreset(db.Model):
     key_steps = db.Column(db.Text, nullable=True)  # JSON: 关键解题步骤列表
     code_blocks = db.Column(db.Text, nullable=True)  # JSON: 正确代码块列表（含缩进层级）
     noise_blocks = db.Column(db.Text, nullable=True)  # JSON: 噪声代码块列表
+    quiz_steps = db.Column(db.Text, nullable=True)  # JSON: 阶段二逐步选择/填空题数据
     difficulty_config = db.Column(db.Text, nullable=True)  # JSON: 费曼阶段难度配置
     algorithm_summary = db.Column(db.Text, nullable=True)  # 标准算法简述（阶段1脚手架文本）
     status = db.Column(db.String(20), default='pending')  # pending / generating / ready / failed
@@ -1022,6 +1023,15 @@ class AssignmentThinkingPreset(db.Model):
             return []
         try:
             return json.loads(self.noise_blocks)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def get_quiz_steps(self):
+        """获取阶段二逐步选择/填空题数据"""
+        if not self.quiz_steps:
+            return []
+        try:
+            return json.loads(self.quiz_steps)
         except (json.JSONDecodeError, TypeError):
             return []
 

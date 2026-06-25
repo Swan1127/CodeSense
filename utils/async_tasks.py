@@ -306,6 +306,7 @@ class AsyncTaskManager:
                 preset.key_steps = json.dumps(result.get('key_steps', []), ensure_ascii=False)
                 preset.code_blocks = json.dumps(result.get('code_blocks', []), ensure_ascii=False)
                 preset.noise_blocks = json.dumps(result.get('noise_blocks', []), ensure_ascii=False)
+                preset.quiz_steps = json.dumps(result.get('quiz_steps', []), ensure_ascii=False)
                 preset.difficulty_config = json.dumps(result.get('difficulty_config', {}), ensure_ascii=False)
                 preset.algorithm_summary = result.get('algorithm_summary', '')
                 preset.status = 'ready'

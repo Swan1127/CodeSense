@@ -515,17 +515,18 @@
     }
 
     // ============================================================
-    // Stage 2: Block Puzzle (Parsons Problem)
+    // Stage 2: Step-by-Step Quiz (Choice / Fill-in-the-Blank)
     // ============================================================
     function initStage2() {
         if (!state.preset) {
-            showError('预设数据未加载');
+            showError('\u9884\u8bbe\u6570\u636e\u672a\u52a0\u8f7d');
             return;
         }
 
         state.companionMessages = [];
-        
-        // 恢复伴学助手聊天记录
+        state.quizAnswers = {};  // { step_id: selected_answer }
+
+        // \u6062\u590d\u4f34\u5b66\u52a9\u624b\u804a\u5929\u8bb0\u5f55
         if (state.isResumed && state.companionHistory && state.companionHistory.length > 0) {
             const container = document.getElementById('companion-messages');
             if (container) {
@@ -536,404 +537,265 @@
                 });
             }
         } else {
-            // Welcoming AI companion message for Stage 2
-            const problemTitle = document.querySelector('.problem-panel h2')?.innerText?.replace(/[\r\n]/g, '').replace('引导式学习 - ', '').trim() || '当前任务';
-            const greeting = `太棒了！第一阶段的思路描述顺利通关！🎉\n\n接下来是第二阶段：**积木编程**。我们需要把刚才的解题思路，用代码块拼装出来：\n1️⃣ **看清需求**：仔细阅读左侧【散落池】中每个代码块的代码和文字标签。\n2️⃣ **拖拽组合**：把需要的积木拖到右侧构建区。现在已将代码根据逻辑功能拆分成了不同的积木小模块（如辅助函数与主函数等），结构更清晰，每个部分的头尾框架已经帮你包裹好啦，你只需要拼装核心逻辑。\n3️⃣ **注意陷阱**：散落池里有些代码块是会误导你的**“噪声块”**（比如写错了循环边界或运算符），千万不要把它们拖进去哦！\n4️⃣ **调整缩进**：拼好顺序后，别忘了点击积木的 ◀ ▶ 按钮调整缩进层级（或者点击底部的【一键大括号嵌套】让我帮你自动对齐）。\n\n拼装过程中遇到任何阻碍，随时可以点击【请求提示】或者直接在下方发消息问我！`;
+            const greeting = '\u592a\u68d2\u4e86\uff01\u7b2c\u4e00\u9636\u6bb5\u7684\u601d\u8def\u63cf\u8ff0\u987a\u5229\u901a\u5173\uff01\ud83c\udf89\n\n\u63a5\u4e0b\u6765\u662f\u7b2c\u4e8c\u9636\u6bb5\uff1a**\u7a0b\u5e8f\u6784\u5efa**\u3002\u6211\u4eec\u9700\u8981\u901a\u8fc7\u9010\u6b65\u56de\u7b54\u95ee\u9898\u6765\u642d\u5efa\u5b8c\u6574\u7684\u7a0b\u5e8f\u4ee3\u7801\uff1a\n1\ufe0f\u20e3 **\u9605\u8bfb\u9898\u76ee**\uff1a\u6bcf\u9053\u9898\u5bf9\u5e94\u7a0b\u5e8f\u4e2d\u7684\u4e00\u6761\u5173\u952e\u8bed\u53e5\u3002\n2\ufe0f\u20e3 **\u9009\u62e9\u6216\u586b\u7a7a**\uff1a\u9009\u62e9\u9898\u9700\u8981\u4ece\u9009\u9879\u4e2d\u9009\u51fa\u6b63\u786e\u4ee3\u7801\uff0c\u586b\u7a7a\u9898\u9700\u8981\u4f60\u624b\u52a8\u8f93\u5165\u4ee3\u7801\u7247\u6bb5\u3002\n3\ufe0f\u20e3 **\u5b9e\u65f6\u9884\u89c8**\uff1a\u53f3\u4fa7\u4f1a\u5b9e\u65f6\u663e\u793a\u4f60\u6784\u5efa\u51fa\u7684\u5b8c\u6574\u4ee3\u7801\u3002\n4\ufe0f\u20e3 **\u6ce8\u610f\u9677\u9631**\uff1a\u9009\u62e9\u9898\u4e2d\u6709\u4e9b\u9009\u9879\u5305\u542b\u5fae\u5c0f\u7684\u903b\u8f91\u9519\u8bef\uff0c\u8981\u4ed4\u7ec6\u8fa8\u522b\uff01\n\n\u9047\u5230\u56f0\u96be\u968f\u65f6\u53ef\u4ee5\u70b9\u51fb\u3010\u8bf7\u6c42\u63d0\u793a\u3011\u6216\u5728\u4e0b\u65b9\u95ee\u6211\uff01';
             appendCompanionMessage(greeting, 'ai');
         }
 
-        // 整理 Parts 数据支持分段搭积木
-        let parts = state.preset.parts;
-        if (!parts || parts.length === 0) {
-            // 后向兼容 fallback
-            parts = [{
-                part_name: '核心程序',
-                part_header: 'int main() {\n',
-                part_footer: '    return 0;\n}',
-                blocks: state.preset.blocks || []
-            }];
+        // \u83b7\u53d6 quiz_steps \u6570\u636e
+        const quizSteps = state.preset.quiz_steps || [];
+        if (quizSteps.length === 0) {
+            showNotification('\u8be5\u9898\u76ee\u5c1a\u672a\u751f\u6210\u9009\u62e9/\u586b\u7a7a\u9898\u6570\u636e\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u9884\u8bbe', 'warning');
+            return;
         }
 
-        const workspaceContainer = document.getElementById('stage2-workspace-container');
-        if (workspaceContainer) {
-            workspaceContainer.innerHTML = '';
-            parts.forEach((p, idx) => {
-                const wsHtml = `
-                    <div class="part-workspace-container" id="part-workspace-${idx}" style="margin-bottom: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                        <div class="part-title" style="font-weight: bold; color: var(--arena-primary); margin-bottom: 12px; font-size: 14px; display: flex; align-items: center; justify-content: space-between;">
-                            <span><i class="bi bi-code-square"></i> ${escapeHtml(p.part_name)}</span>
-                        </div>
-                        <div class="blocks-workspace" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                            <!-- Left: Scatter Pool -->
-                            <div>
-                                <div class="block-pool-title" style="font-size: 12px; font-weight: 500; color: #64748b; margin-bottom: 8px;">
-                                    <i class="bi bi-collection"></i> 散落池
-                                </div>
-                                <div class="block-pool" id="block-pool-${idx}" style="min-height: 120px; padding: 12px; background: radial-gradient(circle, #f8fafc 0%, #f1f5f9 100%); border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; flex-direction: column; gap: 8px;">
-                                    <!-- Blocks populated dynamically -->
-                                </div>
-                            </div>
-                            <!-- Right: Construction Area -->
-                            <div>
-                                <div class="block-solution-title" style="font-size: 12px; font-weight: 500; color: #64748b; margin-bottom: 8px;">
-                                    <i class="bi bi-arrow-down-circle"></i> 构建区
-                                </div>
-                                <div class="static-shell-block static-shell-block-header" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-left: 3px solid #64748b; padding: 6px 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #475569; border-radius: 4px; margin-bottom: 4px; user-select: none; white-space: pre-wrap;">${escapeHtml(p.part_header)}</div>
-                                
-                                <div class="block-solution" id="block-solution-${idx}" style="min-height: 120px; border-radius: 0; border-left: 2px dashed #cbd5e1; border-right: 2px dashed #cbd5e1; border-top: none; border-bottom: none; margin: 0; padding: 8px 12px; background: #fff; display: flex; flex-direction: column; gap: 6px;">
-                                    <!-- Dragged blocks populated dynamically -->
-                                </div>
-                                
-                                <div class="static-shell-block static-shell-block-footer" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-left: 3px solid #64748b; padding: 6px 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #475569; border-radius: 4px; margin-top: 4px; user-select: none; white-space: pre-wrap;">${escapeHtml(p.part_footer)}</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                workspaceContainer.insertAdjacentHTML('beforeend', wsHtml);
-            });
+        // \u6062\u590d\u4e4b\u524d\u7684\u7b54\u9898\u72b6\u6001
+        if (state.isResumed && state.stage2BlockOrder) {
+            try {
+                const savedAnswers = typeof state.stage2BlockOrder === 'string'
+                    ? JSON.parse(state.stage2BlockOrder) : state.stage2BlockOrder;
+                if (savedAnswers && typeof savedAnswers === 'object' && !Array.isArray(savedAnswers)) {
+                    state.quizAnswers = savedAnswers;
+                }
+            } catch(e) { /* ignore parse errors */ }
         }
 
-        const solutionContainers = {};
-        const poolContainers = {};
-        
-        parts.forEach((p, idx) => {
-            solutionContainers[p.part_name] = document.getElementById(`block-solution-${idx}`);
-            poolContainers[p.part_name] = document.getElementById(`block-pool-${idx}`);
+        const container = document.getElementById('stage2-quiz-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        // \u6309 part_name \u5206\u7ec4\uff0c\u751f\u6210\u5206\u533a\u6807\u9898
+        let currentPart = '';
+        quizSteps.forEach((step, idx) => {
+            const partName = step.part_name || '\u6838\u5fc3\u7a0b\u5e8f';
+            if (partName !== currentPart) {
+                currentPart = partName;
+                const partHeader = document.createElement('div');
+                partHeader.className = 'quiz-part-header';
+                partHeader.innerHTML = `<i class="bi bi-code-square"></i> ${escapeHtml(partName)}`;
+                container.appendChild(partHeader);
+            }
+
+            const card = document.createElement('div');
+            card.className = 'quiz-step-card';
+            card.id = `quiz-step-${step.step_id}`;
+            card.dataset.stepId = step.step_id;
+            card.dataset.type = step.type;
+
+            const stepNum = `<span class="quiz-step-num">${step.step_id}</span>`;
+            const questionHtml = `<div class="quiz-step-question">${stepNum} ${escapeHtml(step.question)}</div>`;
+
+            let answerHtml = '';
+            if (step.type === 'choice') {
+                const options = step.options || [];
+                answerHtml = '<div class="quiz-choice-options">';
+                options.forEach((opt, oidx) => {
+                    const optId = `quiz-${step.step_id}-opt-${oidx}`;
+                    const isChecked = state.quizAnswers[step.step_id] === opt ? 'checked' : '';
+                    answerHtml += `
+                        <label class="quiz-choice-option ${isChecked ? 'selected' : ''}" for="${optId}">
+                            <input type="radio" name="quiz-step-${step.step_id}" id="${optId}"
+                                   value="${escapeHtml(opt)}" ${isChecked}
+                                   onchange="ThinkingArena.onQuizAnswer(${step.step_id}, this.value, this)">
+                            <code>${escapeHtml(opt)}</code>
+                        </label>`;
+                });
+                answerHtml += '</div>';
+            } else if (step.type === 'fill_blank') {
+                const ctxBefore = step.context_before || '';
+                const ctxAfter = step.context_after || '';
+                const savedVal = state.quizAnswers[step.step_id] || '';
+                answerHtml = '<div class="quiz-fill-container">';
+                if (ctxBefore) {
+                    answerHtml += `<code class="quiz-fill-context">${escapeHtml(ctxBefore)}</code>`;
+                }
+                answerHtml += `<input type="text" class="quiz-fill-input" id="quiz-fill-${step.step_id}"
+                                     placeholder="${escapeHtml(step.blank_hint || '\u8bf7\u8f93\u5165\u4ee3\u7801...')}"
+                                     value="${escapeHtml(savedVal)}"
+                                     oninput="ThinkingArena.onQuizFillInput(${step.step_id}, this.value)"
+                                     onblur="ThinkingArena.onQuizFillInput(${step.step_id}, this.value)">`;
+                if (ctxAfter) {
+                    answerHtml += `<code class="quiz-fill-context">${escapeHtml(ctxAfter)}</code>`;
+                }
+                answerHtml += '</div>';
+            }
+
+            const feedbackHtml = `<div class="quiz-step-feedback" id="quiz-feedback-${step.step_id}"></div>`;
+
+            card.innerHTML = questionHtml + answerHtml + feedbackHtml;
+            container.appendChild(card);
         });
 
-        const blockMap = {};
-        const allBlocks = state.preset.blocks || [];
-        allBlocks.forEach(b => {
-            blockMap[b.id] = b;
-        });
-
-        // 恢复拼装顺序或默认渲染散落池
-        if (state.isResumed && state.stage2BlockOrder && state.stage2BlockOrder.length > 0) {
-            // 还原学生已拖入的积木块到对应的 Part 构建区
-            state.stage2BlockOrder.forEach(item => {
-                const block = blockMap[item.id];
-                if (block) {
-                    const pName = block.part_name || '核心程序';
-                    const solEl = solutionContainers[pName];
-                    if (solEl) {
-                        const el = createBlockElement(block);
-                        el.dataset.indent = item.indent || 0;
-                        el.style.marginLeft = `${(item.indent || 0) * 24}px`;
-                        solEl.appendChild(el);
-                    }
-                }
-            });
-
-            // 还原未选块到对应的 Part 散落池（局部打乱）
-            const solutionIds = state.stage2BlockOrder.map(item => item.id);
-            parts.forEach((p, idx) => {
-                const poolEl = poolContainers[p.part_name];
-                if (poolEl) {
-                    const partBlocks = p.blocks || [];
-                    const remainingBlocks = partBlocks.filter(b => !solutionIds.includes(b.id));
-                    
-                    const shuffled = [...remainingBlocks];
-                    for (let i = shuffled.length - 1; i > 0; i--) {
-                        const j = Math.floor(Math.random() * (i + 1));
-                        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-                    }
-                    
-                    shuffled.forEach(block => {
-                        const el = createBlockElement(block);
-                        poolEl.appendChild(el);
-                    });
-                }
-            });
-        } else {
-            // 初次载入，对各个 Part 分别进行打乱填充散落池
-            parts.forEach((p, idx) => {
-                const poolEl = poolContainers[p.part_name];
-                if (poolEl) {
-                    const shuffled = [...(p.blocks || [])];
-                    for (let i = shuffled.length - 1; i > 0; i--) {
-                        const j = Math.floor(Math.random() * (i + 1));
-                        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-                    }
-                    shuffled.forEach(block => {
-                        const el = createBlockElement(block);
-                        poolEl.appendChild(el);
-                    });
-                }
-            });
-        }
-
-        initSortable();
-        updateBlockPreview();
+        updateQuizPreview();
     }
 
-    function createBlockElement(block) {
-        const div = document.createElement('div');
-        div.className = 'code-block';
-        div.dataset.blockId = block.id;
-        div.dataset.indent = 0;
-        div.innerHTML = `
-            <code>${escapeHtml(block.code)}</code>
-            <div class="block-label">${escapeHtml(block.label || '')}</div>
-            <div class="indent-controls">
-                <button class="indent-btn" onclick="window.ThinkingArena.decreaseIndent(this)" title="减少缩进">◀</button>
-                <button class="indent-btn" onclick="window.ThinkingArena.increaseIndent(this)" title="增加缩进">▶</button>
-            </div>
-        `;
-        return div;
+    function onQuizAnswer(stepId, value, inputEl) {
+        state.quizAnswers[stepId] = value;
+        // Update visual selection state
+        const card = document.getElementById(`quiz-step-${stepId}`);
+        if (card) {
+            card.querySelectorAll('.quiz-choice-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            if (inputEl) {
+                inputEl.closest('.quiz-choice-option').classList.add('selected');
+            }
+        }
+        updateQuizPreview();
     }
 
-    function initSortable() {
-        if (state.partSortables) {
-            state.partSortables.forEach(s => s.destroy());
-        }
-        state.partSortables = [];
+    function onQuizFillInput(stepId, value) {
+        state.quizAnswers[stepId] = value.trim();
+        updateQuizPreview();
+    }
 
-        const workspaces = document.querySelectorAll('.part-workspace-container');
-        workspaces.forEach((ws, idx) => {
-            const pool = ws.querySelector('.block-pool');
-            const solution = ws.querySelector('.block-solution');
-            if (pool && solution) {
-                const sortableOptions = {
-                    group: 'blocks-' + idx, // isolate drag-and-drop within each part
-                    animation: 200,
-                    ghostClass: 'sortable-ghost',
-                    dragClass: 'sortable-drag',
-                    easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    function updateQuizPreview() {
+        const quizSteps = state.preset.quiz_steps || [];
+        if (quizSteps.length === 0) return;
+
+        // Group steps by part_name, preserving order
+        const parts = [];
+        const partMap = {};
+        quizSteps.forEach(step => {
+            const pName = step.part_name || '\u6838\u5fc3\u7a0b\u5e8f';
+            if (!partMap[pName]) {
+                const pData = {
+                    part_name: pName,
+                    part_header: (step.part_header || 'int main() {').replace('{{', '{').replace('}}', '}'),
+                    part_footer: (step.part_footer || '    return 0;\n}').replace('{{', '{').replace('}}', '}'),
+                    steps: []
                 };
-                
-                state.partSortables.push(Sortable.create(pool, { ...sortableOptions }));
-                state.partSortables.push(Sortable.create(solution, {
-                    ...sortableOptions,
-                    onAdd: function () { updateBlockPreview(); },
-                    onUpdate: function () { updateBlockPreview(); },
-                    onRemove: function () { updateBlockPreview(); }
-                }));
+                partMap[pName] = pData;
+                parts.push(pData);
             }
+            partMap[pName].steps.push(step);
         });
-    }
 
-    function getSolutionBlocks() {
-        const blocks = [];
-        const workspaces = document.querySelectorAll('.part-workspace-container');
-        if (workspaces.length > 0) {
-            workspaces.forEach(ws => {
-                const solution = ws.querySelector('.block-solution');
-                if (solution) {
-                    solution.querySelectorAll('.code-block').forEach(b => {
-                        blocks.push(b);
-                    });
-                }
-            });
-        } else {
-            // Fallback for legacy ID
-            const zone = document.getElementById('block-solution-list');
-            if (zone) {
-                zone.querySelectorAll('.code-block').forEach(b => {
-                    blocks.push(b);
-                });
-            }
-        }
-        return blocks;
-    }
-
-    function updateBlockPreview() {
         let preview = '#include <iostream>\nusing namespace std;\n\n';
-        let totalBlocks = 0;
-
-        const workspaces = document.querySelectorAll('.part-workspace-container');
-        if (workspaces.length > 0) {
-            workspaces.forEach(ws => {
-                const partHeader = ws.querySelector('.static-shell-block-header')?.textContent?.trim() || '';
-                const partFooter = ws.querySelector('.static-shell-block-footer')?.textContent?.trim() || '';
-                const solution = ws.querySelector('.block-solution');
-                
-                let partCode = '';
-                if (solution) {
-                    solution.querySelectorAll('.code-block').forEach(b => {
-                        totalBlocks++;
-                        partCode += '    ' + '    '.repeat(parseInt(b.dataset.indent || 0)) + b.querySelector('code').textContent + '\n';
-                    });
-                }
-                
-                if (partCode) {
-                    preview += partHeader + '\n' + partCode + partFooter + '\n\n';
+        parts.forEach(part => {
+            preview += part.part_header + '\n';
+            part.steps.forEach(step => {
+                const answer = state.quizAnswers[step.step_id];
+                const indent = '    ' + '    '.repeat(step.indent || 0);
+                if (answer) {
+                    const codeLine = (answer === step.correct_answer && step.code_line) ? step.code_line : answer;
+                    preview += indent + codeLine + '\n';
                 } else {
-                    preview += partHeader + '\n    // ...\n' + partFooter + '\n\n';
+                    preview += indent + `// Step ${step.step_id}: ???\n`;
                 }
             });
-        } else {
-            // Fallback for legacy
-            let total = 0;
-            let partCode = '';
-            const solutionList = document.getElementById('block-solution-list');
-            if (solutionList) {
-                solutionList.querySelectorAll('.code-block').forEach(b => {
-                    total++;
-                    partCode += '    ' + '    '.repeat(parseInt(b.dataset.indent || 0)) + b.querySelector('code').textContent + '\n';
-                });
-            }
-            totalBlocks = total;
-            preview += 'int main() {\n' + partCode + '    return 0;\n}';
-        }
+            preview += part.part_footer + '\n\n';
+        });
 
         const previewEl = document.getElementById('code-preview');
         if (previewEl) {
-            previewEl.textContent = totalBlocks > 0 ? preview : '// 从散落池依次拖入对应步骤的思维逻辑块...\n// 外部大括号结构已预填包裹';
+            previewEl.textContent = preview;
         }
     }
 
-    function autoNestBlocks() {
-        const blocks = getSolutionBlocks();
-        if (blocks.length === 0) {
-            showNotification('核心构建区还是空的哦，请先拖入积木', 'warning');
+    function getQuizAnswers() {
+        return state.quizAnswers || {};
+    }
+
+    function verifyQuiz() {
+        const quizSteps = state.preset.quiz_steps || [];
+        const answers = state.quizAnswers || {};
+
+        // Check if all steps have been answered
+        const unanswered = quizSteps.filter(s => !answers[s.step_id] || answers[s.step_id].trim() === '');
+        if (unanswered.length > 0) {
+            showNotification(`\u8fd8\u6709 ${unanswered.length} \u9053\u9898\u672a\u4f5c\u7b54\uff0c\u8bf7\u5b8c\u6210\u6240\u6709\u6b65\u9aa4\u540e\u518d\u9a8c\u8bc1`, 'warning');
+            const firstUnanswered = document.getElementById(`quiz-step-${unanswered[0].step_id}`);
+            if (firstUnanswered) firstUnanswered.scrollIntoView({ behavior: 'smooth', block: 'center' });
             return;
         }
 
-        const blockMap = {};
-        if (state.preset && state.preset.blocks) {
-            state.preset.blocks.forEach(b => {
-                blockMap[b.id] = b.indent || 0;
-            });
-        }
+        // Verify each step
+        let allCorrect = true;
+        let wrongCount = 0;
+        quizSteps.forEach(step => {
+            const studentAnswer = (answers[step.step_id] || '').trim();
+            const correctAnswer = (step.correct_answer || '').trim();
+            const card = document.getElementById(`quiz-step-${step.step_id}`);
+            const feedbackEl = document.getElementById(`quiz-feedback-${step.step_id}`);
 
-        blocks.forEach(block => {
-            const id = block.dataset.blockId;
-            if (id && blockMap[id] !== undefined) {
-                const targetIndent = blockMap[id];
-                block.dataset.indent = targetIndent;
-                block.style.marginLeft = targetIndent * 24 + 'px';
+            const normalize = s => s.replace(/\s+/g, ' ').trim();
+            const isCorrect = normalize(studentAnswer) === normalize(correctAnswer);
+
+            if (card) {
+                card.classList.remove('quiz-step-correct', 'quiz-step-wrong');
+                card.classList.add(isCorrect ? 'quiz-step-correct' : 'quiz-step-wrong');
             }
+            if (feedbackEl) {
+                if (isCorrect) {
+                    feedbackEl.innerHTML = '<i class="bi bi-check-circle-fill" style="color: #22c55e;"></i> \u6b63\u786e\uff01';
+                    feedbackEl.className = 'quiz-step-feedback feedback-correct';
+                } else {
+                    feedbackEl.innerHTML = `<i class="bi bi-x-circle-fill" style="color: #ef4444;"></i> ${escapeHtml(step.explanation || '\u8bf7\u518d\u60f3\u60f3')}`;
+                    feedbackEl.className = 'quiz-step-feedback feedback-wrong';
+                    allCorrect = false;
+                    wrongCount++;
+                }
+            }
+
+            if (!isCorrect) allCorrect = false;
         });
 
-        updateBlockPreview();
-        showNotification('✨ 代码缩进层级已对齐', 'success');
-    }
-
-    function increaseIndent(btn) {
-        const block = btn.closest('.code-block');
-        if (!block) return;
-        const current = parseInt(block.dataset.indent || 0);
-        block.dataset.indent = current + 1;
-        block.style.marginLeft = (current + 1) * 24 + 'px';
-        updateBlockPreview();
-    }
-
-    function decreaseIndent(btn) {
-        const block = btn.closest('.code-block');
-        if (!block) return;
-        const current = parseInt(block.dataset.indent || 0);
-        if (current > 0) {
-            block.dataset.indent = current - 1;
-            block.style.marginLeft = (current - 1) * 24 + 'px';
-            updateBlockPreview();
-        }
-    }
-
-    function verifyBlocks() {
-        const blocks = getSolutionBlocks();
-        const studentIds = Array.from(blocks).map(b => b.dataset.blockId);
-        const studentIndents = Array.from(blocks).map(b => parseInt(b.dataset.indent || 0));
-
-        const targetBlocks = state.preset.blocks
-            .filter(b => !b.id.startsWith('noise-'))
-            .sort((a, b) => parseInt(a.id) - parseInt(b.id));
-        const targetIds = targetBlocks.map(b => b.id);
-        const targetIndents = targetBlocks.map(b => b.indent || 0);
-
-        if (studentIds.length === 0) {
-            showNotification('请先拖入核心构建区所需的积木块', 'warning');
-            appendCompanionMessage('提示：当前核心构建区还是空的哦！仔细看看左侧的算法块散落池，根据你的解题思路把核心积木块拖拽入中间的构建区吧！', 'ai');
+        if (!allCorrect) {
+            showNotification(`\u6709 ${wrongCount} \u9053\u9898\u7b54\u9519\u4e86\uff0c\u8bf7\u6839\u636e\u63d0\u793a\u4fee\u6539\u540e\u91cd\u65b0\u9a8c\u8bc1`, 'warning');
+            appendCompanionMessage(`\u63d0\u793a\uff1a\u6709 ${wrongCount} \u9053\u9898\u7684\u7b54\u6848\u4e0d\u6b63\u786e\u3002\u9519\u8bef\u7684\u9898\u76ee\u65c1\u8fb9\u5df2\u7ecf\u6807\u6ce8\u4e86\u63d0\u793a\uff0c\u8bf7\u4ed4\u7ec6\u67e5\u770b\u5e76\u4fee\u6539\u4f60\u7684\u7b54\u6848\u3002\u5982\u679c\u9700\u8981\u66f4\u591a\u5e2e\u52a9\uff0c\u968f\u65f6\u95ee\u6211\u54e6\uff01`, 'ai');
             return;
         }
 
-        const hasNoise = studentIds.some(id => id.startsWith('noise-'));
-        if (hasNoise) {
-            showNotification('混入了干扰思维的噪声块哦，结合上下文再思考一下', 'warning');
-            appendCompanionMessage('提示：我发现你的构建区混入了带有陷阱的“噪声块”（比如写错运算符或少读了参数的无用代码块）。仔细对照思路，把不相关的噪声块移出构建区吧！如果想不通，可以在下方问我哦。', 'ai');
-            return;
-        }
+        // All correct! Save and proceed
+        showNotification('\ud83c\udf89 \u606d\u559c\uff01\u6240\u6709\u7b54\u6848\u6b63\u786e\uff0c\u4ee3\u7801\u6784\u5efa\u6210\u529f\uff01', 'success');
+        appendCompanionMessage('\u592a\u68d2\u4e86\uff01\u4f60\u7684\u6240\u6709\u7b54\u6848\u90fd\u5b8c\u5168\u6b63\u786e\uff01\u7a0b\u5e8f\u5df2\u7ecf\u6210\u529f\u6784\u5efa\uff01\ud83d\udc4d\n\n\u73b0\u5728\u7cfb\u7edf\u4f1a\u4e3a\u4f60\u4fdd\u5b58\u8fdb\u5ea6\u5e76\u8fdb\u5165\u4e0b\u4e00\u9636\u6bb5\u3002', 'ai');
 
-        if (studentIds.length !== targetIds.length) {
-            showNotification('积木数量不太对，思考一下是否遗漏或多余了', 'warning');
-            appendCompanionMessage('提示：你拖入的积木块数量不太对。想一想，是不是漏掉了某些关键步骤？比如输入读取变量或者收尾计算输出？', 'ai');
-            return;
-        }
-
-        let orderMatch = true;
-        for (let i = 0; i < targetIds.length; i++) {
-            if (studentIds[i] !== targetIds[i]) {
-                orderMatch = false;
-                break;
-            }
-        }
-
-        if (!orderMatch) {
-            showNotification('解题先后承接顺序还不准确，再调整一下顺序，或者向伴学助手发起对话理清逻辑', 'warning');
-            appendCompanionMessage('提示：积木块的上下排列顺序不太正确。在程序执行中，通常遵循“定义与读取输入 -> 核心计算/循环 -> 条件判定 -> 打印结果”的先后承接关系。试着调整一下代码块的位置，或者向我提问理清逻辑！', 'ai');
-            return;
-        }
-
-        let indentMatch = true;
-        for (let i = 0; i < targetIndents.length; i++) {
-            if (studentIndents[i] !== targetIndents[i]) {
-                indentMatch = false;
-                break;
-            }
-        }
-
-        if (!indentMatch) {
-            showNotification('积木顺序正确，但部分缩进层级需要调整，想想代码之间的嵌套关系？', 'warning');
-            appendCompanionMessage('提示：太棒了！你的积木顺序已经完全正确了！但是有一些代码块的“缩进层级（左右对齐）”还不准确。例如循环体或者条件判断内部的代码通常需要往右缩进。你可以点击下面的【一键大括号嵌套】按钮，我来帮你对齐！', 'ai');
-            return;
-        }
-
-        // Client-side passed! Now persist state on the backend
         setLoading(true);
-        const blockOrder = Array.from(blocks).map(b => ({
-            id: b.dataset.blockId,
-            indent: parseInt(b.dataset.indent || 0)
-        }));
-
         fetchJSON('/thinking/api/stage2/verify', {
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                block_order: blockOrder
+                block_order: state.quizAnswers,
+                quiz_answers: state.quizAnswers
             })
         }).then(data => {
             if (data.success && data.passed) {
-                showNotification('🎉 恭喜！积木编程成功通关！', 'success');
-                appendCompanionMessage('太不可思议了！你成功拼装出了完整的解题代码，并且缩进也完全正确！逻辑非常严密！👍\n\n现在请点击底部的【进入第三阶段】按钮，我们进行最后的费曼学习吧！', 'ai');
                 state.currentStage = 3;
                 setTimeout(() => {
                     location.reload();
                 }, 2000);
             } else {
-                showNotification(data.feedback || '验证未通过，请检查代码结构', 'warning');
-                appendCompanionMessage('提示：' + (data.feedback || '拼接的积木还存在一些细节问题。别气馁，仔细看一看每一步的逻辑，或者在下方直接向我提问寻求帮助吧！'), 'ai');
+                showNotification(data.feedback || '\u9a8c\u8bc1\u672a\u901a\u8fc7', 'warning');
             }
         }).catch(err => showError(err.message))
           .finally(() => setLoading(false));
     }
 
     function requestStage2Hint() {
-        const blocks = getSolutionBlocks();
-        const currentBlockIds = Array.from(blocks).map(b => b.dataset.blockId);
-
         setLoading(true);
-        appendCompanionMessage('我在进行积木编程拼接时遇到阻力，请给我一些引导提示。', 'student');
+        appendCompanionMessage('\u6211\u5728\u6784\u5efa\u7a0b\u5e8f\u65f6\u9047\u5230\u56f0\u96be\uff0c\u8bf7\u7ed9\u6211\u4e00\u4e9b\u5f15\u5bfc\u63d0\u793a\u3002', 'student');
+
+        const quizSteps = state.preset.quiz_steps || [];
+        const answers = state.quizAnswers || {};
+        const currentState = quizSteps.map(s => ({
+            step_id: s.step_id,
+            question: s.question,
+            answered: !!answers[s.step_id],
+            student_answer: answers[s.step_id] || null
+        }));
 
         fetchJSON('/thinking/api/stage2/hint', {
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                current_blocks: currentBlockIds
+                current_blocks: Object.keys(answers),
+                quiz_state: currentState
             })
         }).then(data => {
             if (data.success) {
                 appendCompanionMessage(data.hint, 'ai');
                 if (!state.companionMessages) state.companionMessages = [];
-                state.companionMessages.push({ role: 'user', content: '我在进行积木编程拼接时遇到阻力，请给我一些引导提示。' });
+                state.companionMessages.push({ role: 'user', content: '\u6211\u5728\u6784\u5efa\u7a0b\u5e8f\u65f6\u9047\u5230\u56f0\u96be\uff0c\u8bf7\u7ed9\u6211\u4e00\u4e9b\u5f15\u5bfc\u63d0\u793a\u3002' });
                 state.companionMessages.push({ role: 'assistant', content: data.hint });
             }
         }).catch(err => showError(err.message))
@@ -967,51 +829,28 @@
         });
         studentState.stage1.qa_answers = qaAnswers;
 
-        // 2. Stage 2 blocks state
-        const workspaceBlocks = document.querySelectorAll('#block-solution-list .code-block');
-        const studentIds = Array.from(workspaceBlocks).map(b => b.dataset.blockId);
-        const studentIndents = Array.from(workspaceBlocks).map(b => parseInt(b.dataset.indent || 0));
-
-        let targetIds = [];
-        let targetIndents = [];
-        if (state.preset && state.preset.blocks) {
-            const targetBlocks = state.preset.blocks
-                .filter(b => !b.id.startsWith('noise-'))
-                .sort((a, b) => parseInt(a.id) - parseInt(b.id));
-            targetIds = targetBlocks.map(b => b.id);
-            targetIndents = targetBlocks.map(b => b.indent || 0);
-        }
-
-        const hasNoise = studentIds.some(id => id.startsWith('noise-'));
-        const lengthMismatch = studentIds.length > 0 && studentIds.length !== targetIds.length;
-        
-        let orderMatch = true;
-        if (studentIds.length === targetIds.length) {
-            for (let i = 0; i < targetIds.length; i++) {
-                if (studentIds[i] !== targetIds[i]) {
-                    orderMatch = false;
-                    break;
-                }
-            }
-        } else {
-            orderMatch = false;
-        }
+        // 2. Stage 2 quiz state
+        const quizSteps = (state.preset && state.preset.quiz_steps) || [];
+        const answers = state.quizAnswers || {};
+        const stepsState = quizSteps.map(step => {
+            const studentAns = (answers[step.step_id] || '').trim();
+            const correctAns = (step.correct_answer || '').trim();
+            const normalize = s => s.replace(/\s+/g, ' ').trim();
+            const isCorrect = studentAns ? (normalize(studentAns) === normalize(correctAns)) : false;
+            return {
+                step_id: step.step_id,
+                question: step.question,
+                student_answer: studentAns || null,
+                correct_answer: correctAns,
+                is_correct: isCorrect
+            };
+        });
 
         studentState.stage2 = {
-            current_blocks: Array.from(workspaceBlocks).map(b => ({
-                id: b.dataset.blockId,
-                code: b.querySelector('code')?.textContent || '',
-                label: b.querySelector('.block-label')?.textContent || '',
-                indent: parseInt(b.dataset.indent || 0),
-                part_name: b.dataset.partName || ''
-            })),
-            errors: {
-                is_empty: studentIds.length === 0,
-                has_noise: hasNoise,
-                length_mismatch: lengthMismatch,
-                order_match: orderMatch,
-                indent_match: orderMatch && (JSON.stringify(studentIndents) === JSON.stringify(targetIndents))
-            }
+            is_quiz: true,
+            answered_count: quizSteps.filter(s => answers[s.step_id]).length,
+            total_count: quizSteps.length,
+            steps: stepsState
         };
 
         // 3. Stage 3 code fix state
@@ -1060,47 +899,7 @@
         };
 
         if (state.currentStage === 2) {
-            const blocks = getSolutionBlocks();
-            const studentIds = Array.from(blocks).map(b => b.dataset.blockId);
-            const studentIndents = Array.from(blocks).map(b => parseInt(b.dataset.indent || 0));
-
-            // 获取期望的标准积木序列与缩进
-            const targetBlocks = state.preset.blocks
-                .filter(b => !b.id.startsWith('noise-'))
-                .sort((a, b) => parseInt(a.id) - parseInt(b.id));
-            const targetIds = targetBlocks.map(b => b.id);
-            const targetIndents = targetBlocks.map(b => b.indent || 0);
-
-            const hasNoise = studentIds.some(id => id.startsWith('noise-'));
-            const lengthMismatch = studentIds.length > 0 && studentIds.length !== targetIds.length;
-            
-            let orderMatch = true;
-            if (studentIds.length === targetIds.length) {
-                for (let i = 0; i < targetIds.length; i++) {
-                    if (studentIds[i] !== targetIds[i]) {
-                        orderMatch = false;
-                        break;
-                    }
-                }
-            } else {
-                orderMatch = false;
-            }
-
-            requestBody.stage2_state = {
-                current_blocks: Array.from(blocks).map(b => ({
-                    id: b.dataset.blockId,
-                    code: b.querySelector('code')?.textContent || '',
-                    label: b.querySelector('.block-label')?.textContent || '',
-                    indent: parseInt(b.dataset.indent || 0)
-                })),
-                errors: {
-                    is_empty: studentIds.length === 0,
-                    has_noise: hasNoise,
-                    length_mismatch: lengthMismatch,
-                    order_match: orderMatch,
-                    indent_match: orderMatch && (JSON.stringify(studentIndents) === JSON.stringify(targetIndents))
-                }
-            };
+            requestBody.stage2_state = requestBody.student_state.stage2;
         }
 
         fetchJSON('/thinking/api/companion/chat', {

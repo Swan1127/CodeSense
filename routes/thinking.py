@@ -341,50 +341,48 @@ def stage1_hint():
 @thinking.route('/api/stage2/verify', methods=['POST'])
 @login_required
 def stage2_verify():
-    """验证积木拼装结果"""
+    """验证选择与填空答题结果"""
     try:
         data = request.get_json()
         session_id = data.get('session_id')
-        block_order = data.get('block_order', [])  # [{id, indent}]
+        quiz_answers = data.get('quiz_answers', {})
 
         ts = ThinkingSession.query.get(session_id)
         if not ts or ts.student_id != current_user.student_id:
             return jsonify({'error': '会话不存在'}), 403
 
         preset = AssignmentThinkingPreset.query.filter_by(assignment_id=ts.assignment_id).first()
-        correct_blocks = preset.get_code_blocks() if preset else []
+        quiz_steps = preset.get_quiz_steps() if preset else []
 
-        # 严格匹配：ID顺序和缩进层级都要完全一致
-        student_ids = [str(b.get('id', '')) for b in block_order]
-        student_indents = [b.get('indent', 0) for b in block_order]
+        passed = True
+        wrong_steps = []
         
-        correct_ids = [str(b.get('id', '')) for b in correct_blocks]
-        correct_indents = [b.get('indent', 0) for b in correct_blocks]
+        normalize = lambda s: ' '.join(str(s).split()).strip()
 
-        id_match = student_ids == correct_ids
-        indent_match = student_indents == correct_indents
-        passed = id_match and indent_match
+        for step in quiz_steps:
+            step_id = str(step.get('step_id', ''))
+            correct_val = normalize(step.get('correct_answer', ''))
+            student_val = normalize(quiz_answers.get(step_id, ''))
+            if student_val != correct_val:
+                passed = False
+                wrong_steps.append(step_id)
 
-        # 更新会话
-        ts.stage2_block_order = json.dumps(block_order, ensure_ascii=False)
+        # 更新会话答题进度
+        ts.stage2_block_order = json.dumps(quiz_answers, ensure_ascii=False)
 
         if passed:
             ts.stage2_completed = True
             ts.current_stage = 3
-            _log_event(session_id, 2, 'stage_pass', 'system', '积木编程验证通过')
+            _log_event(session_id, 2, 'stage_pass', 'system', '逐步构建程序验证通过')
         else:
-            # 提供模糊反馈（不透露具体哪里错了）
             _log_event(session_id, 2, 'verify_fail', 'system', '验证未通过',
-                       metadata={'student_order': student_ids})
+                       metadata={'wrong_steps': wrong_steps})
 
         db.session.commit()
 
         feedback = ''
         if not passed:
-            if not id_match:
-                feedback = '代码块的顺序还不太对，试着回忆一下你的解题思路，从头到尾应该是怎样的流程？'
-            elif not indent_match:
-                feedback = '代码块顺序正确了！但部分代码的缩进层级需要调整，想想哪些代码应该嵌套在其他代码里面？'
+            feedback = f'还有 {len(wrong_steps)} 道步骤的答案不正确，请根据提示进行调整。'
 
         return jsonify({
             'success': True,
@@ -794,6 +792,7 @@ def api_generate_preset():
             preset.key_steps = json.dumps(result.get('key_steps', []), ensure_ascii=False)
             preset.code_blocks = json.dumps(result.get('code_blocks', []), ensure_ascii=False)
             preset.noise_blocks = json.dumps(result.get('noise_blocks', []), ensure_ascii=False)
+            preset.quiz_steps = json.dumps(result.get('quiz_steps', []), ensure_ascii=False)
             preset.difficulty_config = json.dumps(result.get('difficulty_config', {}), ensure_ascii=False)
             preset.algorithm_summary = result.get('algorithm_summary', '')
             preset.status = 'ready'
@@ -1054,10 +1053,14 @@ def _serialize_preset(preset: AssignmentThinkingPreset) -> dict:
     difficulty = preset.get_difficulty_config() or {}
     guided_questions = difficulty.get('guided_questions', [])
 
+    # 获取逐步选择/填空题数据
+    quiz_steps = preset.get_quiz_steps()
+
     return {
         'key_steps': preset.get_key_steps(),
         'blocks': all_blocks,
         'parts': parts_list,
+        'quiz_steps': quiz_steps,
         'difficulty': difficulty,
         'algorithm_summary': algorithm_summary,
         'guided_questions': guided_questions,

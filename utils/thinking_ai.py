@@ -202,166 +202,136 @@ def generate_preset(assignment_title: str, assignment_description: str) -> Dict:
     result['algorithm_summary'] = summary_data.get('algorithm_summary', '算法流程：分析题目要求，读取输入，处理逻辑并输出结果。').strip()
     guided_questions = summary_data.get('guided_questions', [])
 
-    # Step 2:
-    noise_prompt = f"""针对以下 C++ 编程题及其拆解出的正确积木块，请为每个"逻辑部分"（Part）各生成 1~2 个"噪声干扰积木块"。
+    # Step 2: 生成逐步选择/填空题（阶段二核心数据）
+    quiz_steps_prompt = f"""你是一位编程教育专家。请根据以下 C++ 编程题的标准答案代码，将程序中的核心语句拆解为**逐步选择题或填空题**。
 
-## 核心要求（极其重要）
-1. **分类归属**：每个噪声块必须属于正确积木块中定义的一个 Part，并且包含对应的 `part_name`, `part_header`, `part_footer`（值必须与该 Part 的正确块完全一致）。
-2. **每个噪声块必须是单条 C++ 语句**，与该 Part 正确积木块 of 格式和粒度一致。
-3. **噪声块必须看起来像是正确代码的合理变体**，只包含一个微小的逻辑错误。学生必须仔细思考才能发现问题。
-4. 错误类型示例：
-   - 运算符写错：`>` 写成 `>=`，`+` 写成 `-`，`<` 写成 `>`
-   - 变量名写反：`a` 和 `b` 交换
-   - 边界差1：`i < n` 写成 `i <= n`，`i = 0` 写成 `i = 1`
-   - 少读/多读一个变量：`cin >> a >> b;` 变成 `cin >> a;`
-   - 初始值错误：`max_val = 0` 应为 `max_val = -1`
-5. **label 必须看起来正常合理**，不能暴露这是错误块。label 应该和正确块的风格一致。
-6. **禁止生成与该 Part 完全无关的代码**。
+## 核心设计理念
+学生在阶段二需要通过逐步答题来构建完整程序。每道题对应程序中的一条关键语句或代码结构。
+- **选择题（choice）**：适用于有逻辑难度的语句（如循环条件、运算符选择、指针操作等）。需要提供 2~3 个干扰选项。
+- **填空题（fill_blank）**：适用于简单直接的语句（如变量声明、简单输入输出）。给出代码上下文，让学生填写空白部分。
 
-参考代码：
-{reference_code}
+## 拆解规则（极其重要）
+1. **按照代码执行顺序**：从上到下逐行分析，每条核心语句生成一道题。
+2. **忽略全局外壳**：不要为 `#include`、`using namespace std;`、`int main() {{` 和 `return 0; }}` 生成题目，这些作为固定代码框架自动显示。
+3. **每道题只对应一条语句**（如一个变量声明、一次输入读取、一个循环头、一行计算等）。
+4. **选择题的干扰选项**必须是合理的变体，包含微小逻辑错误（运算符错、边界差1、变量名写反等），不能是明显无关的代码。
+5. **选择题的选项顺序要随机**，正确答案不要总是第一个。
+6. **填空题**需要提供 `context_before`（空白前的代码）和 `context_after`（空白后的代码），以及 `blank_hint`（提示学生填什么）。
+7. 如果程序有辅助函数（如 swap），需要在题目中标注它属于哪个函数（part_name）。
+8. **题目总数一般在 4~10 道之间**，避免过多或过少。
 
-请严格以JSON数组格式返回，每个元素包含:
-- "id": 唯一编号字符串（以"noise-"开头，如 "noise-1"）
-- "code": 单条噪声语句（与对应 Part 的正确块粒度一致）
-- "indent": 缩进深度（相对于该 Part header 的缩进，整数，与对应阶段的正确块一致）
-- "label": 正常的中文语义描述（不暴露错误）
-- "phase": 所属阶段（整数 1、2 或 3）
-- "part_name": 该噪声块所属的部分名称（必须与对应正确块的 part_name 完全一致）
-- "part_header": 该部分的静态开头代码（与对应正确块一致）
-- "part_footer": 该部分的静态结尾代码（与对应正确块一致）
-- "error_type": 错误类型简述（如"运算符错误"、"边界差1"、"变量遗漏"等）
+## 每道题需要包含的字段
+请严格以 JSON 数组格式返回，每个元素包含:
+- "step_id": 从1开始递增的整数编号
+- "type": "choice" 或 "fill_blank"
+- "question": 题目描述（中文，简洁明了，如"选择正确的循环终止条件"、"填写变量声明语句"）
+- "correct_answer": 正确答案（完整的代码语句字符串）
+- "options": 选项数组（仅 choice 类型需要，包含正确答案和 1~2 个干扰项，共 2~3 个选项）
+- "blank_hint": 填空提示（仅 fill_blank 类型需要，如"声明一个整型变量n"）
+- "context_before": 填空题中空白前的代码片段（仅 fill_blank 类型，可为空字符串）
+- "context_after": 填空题中空白后的代码片段（仅 fill_blank 类型，可为空字符串）
+- "code_line": 选定正确答案后映射到预览中的完整代码行
+- "indent": 该代码行在其所属函数内的缩进深度（整数，0 = 函数第一层）
+- "part_name": 所属函数名称（如 "函数 swap()", "函数 main()"）
+- "part_header": 该函数的开头代码（如 "void swap(int &a, int &b) {{"）
+- "part_footer": 该函数的结尾代码（如 "}}" 或 "    return 0;\\n}}"）
+- "explanation": 如果答错，给出的简短解释（中文，1~2 句话）
 
-示例格式：[{{{{
-    "id": "noise-1",
-    "code": "cin >> n;",
+## 示例
+对于一段交换两变量的代码：
+```cpp
+void swap(int &a, int &b) {{
+    int temp = a;
+    a = b;
+    b = temp;
+}}
+int main() {{
+    int x, y;
+    cin >> x >> y;
+    swap(x, y);
+    cout << x << " " << y << endl;
+    return 0;
+}}
+```
+
+期望输出：
+[{{{{
+    "step_id": 1,
+    "type": "fill_blank",
+    "question": "在swap函数中，声明一个临时变量来保存a的值",
+    "correct_answer": "int temp = a;",
+    "options": [],
+    "blank_hint": "声明一个整型临时变量并赋初值",
+    "context_before": "",
+    "context_after": "",
+    "code_line": "int temp = a;",
     "indent": 0,
-    "label": "读取输入参数",
-    "phase": 1,
-    "part_name": "函数 main()",
-    "part_header": "int main() {{{{",
-    "part_footer": "    return 0;\\n}}}}",
-    "error_type": "变量遗漏（漏读了m）"
-}}}}]"""
-
-
-    noise_response = client.chat(
-        [{"role": "system", "content": "你是编程教育专家。请严格以JSON数组格式返回噪声代码块。"},
-         {"role": "user", "content": noise_prompt}],
-        temperature=0.5, max_tokens=1500
-    )
-    result['noise_blocks'] = _parse_json_array(noise_response, default=[])
-
-    # Step 3: 生成正确代码积木块（拆分为不同的逻辑部刑）
-    blocks_prompt = f"""main 函数核心逻辑较长（整个程序除外壳外核心逻辑超过 10 行），你必须将程序拆分为多个"逻辑部分"（Part）。
-每个部分代表一个独立的函数或 main 函数的一个逻辑片段。
-
-## 拆分与分段规则（极其重要，请严格遵守）
-1. **识别逻辑部分（Part）**：
-   - 辅助函数（如 `void swap(int &a, int &b)`）必须单独作为一个 Part，名称例如 `"函数 swap()"`。
-   - main 函数如果不是特别长，可以单独作为一个 Part，名称为 `"函数 main()"`。
-   - 如果 main 函数较长，可以拆分为 2~3 个 Part，例如 `"函数 main() 准备阶段"`（变量声明、读取输入）、`"函数 main() 核心计算"`、`"函数 main() 输出结果"`。
-   - 每个 Part 拥有它自己的开头代码（part_header，如 `"void swap(int &a, int &b) {{"` 或 `"int main() {{"`）和结尾代码（part_footer，如 `"}}"` 或 `"    return 0;\\n}}"`）。
-   - 积木块只拆解 Part 内部的具体语句，**绝对不要**把 part_header 和 part_footer 本身当作积木块返回。
-   - 如果整个程序非常简单短小（总核心代码行数少于8行且只有main函数），可以仅使用单个 Part，名称为 `"核心程序"`，对应的 part_header 为 `"int main() {{"`，part_footer 为 `"    return 0;\\n}}"`。
-2. **每个积木块只包含一条独立的 C++ 语句或控制结构头部**。
-3. **绝对禁止将多条语句合并到一个积木块中**。
-4. **忽略全局外壳**：不要包含 `#include`、`using namespace std;`。这些不属于任何 Part。
-5. **每个 Part 内部的积木块数量一般在 3~8 个之间**，避免单个 Part 积木过多。
-
-## phase 分类（指在各自 Part 中的执行阶段）
-- **phase 1**：准备工作（变量声明、输入读取等）
-- **phase 2**：核心逻辑（循环、条件判断、计算更新等）
-- **phase 3**：收尾处理（输出结果等）
-
-## indent 规则
-- 相对于当前 Part 的 header 的第一层语句：indent = 0
-- 在一层花括号内（如 for 循环体内）：indent = 1
-- 在两层花括号内（如嵌套的 if 内）：indent = 2
-
-参考代码：
-{reference_code}
-
-请严格以JSON数组格式返回结果，每个元素必须包含:
-- "id": 唯一编号（从1开始递增，数字类型）
-- "code": 该积木块的代码内容（单条语句，字符串类型）
-- "indent": 缩进深度（相对于该 Part header 的缩进，整数，从0开始）
-- "label": 简短的中文语义描述（如"声明变量temp"、"交换变量a和b的值"等）
-- "phase": 所属阶段（整数 1、2 或 3）
-- "part_name": 该积木块所属的部分名称（例如 "函数 swap()", "函数 main()"）
-- "part_header": 该部分的静态开头代码（例如 "void swap(int &a, int &b) {{" 或 "int main() {{"）
-- "part_footer": 该部分的静态结尾代码（例如 "}}" 或 "    return 0;\\n}}"）
-
-示例格式：[{{{{
-    "id": 1,
-    "code": "int temp = a;",
-    "indent": 0,
-    "label": "备份变量a的值",
-    "phase": 1,
     "part_name": "函数 swap()",
     "part_header": "void swap(int &a, int &b) {{{{",
-    "part_footer": "}}}}"
-}}}}, {{{{
-    "id": 2,
-    "code": "a = b;",
+    "part_footer": "}}}}",
+    "explanation": "交换变量需要先用临时变量保存其中一个值"
+}}}},
+{{{{
+    "step_id": 2,
+    "type": "choice",
+    "question": "将b的值赋给a，正确的语句是？",
+    "correct_answer": "a = b;",
+    "options": ["a = b;", "b = a;", "temp = b;"],
+    "blank_hint": "",
+    "context_before": "",
+    "context_after": "",
+    "code_line": "a = b;",
     "indent": 0,
-    "label": "将b的值赋给a",
-    "phase": 2,
     "part_name": "函数 swap()",
     "part_header": "void swap(int &a, int &b) {{{{",
-    "part_footer": "}}}}"
-}}}}]"""
+    "part_footer": "}}}}",
+    "explanation": "此时temp已保存了a原来的值，所以应该把b赋给a"
+}}}}]
 
+## 题目信息
+标题：{assignment_title}
+描述：{assignment_description[:500]}
 
-    blocks_response = client.chat(
-        [{"role": "system", "content": "你是编程教育专家。请严格以JSON数组格式返回代码块拆分结果。"},
-         {"role": "user", "content": blocks_prompt}],
-        temperature=0.2, max_tokens=2000
+## 标准答案代码
+{reference_code}"""
+
+    quiz_response = client.chat(
+        [{"role": "system", "content": "你是编程教育专家。请严格以JSON数组格式返回逐步选择/填空题数据。每道题必须包含 step_id, type, question, correct_answer, options, blank_hint, context_before, context_after, code_line, indent, part_name, part_header, part_footer, explanation 这些字段。"},
+         {"role": "user", "content": quiz_steps_prompt}],
+        temperature=0.3, max_tokens=3000
     )
-    result['code_blocks'] = _parse_json_array(blocks_response, default=[])
+    result['quiz_steps'] = _parse_json_array(quiz_response, default=[])
 
-    # Step 4: 生成噪声代码块（与正确块外观一致，仅含细微逻辑错误）
-    noise_prompt = f"""针对以下 C++ 编程题，生成 2~4 个"噪声干扰积木块"。
-
-## 核心要求（极其重要）
-1. **每个噪声块必须是单条 C++ 语句**，与正确积木块的格式和粒度完全一致（一行代码）。
-2. **噪声块必须看起来像是正确代码的合理变体**，只包含一个微小的逻辑错误。学生必须仔细思考才能发现问题。
-3. 错误类型示例：
-   - 运算符写错：`>` 写成 `>=`，`+` 写成 `-`，`<` 写成 `>`
-   - 变量名写反：`a` 和 `b` 交换
-   - 边界差1：`i < n` 写成 `i <= n`，`i = 0` 写成 `i = 1`
-   - 少读/多读一个变量：`cin >> a >> b;` 变成 `cin >> a;`
-   - 初始值错误：`max_val = 0` 应为 `max_val = -1`
-4. **label 必须看起来正常合理**，不能暴露这是错误块。label 应该和正确块的风格一致。
-5. **禁止生成与题目完全无关的代码**（如完全不同的算法或毫不相关的操作）。
-
-参考代码：
-{reference_code}
-
-请严格以JSON数组格式返回，每个元素包含:
-- "id": 唯一编号字符串（以"noise-"开头，如 "noise-1"）
-- "code": 单条噪声语句（与正确块粒度一致）
-- "indent": 缩进深度（整数，与对应阶段的正确块一致）
-- "label": 正常的中文语义描述（不暴露错误）
-- "phase": 所属阶段（整数 1、2 或 3）
-- "error_type": 错误类型简述（如"运算符错误"、"边界差1"、"变量遗漏"等）
-
-示例格式：[{{{{
-    "id": "noise-1",
-    "code": "cin >> n;",
-    "indent": 0,
-    "label": "读取输入参数",
-    "phase": 1,
-    "error_type": "变量遗漏（漏读了m）"
-}}}}]"""
-
-
-    noise_response = client.chat(
-        [{"role": "system", "content": "你是编程教育专家。请严格以JSON数组格式返回噪声代码块。"},
-         {"role": "user", "content": noise_prompt}],
-        temperature=0.5, max_tokens=1500
-    )
-    result['noise_blocks'] = _parse_json_array(noise_response, default=[])
+    # 从 quiz_steps 反向生成兼容的 code_blocks 和 noise_blocks 数据（向后兼容）
+    code_blocks = []
+    noise_blocks = []
+    for step in result['quiz_steps']:
+        code_blocks.append({
+            'id': step.get('step_id', 0),
+            'code': step.get('code_line', step.get('correct_answer', '')),
+            'indent': step.get('indent', 0),
+            'label': step.get('question', ''),
+            'phase': 1 if step.get('step_id', 0) <= 2 else (3 if step == result['quiz_steps'][-1] else 2),
+            'part_name': step.get('part_name', '核心程序'),
+            'part_header': (step.get('part_header') or 'int main() {').replace('{{', '{').replace('}}', '}'),
+            'part_footer': (step.get('part_footer') or '    return 0;\n}').replace('{{', '{').replace('}}', '}')
+        })
+        # 从选择题的干扰选项中生成 noise_blocks
+        if step.get('type') == 'choice' and step.get('options'):
+            for oidx, opt in enumerate(step['options']):
+                if opt != step.get('correct_answer'):
+                    noise_blocks.append({
+                        'id': f"noise-{step.get('step_id', 0)}-{oidx}",
+                        'code': opt,
+                        'indent': step.get('indent', 0),
+                        'label': step.get('question', ''),
+                        'phase': 1,
+                        'part_name': step.get('part_name', '核心程序'),
+                        'part_header': step.get('part_header', 'int main() {'),
+                        'part_footer': step.get('part_footer', '    return 0;\n}')
+                    })
+    result['code_blocks'] = code_blocks
+    result['noise_blocks'] = noise_blocks
 
     # Step 5: 配置费曼阶段难度
     # 根据代码复杂度自动调整
@@ -549,36 +519,44 @@ def _format_student_state_context(student_state: dict) -> str:
             a = item.get('answer', '')
             parts.append(f"- 问题 {idx+1}: {q}\n  学生当前回答: \"{a}\"")
             
-    # 2. Stage 2 block info
+    # 2. Stage 2 block info / quiz info
     s2 = student_state.get('stage2', {})
     if s2:
-        current_blocks = s2.get('current_blocks', [])
-        errors = s2.get('errors', {})
-        if current_blocks or errors:
-            parts.append("\n【学生在阶段二（积木搭建）的当前工作区状态】：")
-            if errors.get('is_empty'):
-                parts.append("- 诊断：当前右侧构建区是空的，没有任何积木块。")
-            else:
-                block_list = []
-                for b in current_blocks:
-                    block_list.append(f"[{b.get('label', '')}] (缩进={b.get('indent', 0)}, Part='{b.get('part_name', '')}')")
-                parts.append(f"- 当前构建区积木顺序与缩进: {', '.join(block_list)}")
-                
-                # Diagnostic errors
-                diag = []
-                if errors.get('has_noise'):
-                    diag.append("构建区中混入了带陷阱的‘噪声干扰块’。不要直接指出是哪一块，可以点出有干扰块，引导他们排查。")
-                if errors.get('length_mismatch'):
-                    diag.append("积木数量不对，可能存在多余 of 或遗漏的积木。")
-                if not errors.get('order_match') and not errors.get('length_mismatch'):
-                    diag.append("积木顺序颠倒了，步骤承接逻辑存在错误。建议他们检查逻辑先后顺序。")
-                if errors.get('order_match') and not errors.get('indent_match'):
-                    diag.append("积木顺序完全正确，但部分积木的缩进对齐层级（左右缩进）存在错误。提醒他们调整缩进。")
-                if errors.get('order_match') and errors.get('indent_match'):
-                    diag.append("积木顺序和缩进完全正确！可以提示他们点击验证提交了。")
-                
-                if diag:
-                    parts.append("- 诊断分析: " + " ".join(diag))
+        if s2.get('is_quiz'):
+            parts.append("\n【学生在阶段二（程序构建）的逐步选择与填空答题状态】：")
+            steps = s2.get('steps', [])
+            for step in steps:
+                status = "正确" if step.get('is_correct') else ("错误" if step.get('student_answer') else "未作答")
+                ans_str = f" 学生回答: \"{step.get('student_answer')}\"" if step.get('student_answer') else ""
+                parts.append(f"- 步骤 {step.get('step_id')}: {step.get('question')} ({status}){ans_str}")
+        else:
+            current_blocks = s2.get('current_blocks', [])
+            errors = s2.get('errors', {})
+            if current_blocks or errors:
+                parts.append("\n【学生在阶段二（积木搭建）的当前工作区状态】：")
+                if errors.get('is_empty'):
+                    parts.append("- 诊断：当前右侧构建区是空的，没有任何积木块。")
+                else:
+                    block_list = []
+                    for b in current_blocks:
+                        block_list.append(f"[{b.get('label', '')}] (缩进={b.get('indent', 0)}, Part='{b.get('part_name', '')}')")
+                    parts.append(f"- 当前构建区积木顺序与缩进: {', '.join(block_list)}")
+                    
+                    # Diagnostic errors
+                    diag = []
+                    if errors.get('has_noise'):
+                        diag.append("构建区中混入了带陷阱的‘噪声干扰块’。不要直接指出是哪一块，可以点出有干扰块，引导他们排查。")
+                    if errors.get('length_mismatch'):
+                        diag.append("积木数量不对，可能存在多余 or 遗漏的积木。")
+                    if not errors.get('order_match') and not errors.get('length_mismatch'):
+                        diag.append("积木顺序颠倒了，步骤承接逻辑存在错误。建议他们检查逻辑先后顺序。")
+                    if errors.get('order_match') and not errors.get('indent_match'):
+                        diag.append("积木顺序完全正确，但部分积木的缩进对齐层级（左右缩进）存在错误。提醒他们调整缩进。")
+                    if errors.get('order_match') and errors.get('indent_match'):
+                        diag.append("积木顺序和缩进完全正确！可以提示他们点击验证提交了。")
+                    
+                    if diag:
+                        parts.append("- 诊断分析: " + " ".join(diag))
                     
     # 3. Stage 3 code fix info
     s3 = student_state.get('stage3', {})
@@ -616,28 +594,44 @@ def companion_agent_chat(messages: List[Dict], assignment_title: str,
 - 即使学生没主动要求，若你判断一张图（如队列图、树结构、LCS二维表格、DP状态图等）能显著帮助他理解，可主动询问："我可以帮你画一张示意图，要吗？😊"，学生确认后立即触发。
 - 触发方式：在回复的最后一行单独写 [GENERATE_IMAGE: <详细提示词，描述图的内容和风格，如"队列数据结构，显示队头队尾，手绘粉笔风格，黑板背景，教学图解">]"""
     elif current_stage == 2:
-        extra_context = f"\n【当前所处阶段】：阶段二（代码积木编程拼装）。学生在把代码积木按顺序拼在右侧，并调节缩进。当前学生的积木拼装状况诊断如下："
+        extra_context = f"\n【当前所处阶段】：阶段二（程序构建，逐步选择/填空题模式）。学生正通过逐步答题来组装代码。当前答题状态诊断如下："
         if stage2_state:
-            errors = stage2_state.get('errors', {})
-            current_blocks = stage2_state.get('current_blocks', [])
-            
-            block_list_str = ", ".join([f"[{b.get('label', '未标记')}]" for b in current_blocks]) if current_blocks else "无（构建区目前是空的）"
-            extra_context += f"\n- 构建区已有的积木标签顺序：{block_list_str}"
-            
-            if errors.get('is_empty'):
-                extra_context += "\n- 诊断：构建区尚无任何积木。请友好鼓励他们把左边散落池的算法块拖入右侧。"
-            elif errors.get('has_noise'):
-                extra_context += "\n- 诊断：构建区中混入了带陷阱的‘噪声干扰块’。不要告诉他们是哪块，但提示他们有不需要的积木，让他们对照思路排除它。"
-            elif errors.get('length_mismatch'):
-                extra_context += "\n- 诊断：拖入的代码块数量不对（缺失或多余）。引导他们对照思路检查是否有遗漏的步骤（比如输入读取或输出打印）。"
-            elif not errors.get('order_match'):
-                extra_context += "\n- 诊断：积木块上下顺序不对，步骤承接逻辑存在错误。建议他们按照‘读取输入 -> 核心计算/循环 -> 条件判定 -> 打印结果’的顺序梳理。"
-            elif not errors.get('indent_match'):
-                extra_context += "\n- 诊断：代码块顺序完全正确，但是部分语句的左右‘缩进对齐层级’不对。提醒他们点击积木块的 ◀ ▶ 按钮调整，或者点击右侧顶部的‘一键大括号嵌套’自动对齐。"
+            if stage2_state.get('is_quiz'):
+                steps = stage2_state.get('steps', [])
+                answered = stage2_state.get('answered_count', 0)
+                total = stage2_state.get('total_count', 0)
+                extra_context += f"\n- 答题进度：已回答 {answered}/{total} 道题。"
+                
+                wrong_steps = [s for s in steps if s.get('student_answer') and not s.get('is_correct')]
+                unanswered_steps = [s for s in steps if not s.get('student_answer')]
+                
+                if wrong_steps:
+                    wrong_details = ", ".join([f"步骤{s['step_id']}（{s['question']}）" for s in wrong_steps])
+                    extra_context += f"\n- 诊断：学生在以下步骤回答错误：{wrong_details}。不要直接给出正确答案或代码，应该针对这些步骤的概念进行启发式提问，引导他们理解错误原因。"
+                elif unanswered_steps:
+                    next_step = unanswered_steps[0]
+                    extra_context += f"\n- 诊断：学生正在思考步骤 {next_step['step_id']}（{next_step['question']}）。可以对该步骤进行提示，解释其要实现的目标或逻辑。"
+                else:
+                    extra_context += "\n- 诊断：所有题目均回答正确！代码已完美构建。提示他们点击右下角‘验证代码’提交。"
             else:
-                extra_context += "\n- 诊断：积木的顺序和缩进对齐都非常完美！可以让他们快去点击右下角的‘验证代码’按钮通关。"
+                errors = stage2_state.get('errors', {})
+                current_blocks = stage2_state.get('current_blocks', [])
+                block_list_str = ", ".join([f"[{b.get('label', '未标记')}]" for b in current_blocks]) if current_blocks else "无（构建区目前是空的）"
+                extra_context += f"\n- 构建区已有的积木标签顺序：{block_list_str}"
+                if errors.get('is_empty'):
+                    extra_context += "\n- 诊断：构建区尚无任何积木。请友好鼓励他们把左边散落池的算法块拖入右侧。"
+                elif errors.get('has_noise'):
+                    extra_context += "\n- 诊断：构建区中混入了带陷阱的‘噪声干扰块’。不要告诉他们是哪块，但提示他们有不需要的积木，让他们对照思路排除它。"
+                elif errors.get('length_mismatch'):
+                    extra_context += "\n- 诊断：拖入的代码块数量不对（缺失或多余）。引导他们对照思路检查是否有遗漏的步骤。"
+                elif not errors.get('order_match'):
+                    extra_context += "\n- 诊断：积木块上下顺序不对，步骤承接逻辑存在错误。"
+                elif not errors.get('indent_match'):
+                    extra_context += "\n- 诊断：代码块顺序完全正确，但是部分语句的左右‘缩进对齐层级’不对。"
+                else:
+                    extra_context += "\n- 诊断：积木的顺序和缩进对齐都非常完美！"
         else:
-            extra_context += "\n- 诊断：尚未获取到构建区的积木状态。引导学生把左侧散落池的积木块拖进构建区中。"
+            extra_context += "\n- 诊断：尚未获取到构建区的答题状态。引导学生逐步作答。"
 
     student_state_context = _format_student_state_context(student_state)
     system_prompt = f"""你是一位极具启发性、耐心且温柔的编程伴学AI，正在陪同学生解决一道C/C++编程题。
