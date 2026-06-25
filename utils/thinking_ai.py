@@ -403,13 +403,14 @@ def evaluate_description(description: str, key_steps: List[str],
         raise RuntimeError("AI服务不可用，请检查API Key配置或稍后再试")
 
     prompt = f"""你是编程教育评判员。请评估学生对编程题解题思路的描述是否涵盖了关键步骤。
+学生可能会针对引导问题进行逐个回答（输入包含诸如“【问题 i】：...\n【回答】：...”的结构化文本），请重点提取并评估学生在“【回答】”部分阐述的内容。
 
 题目：{assignment_title}
 
 关键步骤（标准答案的核心思路节点）：
 {json.dumps(key_steps, ensure_ascii=False)}
 
-学生的描述：
+学生的描述与回答：
 "{description}"
 
 评估规则（请宽松评判，鼓励初学者）：

@@ -390,6 +390,15 @@ def init_async_tasks(app):
                     from models import db, Assignment, AssignmentThinkingPreset
                     from sqlalchemy import or_
                     
+                    # 重置所有因服务器重启而中断的 'generating' 悬空预设为 'failed'
+                    stuck_presets = AssignmentThinkingPreset.query.filter_by(status='generating').all()
+                    if stuck_presets:
+                        app.logger.info(f"[后台预生成] 检测到 {len(stuck_presets)} 个悬空预设任务，重置为 'failed' 以便重新扫描...")
+                        for p in stuck_presets:
+                            p.status = 'failed'
+                            p.error_message = "服务器重启导致后台生成任务中断"
+                        db.session.commit()
+                    
                     # 查找缺失或未就绪预设的作业
                     missing_presets = db.session.query(Assignment).outerjoin(
                         AssignmentThinkingPreset, Assignment.id == AssignmentThinkingPreset.assignment_id

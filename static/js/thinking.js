@@ -51,6 +51,9 @@
 
         startTimer();
         startSession();
+        
+        // Initialize Developer Debug Panel (localhost/127.0.0.1 only)
+        initDevDebugConsole();
     }
 
     function pollPresetStatus() {
@@ -166,10 +169,8 @@
             hintBtn.onclick = () => requestStage1Hint();
         }
         if (textarea) {
-            textarea.focus();
-            if (state.isResumed && state.stage1Description) {
-                textarea.value = state.stage1Description;
-            }
+            // Hide the original textarea completely
+            textarea.style.display = 'none';
         }
 
         // Setup algorithm summary collapse toggle & display
@@ -212,7 +213,7 @@
             };
         }
 
-        // Setup guided questions display
+        // Setup guided questions display & dynamic input boxes
         const questionsWrapper = document.getElementById('guided-questions-wrapper');
         const questionsList = document.getElementById('guided-questions-list');
         const questions = (state.preset && state.preset.guided_questions && state.preset.guided_questions.length > 0)
@@ -233,6 +234,90 @@
             questionsWrapper.style.display = 'block';
         }
 
+        // Render dynamic textareas for questions
+        const qaWrapper = document.getElementById('stage-qa-inputs-wrapper');
+        if (qaWrapper) {
+            qaWrapper.innerHTML = '';
+            const parsedAnswers = {};
+            
+            if (state.isResumed && state.stage1Description) {
+                // Try parsing our format
+                questions.forEach((q, index) => {
+                    const qMarker = `【问题 ${index + 1}】：`;
+                    const nextQMarker = `【问题 ${index + 2}】：`;
+                    const startIdx = state.stage1Description.indexOf(qMarker);
+                    if (startIdx !== -1) {
+                        const ansMarker = "\n【回答】：";
+                        const ansStart = state.stage1Description.indexOf(ansMarker, startIdx);
+                        if (ansStart !== -1) {
+                            const valStart = ansStart + ansMarker.length;
+                            let endIdx = nextQMarker ? state.stage1Description.indexOf(nextQMarker, valStart) : -1;
+                            if (endIdx === -1) {
+                                endIdx = state.stage1Description.length;
+                            }
+                            parsedAnswers[index] = state.stage1Description.slice(valStart, endIdx).trim();
+                        }
+                    }
+                });
+            }
+
+            questions.forEach((q, i) => {
+                const qContainer = document.createElement('div');
+                qContainer.className = 'qa-item';
+                qContainer.style.marginBottom = '16px';
+
+                const qLabel = document.createElement('div');
+                qLabel.className = 'qa-question-label';
+                qLabel.style.fontWeight = '600';
+                qLabel.style.color = '#1e3a8a';
+                qLabel.style.fontSize = '13.5px';
+                qLabel.style.marginBottom = '6px';
+                qLabel.style.display = 'flex';
+                qLabel.style.alignItems = 'flex-start';
+                qLabel.style.gap = '6px';
+                qLabel.innerHTML = `<span class="qa-index" style="background: #3b82f6; color: white; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; margin-top: 2px;">${i + 1}</span> <span>${escapeHtml(q)}</span>`;
+                
+                const qTextarea = document.createElement('textarea');
+                qTextarea.className = 'description-textarea qa-answer-textarea';
+                qTextarea.dataset.questionIndex = i;
+                qTextarea.placeholder = `请输入你对问题 ${i + 1} 的思考回答...`;
+                qTextarea.style.minHeight = '70px';
+                qTextarea.style.width = '100%';
+                qTextarea.style.padding = '10px';
+                qTextarea.style.borderRadius = '6px';
+                qTextarea.style.border = '1px solid #cbd5e1';
+                qTextarea.style.fontFamily = 'inherit';
+                qTextarea.style.fontSize = '13px';
+                qTextarea.style.resize = 'vertical';
+                qTextarea.style.boxSizing = 'border-box';
+                
+                if (parsedAnswers[i]) {
+                    qTextarea.value = parsedAnswers[i];
+                } else if (state.isResumed && state.stage1Description && !state.stage1Description.includes('【问题') && i === 0) {
+                    // Fallback for legacy plain description
+                    qTextarea.value = state.stage1Description;
+                }
+
+                // Prevent Paste & Drop
+                qTextarea.addEventListener('paste', (e) => {
+                    e.preventDefault();
+                    showNotification('为了确保你真正理解解题思路，此处禁止复制粘贴，请手动输入回答。', 'warning');
+                });
+                qTextarea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    showNotification('为了确保你真正理解解题思路，此处禁止拖放文本，请手动输入回答。', 'warning');
+                });
+
+                qContainer.appendChild(qLabel);
+                qContainer.appendChild(qTextarea);
+                qaWrapper.appendChild(qContainer);
+            });
+
+            // Focus on the first answer box
+            const firstBox = qaWrapper.querySelector('.qa-answer-textarea');
+            if (firstBox) firstBox.focus();
+        }
+
         // Initialize dynamic companion chat greeting for Stage 1
         const container = document.getElementById('companion-messages');
         if (container) {
@@ -249,16 +334,16 @@
                 
                 let greeting = `哈罗！我是你的 AI 伴学助手。我们今天的任务是完成《${problemTitle}》。\n\n`;
                 if (state.preset && state.preset.algorithm_summary) {
-                    greeting += `我已为你准备好了这道题的标准算法步骤简述（见左侧「算法思路参考」）。\n\n为了帮你理清思路，你可以尝试思考并回答以下引导问题：\n`;
+                    greeting += `我已为你准备好了这道题的标准算法步骤简述（见左侧「算法思路参考」）。\n\n为了帮你理清思路，请认真思考并逐一在左侧文本框内回答以下引导问题：\n`;
                 } else {
-                    greeting += `为了帮你理清思路，你可以尝试思考并回答以下引导问题：\n`;
+                    greeting += `为了帮你理清思路，请认真思考并逐一在左侧文本框内回答以下引导问题：\n`;
                 }
                 
                 questions.forEach((q, i) => {
                     greeting += `${i + 1}️⃣ **${q}**\n`;
                 });
                 
-                greeting += `\n你可以结合左侧的算法流程和上面的引导提问，用自己的语言把解题步骤描述出来并提交。你也可以直接在下方回答这些问题，我会引导你完善成合格的思路描述哦！加油！✨`;
+                greeting += `\n你可以结合左侧的算法流程在下方的各个问答输入框中进行作答。如果你遇到了困难，随时可以在这里向我提问哦！加油！✨`;
                 
                 appendCompanionMessage(greeting, 'ai');
             }
@@ -266,12 +351,56 @@
     }
 
     function submitDescription() {
-        const textarea = document.getElementById('description-input');
-        const description = textarea ? textarea.value.trim() : '';
+        const textareas = document.querySelectorAll('.qa-answer-textarea');
+        const questions = (state.preset && state.preset.guided_questions && state.preset.guided_questions.length > 0)
+            ? state.preset.guided_questions
+            : [
+                "本题需要设计几个循环？循环的截止条件是什么？",
+                "需要使用哪些辅助数据结构或变量（如数组、小根堆、指针等）？",
+                "输入数据的读取和输出结果的打印如何对应到算法流程中？"
+            ];
 
-        if (description.length < 5) {
-            showNotification('请至少写5个字的思路描述', 'warning');
+        let answers = [];
+        let emptyIndex = -1;
+        let shortIndex = -1;
+
+        textareas.forEach((ta, idx) => {
+            const val = ta.value.trim();
+            answers.push({
+                question: questions[idx],
+                answer: val
+            });
+            if (!val) {
+                if (emptyIndex === -1) emptyIndex = idx;
+            } else if (val.length < 2) {
+                if (shortIndex === -1) shortIndex = idx;
+            }
+        });
+
+        if (emptyIndex !== -1) {
+            showNotification(`请填写问题 ${emptyIndex + 1} 的回答`, 'warning');
+            const targetTa = document.querySelector(`.qa-answer-textarea[data-question-index="${emptyIndex}"]`);
+            if (targetTa) targetTa.focus();
             return;
+        }
+
+        if (shortIndex !== -1) {
+            showNotification(`问题 ${shortIndex + 1} 的回答太短了，请至少输入2个字`, 'warning');
+            const targetTa = document.querySelector(`.qa-answer-textarea[data-question-index="${shortIndex}"]`);
+            if (targetTa) targetTa.focus();
+            return;
+        }
+
+        // Aggregate description
+        let aggregatedDescription = "";
+        answers.forEach((item, idx) => {
+            aggregatedDescription += `【问题 ${idx + 1}】：${item.question}\n【回答】：${item.answer}\n\n`;
+        });
+
+        // Set value of original (hidden) textarea so the rest of the code works
+        const origTextarea = document.getElementById('description-input');
+        if (origTextarea) {
+            origTextarea.value = aggregatedDescription;
         }
 
         // Show loading state on submit button to prevent "frozen" feeling
@@ -281,14 +410,14 @@
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="bi bi-hourglass-split rotating-icon"></i> 正在评判中，请稍候...';
         }
-        if (textarea) textarea.disabled = true;
+        textareas.forEach(ta => ta.disabled = true);
 
         setLoading(true);
         fetchJSON('/thinking/api/stage1/submit', {
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                description: description
+                description: aggregatedDescription
             })
         }).then(data => {
             if (data.success) {
@@ -300,18 +429,17 @@
                     setTimeout(() => initStage(2), 1500);
                 } else {
                     // Proactively post AI Companion guidance
-                    appendCompanionMessage(`我看到你的思路描述匹配度为 ${data.score}%，还差一点就达到 60% 的通过标准啦！\n导师点评说："${data.feedback}"\n\n别灰心，你可以根据点评修改你的思路。如果你修改有困难，可以尝试问我："我该如何写这道题的输入/循环/输出部分？"，或者直接点击左侧下方的【请求提示】按钮，我会给你更明确的思路大纲！`, 'ai');
+                    appendCompanionMessage(`我看到你的思路描述评判为 ${data.score}%，还差一点就达到通过标准啦！\n导师点评说："${data.feedback}"\n\n别灰心，你可以根据点评修改你的各个回答，然后重新提交。如果你修改有困难，可以随时在下方提问或者点击【请求提示】！`, 'ai');
                 }
             }
         }).catch(err => showError(err.message))
           .finally(() => {
             setLoading(false);
-            // Restore submit button and textarea
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalBtnHtml;
             }
-            if (textarea) textarea.disabled = false;
+            textareas.forEach(ta => ta.disabled = false);
           });
     }
 
@@ -329,8 +457,20 @@
     }
 
     function requestStage1Hint() {
-        const textarea = document.getElementById('description-input');
-        const description = textarea ? textarea.value.trim() : '';
+        const textareas = document.querySelectorAll('.qa-answer-textarea');
+        const questions = (state.preset && state.preset.guided_questions && state.preset.guided_questions.length > 0)
+            ? state.preset.guided_questions
+            : [
+                "本题需要设计几个循环？循环的截止条件是什么？",
+                "需要使用哪些辅助数据结构或变量（如数组、小根堆、指针等）？",
+                "输入数据的读取和输出结果的打印如何对应到算法流程中？"
+            ];
+
+        let aggregatedDescription = "";
+        textareas.forEach((ta, idx) => {
+            const val = ta.value.trim();
+            aggregatedDescription += `【问题 ${idx + 1}】：${questions[idx]}\n【回答】：${val}\n\n`;
+        });
 
         setLoading(true);
         // Route hint request through AI Companion chat
@@ -340,7 +480,7 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                description: description
+                description: aggregatedDescription
             })
         }).then(data => {
             if (data.success) {
@@ -646,6 +786,26 @@
 
         updateBlockPreview();
         showNotification('✨ 代码缩进层级已对齐', 'success');
+    }
+
+    function increaseIndent(btn) {
+        const block = btn.closest('.code-block');
+        if (!block) return;
+        const current = parseInt(block.dataset.indent || 0);
+        block.dataset.indent = current + 1;
+        block.style.marginLeft = (current + 1) * 24 + 'px';
+        updateBlockPreview();
+    }
+
+    function decreaseIndent(btn) {
+        const block = btn.closest('.code-block');
+        if (!block) return;
+        const current = parseInt(block.dataset.indent || 0);
+        if (current > 0) {
+            block.dataset.indent = current - 1;
+            block.style.marginLeft = (current - 1) * 24 + 'px';
+            updateBlockPreview();
+        }
     }
 
     function verifyBlocks() {
@@ -1182,12 +1342,23 @@
     }
 
     function showNotification(message, type) {
-        // Reuse Bootstrap toasts if available
-        const toastContainer = document.querySelector('.toast-container');
-        if (toastContainer && typeof bootstrap !== 'undefined') {
+        // Reuse or create Bootstrap toast container
+        let toastContainer = document.querySelector('.toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+            toastContainer.style.zIndex = '999999';
+            document.body.appendChild(toastContainer);
+        }
+
+        if (typeof bootstrap !== 'undefined') {
             const toastEl = document.createElement('div');
-            toastEl.className = `toast toast-${type}`;
+            // Choose color based on notification type
+            const bgClass = type === 'success' ? 'bg-success' : type === 'warning' ? 'bg-warning text-dark' : type === 'danger' ? 'bg-danger' : 'bg-info text-dark';
+            toastEl.className = `toast align-items-center text-white ${bgClass} border-0`;
             toastEl.setAttribute('role', 'alert');
+            toastEl.setAttribute('aria-live', 'assertive');
+            toastEl.setAttribute('aria-atomic', 'true');
             toastEl.innerHTML = `
                 <div class="toast-header">
                     <strong class="me-auto">${type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️'}</strong>
@@ -1206,6 +1377,144 @@
 
     function showError(message) {
         showNotification(message, 'danger');
+    }
+
+    // ============================================================
+    // Developer Debug Mode (localhost / 127.0.0.1 only)
+    // ============================================================
+    function initDevDebugConsole() {
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (!isLocal) return;
+
+        const panel = document.createElement('div');
+        panel.className = 'dev-debug-panel';
+        panel.innerHTML = `
+            <h4><i class="bi bi-braces-asterisk"></i> 开发者调试面板 (Dev Only)</h4>
+            <div style="font-size: 11px; margin-bottom: 8px; color: #94a3b8;">快速进行阶段流转及自动化测试</div>
+            <div class="dev-debug-btn-group">
+                <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(1)">跳到阶段一</button>
+                <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(2)">跳到阶段二</button>
+                <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(3)">跳到阶段三</button>
+                <button class="dev-debug-btn dev-debug-btn-success" onclick="window.ThinkingArena.debugJumpStage(4)">一键通关</button>
+            </div>
+            <div class="dev-debug-btn-group" style="margin-bottom: 0;">
+                <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS1()">秒杀阶段一 (Auto S1)</button>
+                <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS2()" style="margin-top: 6px;">秒杀阶段二 (Auto S2)</button>
+            </div>
+        `;
+        document.body.appendChild(panel);
+    }
+
+    function debugJumpStage(stage) {
+        if (!state.sessionId) {
+            showNotification('会话未初始化，无法跳转', 'warning');
+            return;
+        }
+        setLoading(true);
+        fetchJSON('/thinking/api/debug/jump_stage', {
+            method: 'POST',
+            body: JSON.stringify({
+                session_id: state.sessionId,
+                stage: stage
+            })
+        }).then(data => {
+            if (data.success) {
+                showNotification(`已切换到阶段 ${stage === 4 ? '已完成' : stage}`, 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification(data.error || '跳转失败', 'warning');
+            }
+        }).catch(err => showNotification('网络错误: ' + err.message, 'danger'))
+          .finally(() => setLoading(false));
+    }
+
+    function debugAutoS1() {
+        if (state.currentStage !== 1) {
+            showNotification('必须在阶段一才能使用此功能', 'warning');
+            return;
+        }
+        if (!state.preset || !state.preset.blocks) {
+            showNotification('无预设积木数据，无法自动填充', 'warning');
+            return;
+        }
+        const nonNoiseBlocks = state.preset.blocks.filter(b => !b.id.startsWith('noise-'));
+        if (nonNoiseBlocks.length === 0) {
+            showNotification('预设积木数据不完整', 'warning');
+            return;
+        }
+
+        const textareas = document.querySelectorAll('.qa-answer-textarea');
+        if (textareas.length === 0) return;
+
+        const stepTexts = nonNoiseBlocks.map(b => b.label || b.code);
+        const chunkSize = Math.ceil(stepTexts.length / textareas.length);
+        
+        textareas.forEach((ta, idx) => {
+            const start = idx * chunkSize;
+            const end = start + chunkSize;
+            const chunk = stepTexts.slice(start, end).join('。');
+            ta.value = `首先，我们通过以下核心步骤来实现这部分逻辑：${chunk}。`;
+        });
+
+        showNotification('已自动填入标准思路，正在提交评判...', 'info');
+        submitDescription();
+    }
+
+    function debugAutoS2() {
+        if (state.currentStage !== 2) {
+            showNotification('必须在阶段二才能使用此功能', 'warning');
+            return;
+        }
+        if (!state.preset || !state.preset.parts || !state.preset.blocks) {
+            showNotification('缺少积木编程预设数据', 'warning');
+            return;
+        }
+
+        let parts = state.preset.parts;
+        if (!parts || parts.length === 0) {
+            parts = [{
+                part_name: '核心程序',
+                part_header: 'int main() {\n',
+                part_footer: '    return 0;\n}',
+                blocks: state.preset.blocks || []
+            }];
+        }
+
+        const blockMap = {};
+        state.preset.blocks.forEach(b => {
+            blockMap[b.id] = b;
+        });
+
+        parts.forEach((p, idx) => {
+            const solutionEl = document.getElementById(`block-solution-${idx}`);
+            const poolEl = document.getElementById(`block-pool-${idx}`);
+            if (!solutionEl || !poolEl) return;
+
+            solutionEl.innerHTML = '';
+            poolEl.innerHTML = '';
+
+            const targetBlocks = (p.blocks || [])
+                .filter(b => !b.id.startsWith('noise-'))
+                .sort((a, b) => parseInt(a.id) - parseInt(b.id));
+
+            targetBlocks.forEach(b => {
+                const el = createBlockElement(b);
+                el.dataset.indent = b.indent || 0;
+                el.style.marginLeft = `${(b.indent || 0) * 24}px`;
+                solutionEl.appendChild(el);
+            });
+
+            const noiseBlocks = (p.blocks || [])
+                .filter(b => b.id.startsWith('noise-'));
+            noiseBlocks.forEach(b => {
+                const el = createBlockElement(b);
+                poolEl.appendChild(el);
+            });
+        });
+
+        updateBlockPreview();
+        showNotification('已自动拼装并对齐积木，正在提交验证...', 'info');
+        verifyBlocks();
     }
 
     function showCelebration() {
@@ -1307,6 +1616,10 @@
         submitCodeFix,
         increaseIndent,
         decreaseIndent,
+        // Debug API
+        debugJumpStage,
+        debugAutoS1,
+        debugAutoS2,
     };
 
     // Auto-init on DOM ready

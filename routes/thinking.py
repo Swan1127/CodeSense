@@ -69,6 +69,22 @@ def arena(assignment_id):
                 current_app.logger.error(f"为作业 {assignment_id} 重新触发异步预设任务失败: {e}")
                 preset_status = 'failed'
         else:
+            # 如果处于 'generating' 状态已超过 5 分钟，大概率是任务悬空，在此处自动重试触发
+            if preset.status == 'generating' and preset.updated_at:
+                delta = (dt.utcnow() - preset.updated_at).total_seconds()
+                if delta > 300:
+                    try:
+                        preset.status = 'generating'
+                        preset.updated_at = dt.utcnow()
+                        preset.error_message = None
+                        db.session.commit()
+                        
+                        from utils.async_tasks import add_generate_preset_task
+                        add_generate_preset_task(assignment_id)
+                        current_app.logger.warning(f"作业 {assignment_id} 预设处于 'generating' 状态已超 5 分钟，判断为悬空，已自动重载任务")
+                    except Exception as e:
+                        db.session.rollback()
+                        current_app.logger.error(f"为作业 {assignment_id} 自动重载悬空预设任务失败: {e}")
             preset_status = preset.status
     else:
         preset_status = preset.status
@@ -1075,3 +1091,60 @@ def _lazy_backfill_summary(preset: AssignmentThinkingPreset):
         preset.algorithm_summary = response.strip()
         db.session.commit()
         current_app.logger.info(f"已为作业 {preset.assignment_id} 惰性回填算法简述")
+
+
+@thinking.route('/api/debug/jump_stage', methods=['POST'])
+@login_required
+def debug_jump_stage():
+    """开发者调试模式：快速跳过或跳转阶段"""
+    # 限制仅在开发环境（本地运行或 Flask DEBUG 模式）允许访问
+    is_local = request.host.startswith('localhost') or request.host.startswith('127.0.0.1')
+    if not (current_app.debug or is_local):
+        return jsonify({'error': '非开发环境，拒绝访问该调试接口'}), 403
+
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        target_stage = data.get('stage')
+
+        ts = ThinkingSession.query.get(session_id)
+        if not ts or ts.student_id != current_user.student_id:
+            return jsonify({'error': '会话不存在'}), 403
+
+        if target_stage == 1:
+            ts.current_stage = 1
+            ts.stage1_score = None
+            ts.stage1_description = None
+            ts.stage2_block_order = None
+            ts.stage2_completed = False
+            ts.stage3_completed = False
+            ts.status = 'in_progress'
+        elif target_stage == 2:
+            ts.current_stage = 2
+            ts.stage1_score = 100
+            ts.stage1_description = "【开发者调试跳过阶段一】"
+            ts.stage2_block_order = None
+            ts.stage2_completed = False
+            ts.stage3_completed = False
+            ts.status = 'in_progress'
+        elif target_stage == 3:
+            ts.current_stage = 3
+            ts.stage1_score = 100
+            ts.stage1_description = "【开发者调试跳过阶段一】"
+            ts.stage2_completed = True
+            ts.stage3_completed = False
+            ts.status = 'in_progress'
+        elif target_stage == 4:  # Completed
+            ts.current_stage = 3
+            ts.stage1_score = 100
+            ts.stage1_description = "【开发者调试跳过阶段一】"
+            ts.stage2_completed = True
+            ts.stage3_completed = True
+            ts.status = 'completed'
+            ts.completed_at = dt.utcnow()
+
+        db.session.commit()
+        return jsonify({'success': True, 'current_stage': ts.current_stage, 'status': ts.status})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

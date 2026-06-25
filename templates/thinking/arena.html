@@ -45,7 +45,7 @@
     </div>
 
     <!-- ========== Problem Description ========== -->
-    <div class="problem-panel">
+    <div class="problem-panel no-select" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
         <h2><i class="bi bi-file-earmark-text"></i> {{ assignment.title }}</h2>
         <div class="problem-description" data-markdown="{{ assignment.description or '' }}">
             {{ assignment.description or '暂无描述' }}
@@ -86,11 +86,11 @@
             <div class="stage-section active" id="stage-1">
                 <div class="panel-header">
                     <h3><i class="bi bi-chat-left-text"></i> 阶段一：思路描述</h3>
-                    <span style="font-size: 12px; color: var(--arena-text-dim);">用自然语言描述你的解题思路</span>
+                    <span style="font-size: 12px; color: var(--arena-text-dim);">针对引导问题描述你的解题思路</span>
                 </div>
                 <div class="panel-body">
                     <!-- 算法思路参考面板 -->
-                    <div class="algorithm-summary-panel" id="algo-summary-wrapper" style="display: none;">
+                    <div class="algorithm-summary-panel no-select" id="algo-summary-wrapper" style="display: none;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
                         <div class="algorithm-summary-header" id="algo-summary-header">
                             <span><i class="bi bi-book-half"></i> 算法思路参考</span>
                             <i class="bi bi-chevron-up" id="algo-summary-icon"></i>
@@ -103,22 +103,24 @@
                     <!-- 引导语 -->
                     <div class="stage1-instruction" id="stage1-instruction" style="display: none;">
                         <i class="bi bi-chat-left-dots-fill" style="color: #2563eb;"></i>
-                        <span>现在请你根据上面的算法简述与以下思考问题，用自己的语言描述一下解题步骤吧！</span>
+                        <span>为了确保你真正理解这道题的算法逻辑，请认真思考并回答以下引导问题：</span>
                     </div>
 
                     <!-- 思考引导问题面板 -->
-                    <div class="guided-questions-panel" id="guided-questions-wrapper" style="display: none; background: #eff6ff; border-left: 4px solid #3b82f6; padding: 14px; border-radius: 8px; margin-bottom: 16px;">
+                    <div class="guided-questions-panel no-select" id="guided-questions-wrapper" style="display: none; background: #eff6ff; border-left: 4px solid #3b82f6; padding: 14px; border-radius: 8px; margin-bottom: 16px;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
                         <div style="font-weight: bold; color: #1e3a8a; font-size: 13.5px; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; user-select: none;">
                             <i class="bi bi-patch-question-fill" style="color: #3b82f6; font-size: 16px;"></i>
-                            <span>思路梳理提示：思考并尝试回答以下问题（不必在文本框中全部写出，但可以作为你理清逻辑的线索）：</span>
+                            <span>思路梳理提示：思考并尝试回答以下问题（请在下方对应的文本框中逐一作答）：</span>
                         </div>
                         <ul id="guided-questions-list" style="margin: 0; padding-left: 20px; color: #1e40af; font-size: 13px; line-height: 1.6;">
                             <!-- 由 JS 动态填充 -->
                         </ul>
                     </div>
 
-                    <textarea class="description-textarea" id="description-input"
-                              placeholder="请用你自己的话描述这道题的解题思路...&#10;&#10;例如：&#10;首先，我需要读取输入的数据...&#10;然后，我要创建一个循环来...&#10;最后，输出计算结果..."></textarea>
+                    <div id="stage-qa-inputs-wrapper" style="margin-bottom: 16px;"></div>
+
+                    <textarea class="description-textarea" id="description-input" style="display: none;"
+                              placeholder="请用你自己的话描述这道题的解题思路..."></textarea>
 
                     <div id="score-result" style="display: none;"></div>
                     <div id="stage1-hints"></div>
@@ -238,7 +240,7 @@
                     <h3><i class="bi bi-robot"></i> AI 伴学助手</h3>
                 </div>
                 <div class="chat-container">
-                    <div class="chat-messages" id="companion-messages">
+                    <div class="chat-messages no-select" id="companion-messages" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
                         <div class="chat-message">
                             <div class="chat-avatar teacher">🤖</div>
                             <div class="chat-bubble ai">我是你的 AI 伴学助手。在思路描述和积木编程阶段，如果你遇到问题，随时可以在下方问我，我会引导你思考！</div>
