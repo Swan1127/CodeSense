@@ -1031,7 +1031,23 @@ class AssignmentThinkingPreset(db.Model):
         if not self.quiz_steps:
             return []
         try:
-            return json.loads(self.quiz_steps)
+            steps = json.loads(self.quiz_steps)
+            if self.reference_code and steps:
+                import re
+                custom_types = re.findall(r'(?:struct|class)\s+\w+\s*\{(?:[^{}]|\{[^{}]*\})*?\};', self.reference_code, re.DOTALL)
+                if custom_types:
+                    types_str = "\n".join(custom_types) + "\n\n"
+                    first_step = steps[0]
+                    if 'part_header' in first_step:
+                        header = first_step.get('part_header') or ''
+                        # Avoid duplicate injection
+                        first_type_name = re.search(r'(?:struct|class)\s+(\w+)', custom_types[0])
+                        has_already = False
+                        if first_type_name:
+                            has_already = first_type_name.group(1) in header
+                        if not has_already:
+                            first_step['part_header'] = types_str + header
+            return steps
         except (json.JSONDecodeError, TypeError):
             return []
 
