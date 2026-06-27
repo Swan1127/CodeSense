@@ -99,6 +99,12 @@ def generate_assignment():
 
         for attempt in range(max_retries):
             try:
+                try:
+                    from services.llm_client import SharedLLMClient
+                    import time
+                    SharedLLMClient.last_user_request_time = time.time()
+                except Exception:
+                    pass
                 response = client.chat.completions.create(
                     model=current_model,
                     messages=[
@@ -676,10 +682,46 @@ def student_assignments():
         else:
             all_assignments = []
 
-        # 获取当前学生对所有作业的最高分与提交状态，用于大模型进度感知上下文
+        # 获取当前学生对所有作业的最高分与提交状态，同时自动触发缺失/旧版预设的后台生成
         assignment_max_scores = {}
         assignment_statuses = {}
+        from models import AssignmentThinkingPreset
+        from utils.async_tasks import add_generate_preset_task
         for a in all_assignments:
+            # 自动检查预设，若不存在或失败则优先触发生成
+            preset = AssignmentThinkingPreset.query.filter_by(assignment_id=a.id).first()
+            if not preset:
+                try:
+                    preset = AssignmentThinkingPreset(assignment_id=a.id, status='generating')
+                    db.session.add(preset)
+                    db.session.commit()
+                    add_generate_preset_task(a.id)
+                    current_app.logger.info(f"列表加载发现作业 {a.id} 无预设，已触发后台生成任务")
+                except Exception as ex:
+                    db.session.rollback()
+                    current_app.logger.error(f"列表加载自动触发作业 {a.id} 预设失败: {ex}")
+            elif preset.status == 'failed':
+                try:
+                    preset.status = 'generating'
+                    preset.error_message = None
+                    db.session.commit()
+                    add_generate_preset_task(a.id)
+                    current_app.logger.info(f"列表加载发现作业 {a.id} 预设失败，已重新触发后台生成任务")
+                except Exception as ex:
+                    db.session.rollback()
+                    current_app.logger.error(f"列表加载重新触发作业 {a.id} 预设失败: {ex}")
+            elif preset.status == 'ready' and (not hasattr(preset, 'quiz_steps') or not preset.quiz_steps or preset.quiz_steps.strip() == '' or preset.quiz_steps == '[]'):
+                # 检查预设是否是老版本（状态为 ready 但没有 quiz_steps），如果是，则自动重新生成
+                try:
+                    preset.status = 'generating'
+                    preset.error_message = None
+                    db.session.commit()
+                    add_generate_preset_task(a.id)
+                    current_app.logger.info(f"列表加载发现作业 {a.id} 预设缺少 quiz_steps 数据，已重置并重新触发生成任务")
+                except Exception as ex:
+                    db.session.rollback()
+                    current_app.logger.error(f"列表加载重置作业 {a.id} 预设状态失败: {ex}")
+
             sub = Submission.query.filter_by(
                 assignment_id=a.id,
                 student_id=student_id

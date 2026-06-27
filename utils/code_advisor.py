@@ -279,6 +279,12 @@ class CodeAdvisor:
             else:
                 # 如果没有专门的指导方法，使用通用API但用指导性提示词
                 if hasattr(self.llm, 'api_type') and self.llm.api_type == "zhipu":
+                    try:
+                        from services.llm_client import SharedLLMClient
+                        import time
+                        SharedLLMClient.last_user_request_time = time.time()
+                    except Exception:
+                        pass
                     response = self.llm.client.chat.completions.create(
                         model=self.llm.model_name,
                         messages=[
@@ -348,6 +354,12 @@ class CodeAdvisor:
             else:
                 # 使用通用API
                 if hasattr(self.llm, 'api_type') and self.llm.api_type == "zhipu":
+                    try:
+                        from services.llm_client import SharedLLMClient
+                        import time
+                        SharedLLMClient.last_user_request_time = time.time()
+                    except Exception:
+                        pass
                     api_response = self.llm.client.chat.completions.create(
                         model=self.llm.model_name,
                         messages=[

@@ -665,6 +665,17 @@
         updateQuizPreview();
     }
 
+    function getNormalizedIndent(indent) {
+        let val = parseInt(indent);
+        if (isNaN(val)) return 0;
+        // 如果 AI 返回的是空格数（如 4, 8, 12），则转换为缩进级别
+        if (val >= 4) {
+            val = Math.floor(val / 4);
+        }
+        // 限制最大缩进层级为 3 层，防止缩进过多偏离视口
+        return Math.min(Math.max(0, val), 3);
+    }
+
     function updateQuizPreview() {
         const quizSteps = state.preset.quiz_steps || [];
         if (quizSteps.length === 0) return;
@@ -673,7 +684,7 @@
         const parts = [];
         const partMap = {};
         quizSteps.forEach(step => {
-            const pName = step.part_name || '\u6838\u5fc3\u7a0b\u5e8f';
+            const pName = step.part_name || '核心程序';
             if (!partMap[pName]) {
                 const pData = {
                     part_name: pName,
@@ -692,7 +703,8 @@
             preview += part.part_header + '\n';
             part.steps.forEach(step => {
                 const answer = state.quizAnswers[step.step_id];
-                const indent = '    ' + '    '.repeat(step.indent || 0);
+                const level = getNormalizedIndent(step.indent);
+                const indent = '    ' + '    '.repeat(level);
                 if (answer) {
                     const codeLine = (answer === step.correct_answer && step.code_line) ? step.code_line : answer;
                     preview += indent + codeLine + '\n';
@@ -707,6 +719,14 @@
         if (previewEl) {
             previewEl.textContent = preview;
         }
+    }
+
+    function normalizeCppCode(code) {
+        if (!code) return '';
+        let s = code.replace(/\s+/g, ' ').trim();
+        let regex = /\s*([+*\/%=<>!&|^~?:,;\(\)\[\]\{\}-])\s*/g;
+        s = s.replace(regex, '$1');
+        return s;
     }
 
     function getQuizAnswers() {
@@ -726,47 +746,6 @@
             return;
         }
 
-        // Verify each step
-        let allCorrect = true;
-        let wrongCount = 0;
-        quizSteps.forEach(step => {
-            const studentAnswer = (answers[step.step_id] || '').trim();
-            const correctAnswer = (step.correct_answer || '').trim();
-            const card = document.getElementById(`quiz-step-${step.step_id}`);
-            const feedbackEl = document.getElementById(`quiz-feedback-${step.step_id}`);
-
-            const normalize = s => s.replace(/\s+/g, ' ').trim();
-            const isCorrect = normalize(studentAnswer) === normalize(correctAnswer);
-
-            if (card) {
-                card.classList.remove('quiz-step-correct', 'quiz-step-wrong');
-                card.classList.add(isCorrect ? 'quiz-step-correct' : 'quiz-step-wrong');
-            }
-            if (feedbackEl) {
-                if (isCorrect) {
-                    feedbackEl.innerHTML = '<i class="bi bi-check-circle-fill" style="color: #22c55e;"></i> \u6b63\u786e\uff01';
-                    feedbackEl.className = 'quiz-step-feedback feedback-correct';
-                } else {
-                    feedbackEl.innerHTML = `<i class="bi bi-x-circle-fill" style="color: #ef4444;"></i> ${escapeHtml(step.explanation || '\u8bf7\u518d\u60f3\u60f3')}`;
-                    feedbackEl.className = 'quiz-step-feedback feedback-wrong';
-                    allCorrect = false;
-                    wrongCount++;
-                }
-            }
-
-            if (!isCorrect) allCorrect = false;
-        });
-
-        if (!allCorrect) {
-            showNotification(`\u6709 ${wrongCount} \u9053\u9898\u7b54\u9519\u4e86\uff0c\u8bf7\u6839\u636e\u63d0\u793a\u4fee\u6539\u540e\u91cd\u65b0\u9a8c\u8bc1`, 'warning');
-            appendCompanionMessage(`\u63d0\u793a\uff1a\u6709 ${wrongCount} \u9053\u9898\u7684\u7b54\u6848\u4e0d\u6b63\u786e\u3002\u9519\u8bef\u7684\u9898\u76ee\u65c1\u8fb9\u5df2\u7ecf\u6807\u6ce8\u4e86\u63d0\u793a\uff0c\u8bf7\u4ed4\u7ec6\u67e5\u770b\u5e76\u4fee\u6539\u4f60\u7684\u7b54\u6848\u3002\u5982\u679c\u9700\u8981\u66f4\u591a\u5e2e\u52a9\uff0c\u968f\u65f6\u95ee\u6211\u54e6\uff01`, 'ai');
-            return;
-        }
-
-        // All correct! Save and proceed
-        showNotification('\ud83c\udf89 \u606d\u559c\uff01\u6240\u6709\u7b54\u6848\u6b63\u786e\uff0c\u4ee3\u7801\u6784\u5efa\u6210\u529f\uff01', 'success');
-        appendCompanionMessage('\u592a\u68d2\u4e86\uff01\u4f60\u7684\u6240\u6709\u7b54\u6848\u90fd\u5b8c\u5168\u6b63\u786e\uff01\u7a0b\u5e8f\u5df2\u7ecf\u6210\u529f\u6784\u5efa\uff01\ud83d\udc4d\n\n\u73b0\u5728\u7cfb\u7edf\u4f1a\u4e3a\u4f60\u4fdd\u5b58\u8fdb\u5ea6\u5e76\u8fdb\u5165\u4e0b\u4e00\u9636\u6bb5\u3002', 'ai');
-
         setLoading(true);
         fetchJSON('/thinking/api/stage2/verify', {
             method: 'POST',
@@ -776,11 +755,44 @@
                 quiz_answers: state.quizAnswers
             })
         }).then(data => {
-            if (data.success && data.passed) {
-                state.currentStage = 3;
-                setTimeout(() => {
-                    location.reload();
-                }, 2000);
+            if (data.success) {
+                const wrongSteps = data.wrong_steps || [];
+                const feedbackDetails = data.feedback_details || {};
+
+                // Update visual correctness state for all cards based on server response
+                quizSteps.forEach(step => {
+                    const card = document.getElementById(`quiz-step-${step.step_id}`);
+                    const feedbackEl = document.getElementById(`quiz-feedback-${step.step_id}`);
+                    const isWrong = wrongSteps.includes(String(step.step_id));
+
+                    if (card) {
+                        card.classList.remove('quiz-step-correct', 'quiz-step-wrong');
+                        card.classList.add(isWrong ? 'quiz-step-wrong' : 'quiz-step-correct');
+                    }
+
+                    if (feedbackEl) {
+                        if (!isWrong) {
+                            feedbackEl.innerHTML = '<i class="bi bi-check-circle-fill" style="color: #22c55e;"></i> \u6b63\u786e\uff01';
+                            feedbackEl.className = 'quiz-step-feedback feedback-correct';
+                        } else {
+                            const expl = feedbackDetails[step.step_id] || step.explanation || '\u8bf7\u518d\u60f3\u60f3';
+                            feedbackEl.innerHTML = `<i class="bi bi-x-circle-fill" style="color: #ef4444;"></i> ${escapeHtml(expl)}`;
+                            feedbackEl.className = 'quiz-step-feedback feedback-wrong';
+                        }
+                    }
+                });
+
+                if (data.passed) {
+                    showNotification('\ud83c\udf89 \u606d\u559c\uff01\u6240\u6709\u7b54\u6848\u6b63\u786e\uff0c\u4ee3\u7801\u6784\u5efa\u6210\u529f\uff01', 'success');
+                    appendCompanionMessage('\u592a\u68d2\u4e86\uff01\u4f60\u7684\u6240\u6709\u7b54\u6848\u90fd\u5b8c\u5168\u6b63\u786e\uff01\u7a0b\u5e8f\u5df2\u7ecf\u6210\u529f\u6784\u5efa\uff01\ud83d\udc4d\n\n\u73b0\u5728\u7cfb\u7edf\u4f1a\u4e3a\u4f60\u4fdd\u5b58\u8fdb\u5ea6\u5e76\u8fdb\u5165\u4e0b\u4e00\u9636\u6bb5\u3002', 'ai');
+                    state.currentStage = 3;
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                } else {
+                    showNotification(`\u6709 ${wrongSteps.length} \u9053\u6b65\u9aa4\u7684\u7b54\u6848\u4e0d\u6b63\u786e\uff0c\u8bf7\u6839\u636e\u63d0\u793a\u8fdb\u884c\u8c03\u657e`, 'warning');
+                    appendCompanionMessage(`\u63d0\u793a\uff1a\u6709 ${wrongSteps.length} \u9053\u9898\u7684\u7b54\u6848\u8fd8\u4e0d\u5b8c\u5168\u6b63\u786e\u3002\u6211\u5728\u9519\u9898\u65c1\u6807\u6ce8\u4e86\u5177\u4f53\u7684\u4fee\u6539\u5efa\u8bae\uff0c\u8f66\u5bf9\u7167\u4fee\u6539\u3002\u5982\u679c\u8fd8\u6709\u7591\u95ee\uff0c\u53ef\u4ee5\u968f\u65f6\u95ee\u6211\u54e6\uff01`, 'ai');
+                }
             } else {
                 showNotification(data.feedback || '\u9a8c\u8bc1\u672a\u901a\u8fc7', 'warning');
             }
@@ -852,8 +864,7 @@
         const stepsState = quizSteps.map(step => {
             const studentAns = (answers[step.step_id] || '').trim();
             const correctAns = (step.correct_answer || '').trim();
-            const normalize = s => s.replace(/\s+/g, ' ').trim();
-            const isCorrect = studentAns ? (normalize(studentAns) === normalize(correctAns)) : false;
+            const isCorrect = studentAns ? (normalizeCppCode(studentAns) === normalizeCppCode(correctAns)) : false;
             return {
                 step_id: step.step_id,
                 question: step.question,
@@ -1507,6 +1518,8 @@
     }
 
     let activeRecognition = null;
+    let activeMediaRecorder = null;
+    let audioChunks = [];
 
     /**
      * 麦克风测试弹窗 —— 用户每次登录后首次点击语音按钮时触发
@@ -1666,9 +1679,7 @@
 
         // If already recording, stop it
         if (btnEl.classList.contains('recording')) {
-            if (activeRecognition) {
-                activeRecognition.stop();
-            }
+            stopRecording(btnEl, inputEl);
             return;
         }
 
@@ -1676,11 +1687,45 @@
         if (activeRecognition) {
             try { activeRecognition.stop(); } catch(e) {}
         }
+        if (activeMediaRecorder && activeMediaRecorder.state !== 'inactive') {
+            try { activeMediaRecorder.stop(); } catch(e) {}
+        }
 
         const recognition = new SpeechRecognition();
         recognition.lang = 'zh-CN'; // Set language to Chinese
-        recognition.interimResults = false;
+        recognition.continuous = true; // 开启连续识别，支持长时间说话
+        recognition.interimResults = true; // 开启流式（临时）结果返回，实时显示打字效果
         recognition.maxAlternatives = 1;
+
+        // 保存开始录音时的初始内容，并在末尾留出适当的空格
+        let baseValue = inputEl.value;
+        if (baseValue && !baseValue.endsWith(' ') && !baseValue.endsWith('\n') && !baseValue.endsWith('，') && !baseValue.endsWith('。')) {
+            baseValue += ' ';
+        }
+        btnEl.dataset.baseValue = baseValue;
+        btnEl.setAttribute('data-using-fallback', 'false');
+
+        // 同时启动本地音频录制作为兼容备用方案
+        let fallbackRecorder = null;
+        let localChunks = [];
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            if (!btnEl.classList.contains('recording')) {
+                stream.getTracks().forEach(t => t.stop());
+                return;
+            }
+            fallbackRecorder = new MediaRecorder(stream);
+            fallbackRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) localChunks.push(e.data);
+            };
+            fallbackRecorder.onstop = () => {
+                stream.getTracks().forEach(t => t.stop());
+            };
+            fallbackRecorder.start();
+            activeMediaRecorder = fallbackRecorder;
+            audioChunks = localChunks;
+        }).catch(err => {
+            console.warn('无法启动备用本地录音设备:', err);
+        });
 
         recognition.onstart = () => {
             btnEl.classList.add('recording');
@@ -1692,27 +1737,48 @@
         };
 
         recognition.onresult = (event) => {
-            const result = event.results[0][0].transcript;
-            if (result) {
-                // Append result to existing text or insert it
-                const val = inputEl.value;
-                if (val) {
-                    inputEl.value = val.endsWith(' ') || val.endsWith('\n') ? val + result : val + ' ' + result;
-                } else {
-                    inputEl.value = result;
+            // 如果已经被标记为使用备用模式，忽略浏览器接口返回（可能为空或滞后错误）
+            if (btnEl.getAttribute('data-using-fallback') === 'true') return;
+
+            if (event && event.results) {
+                let finalTranscript = '';
+                let interimTranscript = '';
+                
+                for (let i = 0; i < event.results.length; ++i) {
+                    let text = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        text = text.trim();
+                        if (text) {
+                            // 自动添加标点：如果该分句末尾没有标点符号，自动补上逗号
+                            if (!/[，。？！,.?!]/.test(text.slice(-1))) {
+                                text += '，';
+                            }
+                            finalTranscript += text;
+                        }
+                    } else {
+                        interimTranscript += text;
+                    }
                 }
-                // Trigger input event to update previews or internal state
+                
+                inputEl.value = baseValue + finalTranscript + interimTranscript;
+                // 触发输入事件，以便同步更新字符长度和相关绑定状态
                 inputEl.dispatchEvent(new Event('input', { bubbles: true }));
             }
         };
 
         recognition.onerror = (event) => {
             console.error('语音识别错误: ', event.error);
+            if (event.error === 'network') {
+                // 如果是网络连接失败（常见于国内 Chrome 访问 Google 语音服务器被墙），自动切换为本地录制+后端转写模式
+                console.log('检测到浏览器语音接口网络连接失败，已自动无缝切换为本地兼容录音转写模式。');
+                btnEl.setAttribute('data-using-fallback', 'true');
+                showNotification('由于网络限制，已切换为本地备用录音模式，请继续说话并点击红色按钮结束...', 'info');
+                return; // 拦截错误，不执行默认停止逻辑
+            }
+
             let msg = '语音识别出错，请重试';
             if (event.error === 'not-allowed') {
                 msg = '麦克风访问权限被拒绝，或者您的连接不是安全的 HTTPS 连接（非 localhost 的 HTTP 访问将被浏览器禁用麦克风）。请检查浏览器地址栏左侧的权限设置。';
-            } else if (event.error === 'network') {
-                msg = '语音识别网络连接失败。如果您正在使用 Chrome 浏览器，可能是由于国内网络无法访问 Google 语音识别服务导致，强烈建议您改用 Edge 或 Safari 浏览器。';
             } else if (event.error === 'no-speech') {
                 msg = '未检测到说话声，请尝试靠近麦克风或调整输入音量后重试。';
             } else if (event.error === 'audio-capture') {
@@ -1721,25 +1787,151 @@
                 msg = `语音识别出错 (错误原因: ${event.error})，请重试。`;
             }
             showNotification(msg, 'warning');
-            stopRecording(btnEl);
+            stopRecording(btnEl, inputEl);
         };
 
         recognition.onend = () => {
-            stopRecording(btnEl);
+            // 如果已启用备用录音，并且按钮仍处于 recording 状态，说明用户仍在通过备用 MediaRecorder 录音，忽略 onend
+            if (btnEl.getAttribute('data-using-fallback') === 'true' && btnEl.classList.contains('recording')) {
+                return;
+            }
+            stopRecording(btnEl, inputEl);
         };
 
         activeRecognition = recognition;
-        recognition.start();
+        
+        try {
+            recognition.start();
+        } catch (err) {
+            console.error('启动语音识别失败:', err);
+            showNotification(`无法启动语音识别: ${err.message}`, 'warning');
+            stopRecording(btnEl, inputEl);
+        }
     }
 
-    function stopRecording(btnEl) {
+    function stopRecording(btnEl, inputEl) {
         btnEl.classList.remove('recording');
         const micIcon = btnEl.querySelector('i');
+        const originalIconClass = btnEl.classList.contains('arena-btn-voice-small') ? 'bi bi-mic-fill' : 'bi bi-mic';
         if (micIcon) {
             // Restore default icon
-            micIcon.className = btnEl.classList.contains('arena-btn-voice-small') ? 'bi bi-mic-fill' : 'bi bi-mic';
+            micIcon.className = originalIconClass;
         }
+
+        const isFallback = btnEl.getAttribute('data-using-fallback') === 'true';
+
+        // 停止浏览器 SpeechRecognition 实例
+        if (activeRecognition) {
+            try { activeRecognition.stop(); } catch(e) {}
+        }
+
+        // 停止本地备用 MediaRecorder
+        if (activeMediaRecorder && activeMediaRecorder.state !== 'inactive') {
+            const currentRecorder = activeMediaRecorder;
+            const currentChunks = audioChunks;
+
+            currentRecorder.onstop = () => {
+                if (currentRecorder.stream) {
+                    currentRecorder.stream.getTracks().forEach(t => t.stop());
+                }
+
+                if (isFallback) {
+                    if (currentChunks.length === 0) {
+                        showNotification('未录制到有效音频，请重试', 'warning');
+                        return;
+                    }
+
+                    // 打包音频 Blob 并上传到后端 transcribe 接口
+                    const audioBlob = new Blob(currentChunks, { type: 'audio/webm' });
+                    const formData = new FormData();
+                    formData.append('file', audioBlob, 'voice.webm');
+
+                    if (micIcon) {
+                        micIcon.className = 'bi bi-arrow-repeat rotating-icon';
+                    }
+                    btnEl.disabled = true;
+
+                    showNotification('正在通过大模型（Whisper/GLM-ASR）智能转换语音...', 'info');
+
+                    fetch('/thinking/api/stt/transcribe', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(res => {
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        return res.json();
+                    })
+                    .then(data => {
+                        if (data.success && data.text) {
+                            const baseValue = btnEl.dataset.baseValue || '';
+                            inputEl.value = baseValue + data.text;
+                            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        } else {
+                            showNotification('未识别出有效内容，请重试或大声一些', 'warning');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('音频转文字失败:', err);
+                        showNotification('音频云端转换失败，请手动输入或使用 Edge/Safari 浏览器', 'warning');
+                    })
+                    .finally(() => {
+                        btnEl.disabled = false;
+                        if (micIcon) {
+                            micIcon.className = originalIconClass;
+                        }
+                    });
+                }
+            };
+
+            try { currentRecorder.stop(); } catch(e) {}
+        }
+        
+        // 如果使用的是标准浏览器语音 API 流程，执行原始客户端润色整理
+        if (!isFallback && inputEl) {
+            let val = inputEl.value;
+            if (val) {
+                val = val.trim();
+                if (val.endsWith('，')) {
+                    val = val.slice(0, -1) + '。';
+                } else if (!/[。？！?!]$/.test(val)) {
+                    val = val + '。';
+                }
+                inputEl.value = val;
+                inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+
+                // 异步请求大模型进行智能纠错与润色（修正同音字，补充合适的分句中文标点）
+                const baseValue = btnEl.dataset.baseValue || '';
+                let spokenText = val.slice(baseValue.length).trim();
+                
+                if (spokenText) {
+                    if (micIcon) {
+                        micIcon.className = 'bi bi-arrow-repeat rotating-icon';
+                    }
+                    btnEl.disabled = true;
+
+                    fetchJSON('/thinking/api/stt/optimize', {
+                        method: 'POST',
+                        body: JSON.stringify({ text: spokenText })
+                    }).then(data => {
+                        if (data.success && data.optimized_text) {
+                            inputEl.value = baseValue + data.optimized_text;
+                            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                    }).catch(err => {
+                        console.error('语音优化失败:', err);
+                    }).finally(() => {
+                        btnEl.disabled = false;
+                        if (micIcon) {
+                            micIcon.className = originalIconClass;
+                        }
+                    });
+                }
+            }
+        }
+
         activeRecognition = null;
+        activeMediaRecorder = null;
+        audioChunks = [];
     }
 
     // ============================================================

@@ -4,6 +4,16 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/thinking.css') }}?v={{ now().timestamp() }}">
+<style>
+    /* 强力保证对话框中生成的图片能够正确缩放，防止浏览器缓存旧 CSS 导致溢出 */
+    .chat-bubble img, .hint-bubble img {
+        max-width: 100% !important;
+        height: auto !important;
+        border-radius: 6px;
+        margin-top: 8px;
+        display: block !important;
+    }
+</style>
 {% endblock %}
 
 {% block extra_head %}
@@ -76,10 +86,17 @@
     {% endif %}
 
     <!-- ========== Main Body (3 stages, only 1 visible at a time) ========== -->
+    <!-- Mobile Tabs Navigation (Visible only on mobile) -->
+    <div class="arena-mobile-tabs" id="arena-mobile-tabs" {% if preset_status != 'ready' %}style="display:none"{% endif %}>
+        <button class="mobile-tab-btn active" data-target="left-panel" id="mobile-tab-left-btn">思路描述</button>
+        <button class="mobile-tab-btn" data-target="stage2-preview-panel" id="mobile-tab-preview-btn" style="display: none;">代码预览</button>
+        <button class="mobile-tab-btn" data-target="right-panel" id="mobile-tab-right-btn">AI 伴学</button>
+    </div>
+
     <div class="arena-body" {% if preset_status != 'ready' %}style="display:none"{% endif %}>
 
         <!-- ===== Left Panel: Stage Content ===== -->
-        <div class="arena-panel" id="left-panel">
+        <div class="arena-panel mobile-active" id="left-panel">
             <!-- ===== STAGE 1: Natural Language Description ===== -->
             <div class="stage-section active" id="stage-1">
                 <div class="panel-header">
@@ -263,9 +280,13 @@
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/thinking.js') }}?v={{ now().timestamp() }}"></script>
 <script>
-    // Override stage switching to also toggle right panel
+    // Override stage switching to also toggle right panel + handle mobile tabs
     (function() {
-        const origInit = ThinkingArena.init;
+        // Tab buttons elements
+        const tabLeftBtn = document.getElementById('mobile-tab-left-btn');
+        const tabPreviewBtn = document.getElementById('mobile-tab-preview-btn');
+        const tabRightBtn = document.getElementById('mobile-tab-right-btn');
+
         const stageObserver = new MutationObserver(() => {
             const stage2 = document.getElementById('stage-2');
             const stage3 = document.getElementById('stage-3');
@@ -275,7 +296,10 @@
             
             const body = document.querySelector('.arena-body');
             
+            // Determine active stage and update layout
+            let currentStage = 1;
             if (stage3 && stage3.classList.contains('active')) {
+                currentStage = 3;
                 if (companionPanel) companionPanel.classList.remove('active');
                 if (studentPanel) studentPanel.classList.add('active');
                 if (previewPanel) previewPanel.classList.remove('active');
@@ -288,6 +312,7 @@
                 if (studentPanel) studentPanel.classList.remove('active');
                 
                 if (stage2 && stage2.classList.contains('active')) {
+                    currentStage = 2;
                     if (previewPanel) previewPanel.classList.add('active');
                     if (body) {
                         body.classList.add('stage-2-layout');
@@ -301,12 +326,92 @@
                     }
                 }
             }
+
+            // Update mobile tabs text and visibility
+            if (tabLeftBtn && tabRightBtn && tabPreviewBtn) {
+                if (currentStage === 1) {
+                    tabLeftBtn.textContent = '思路描述';
+                    tabPreviewBtn.style.display = 'none';
+                    tabRightBtn.textContent = 'AI 伴学';
+                } else if (currentStage === 2) {
+                    tabLeftBtn.textContent = '步骤答题';
+                    tabPreviewBtn.style.display = 'inline-block';
+                    tabRightBtn.textContent = 'AI 伴学';
+                } else if (currentStage === 3) {
+                    tabLeftBtn.textContent = '老师辅导';
+                    tabPreviewBtn.style.display = 'none';
+                    tabRightBtn.textContent = '教小明';
+                }
+            }
+
+            // Automatically switch back to left-panel tab on stage change to prevent weird state
+            resetMobileTabs();
         });
         
         // Observe only main stage sections to prevent infinite observer loop
         ['stage-1', 'stage-2', 'stage-3'].forEach(id => {
             const el = document.getElementById(id);
             if (el) stageObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+        });
+
+        // Initialize mobile tab click behavior
+        document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const targetId = this.getAttribute('data-target');
+                
+                // Toggle active button
+                document.querySelectorAll('.mobile-tab-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Toggle active panel
+                document.querySelectorAll('.arena-body > .arena-panel').forEach(p => {
+                    p.classList.remove('mobile-active');
+                });
+                const targetPanel = document.getElementById(targetId);
+                if (targetPanel) {
+                    targetPanel.classList.add('mobile-active');
+                }
+            });
+        });
+
+        function resetMobileTabs() {
+            // Only execute if mobile viewport is active
+            if (window.innerWidth <= 768) {
+                document.querySelectorAll('.mobile-tab-btn').forEach(b => b.classList.remove('active'));
+                if (tabLeftBtn) {
+                    tabLeftBtn.classList.add('active');
+                }
+                
+                document.querySelectorAll('.arena-body > .arena-panel').forEach(p => {
+                    p.classList.remove('mobile-active');
+                });
+                const leftPanel = document.getElementById('left-panel');
+                if (leftPanel) {
+                    leftPanel.classList.add('mobile-active');
+                }
+            }
+        }
+
+        // Run on resize to handle layout transitions properly
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 768) {
+                // Remove mobile classes when on desktop to restore original grid layout
+                document.querySelectorAll('.arena-body > .arena-panel').forEach(p => {
+                    p.classList.remove('mobile-active');
+                });
+            } else {
+                // Initialize active tab on mobile
+                const activeTab = document.querySelector('.mobile-tab-btn.active');
+                if (activeTab) {
+                    const targetId = activeTab.getAttribute('data-target');
+                    const targetPanel = document.getElementById(targetId);
+                    if (targetPanel) {
+                        targetPanel.classList.add('mobile-active');
+                    }
+                } else {
+                    resetMobileTabs();
+                }
+            }
         });
     })();
 

@@ -25,6 +25,7 @@ class SharedLLMClient:
         if llm_client.is_available():
             score, feedback = llm_client.evaluate_code(code, title)
     """
+    last_user_request_time = 0.0
     _instance: Optional['SharedLLMClient'] = None
     _initialized: bool = False
 
@@ -163,12 +164,36 @@ class SharedLLMClient:
             except Exception:
                 pass
 
+        import threading
+        import time
+
+        is_worker = threading.current_thread().name.startswith('worker-')
+        if not is_worker:
+            SharedLLMClient.last_user_request_time = time.time()
+        else:
+            # Worker thread yields to active user requests
+            while True:
+                elapsed = time.time() - SharedLLMClient.last_user_request_time
+                if elapsed < 10.0:
+                    print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
+                    time.sleep(2.0)
+                else:
+                    break
+
         import time
         max_retries = 5
         base_delay = 2  # 基础延迟秒数
         current_model = self._model_name
 
         for attempt in range(max_retries):
+            if is_worker:
+                while True:
+                    elapsed = time.time() - SharedLLMClient.last_user_request_time
+                    if elapsed < 10.0:
+                        print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
+                        time.sleep(2.0)
+                    else:
+                        break
             try:
                 content = None
                 if self._provider == LLMProvider.ZHIPU:
@@ -293,6 +318,21 @@ class SharedLLMClient:
             print("⚠️  LLM 客户端不可用，无法生成图像")
             return None
             
+        import threading
+        import time
+
+        is_worker = threading.current_thread().name.startswith('worker-')
+        if not is_worker:
+            SharedLLMClient.last_user_request_time = time.time()
+        else:
+            while True:
+                elapsed = time.time() - SharedLLMClient.last_user_request_time
+                if elapsed < 10.0:
+                    print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
+                    time.sleep(2.0)
+                else:
+                    break
+
         try:
             if self._provider == LLMProvider.ZHIPU:
                 # 智谱 AI CogView-4 图像生成（2026年最新版，¥0.06/次）
@@ -332,12 +372,35 @@ def safe_zhipu_post(url, headers, json_data, timeout=30, stream=False):
     import json
     import copy
     
+    import threading
+    import time
+    
+    is_worker = threading.current_thread().name.startswith('worker-')
+    if not is_worker:
+        SharedLLMClient.last_user_request_time = time.time()
+    else:
+        while True:
+            elapsed = time.time() - SharedLLMClient.last_user_request_time
+            if elapsed < 10.0:
+                print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
+                time.sleep(2.0)
+            else:
+                break
+
     data_copy = copy.deepcopy(json_data)
     current_model = data_copy.get("model", "glm-4.5-flash")
     max_retries = 5
     base_delay = 2
     
     for attempt in range(max_retries):
+        if is_worker:
+            while True:
+                elapsed = time.time() - SharedLLMClient.last_user_request_time
+                if elapsed < 10.0:
+                    print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
+                    time.sleep(2.0)
+                else:
+                    break
         try:
             data_copy["model"] = current_model
             # Disable thinking tokens for direct HTTP POST requests

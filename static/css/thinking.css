@@ -407,6 +407,14 @@
     word-wrap: break-word;
 }
 
+.chat-bubble img, .hint-bubble img {
+    max-width: 100% !important;
+    height: auto !important;
+    border-radius: 6px;
+    margin-top: 8px;
+    display: block;
+}
+
 .chat-bubble.ai {
     background: #f3f4f6;
     color: #1f2937;
@@ -1183,6 +1191,213 @@
     }
     100% {
         box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+}
+
+/* 默认隐藏移动端选项卡导航栏，只在手机端媒体查询中激活 */
+.arena-mobile-tabs {
+    display: none !important;
+}
+
+/* ============================================================
+   移动端响应式样式 (max-width: 768px)
+   ============================================================ */
+@media (max-width: 768px) {
+    /* 调整主页面间距 */
+    .arena-container {
+        padding: 0 8px !important;
+        margin-top: 8px !important;
+    }
+
+    /* 优化头部进度条和定时器 */
+    .arena-header {
+        padding: 10px 12px !important;
+        margin-bottom: 10px !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+    
+    .arena-title {
+        font-size: 14px !important;
+        gap: 4px !important;
+    }
+
+    .progress-steps {
+        margin: 0 !important;
+        max-width: 140px !important;
+        flex: 1 !important;
+    }
+
+    .step-label {
+        display: none !important; /* 移动端隐藏步骤文字，仅保留圆圈 */
+    }
+
+    .step-circle {
+        width: 22px !important;
+        height: 22px !important;
+        font-size: 11px !important;
+    }
+
+    .arena-timer {
+        font-size: 12px !important;
+        padding: 2px 8px !important;
+    }
+
+    /* 优化题目面板 */
+    .problem-panel {
+        padding: 12px 14px !important;
+        margin-bottom: 10px !important;
+    }
+
+    .problem-panel h2 {
+        font-size: 14px !important;
+    }
+
+    .problem-description {
+        font-size: 12px !important;
+        line-height: 1.5 !important;
+    }
+
+    /* 移动端标签页导航栏 */
+    .arena-mobile-tabs {
+        display: flex !important;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        overflow: hidden;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .mobile-tab-btn {
+        flex: 1;
+        padding: 10px 4px;
+        border: none;
+        background: none;
+        font-size: 13px;
+        font-weight: 500;
+        color: #4b5563;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-bottom: 3px solid transparent;
+        outline: none;
+    }
+
+    .mobile-tab-btn.active {
+        color: #2563eb;
+        border-bottom-color: #2563eb;
+        font-weight: 600;
+        background: rgba(37, 99, 235, 0.03);
+    }
+
+    /* 主布局转换为单栏 */
+    .arena-body {
+        display: block !important;
+        height: auto !important;
+        min-height: unset !important;
+    }
+
+    /* 隐藏所有面板，除了当前激活的 mobile-active 面板 */
+    .arena-body > .arena-panel {
+        display: none !important;
+        height: 520px !important; /* 给面板一个标准高度以便在滚动时交互 */
+        width: 100% !important;
+        margin-bottom: 0 !important;
+    }
+
+    .arena-body > .arena-panel.mobile-active {
+        display: flex !important;
+    }
+
+    /* 内部布局微调 */
+    .panel-header {
+        padding: 10px 14px !important;
+    }
+
+    .panel-header h3 {
+        font-size: 13px !important;
+    }
+
+    .panel-body {
+        padding: 10px 14px !important;
+    }
+
+    /* 阶段一输入区优化 */
+    .description-textarea {
+        min-height: 120px !important;
+        font-size: 13px !important;
+        padding: 8px 10px !important;
+    }
+
+    /* 阶段二题目列表优化 */
+    .quiz-steps-panel {
+        gap: 12px !important;
+    }
+
+    .quiz-step-card {
+        padding: 12px !important;
+        margin-bottom: 10px !important;
+        border-radius: 6px !important;
+    }
+
+    .quiz-question-text {
+        font-size: 13px !important;
+        margin-bottom: 8px !important;
+    }
+
+    .quiz-choice-option {
+        padding: 8px 10px !important;
+        font-size: 12px !important;
+        margin-bottom: 6px !important;
+    }
+
+    .quiz-fill-input {
+        padding: 6px 8px !important;
+        font-size: 12px !important;
+    }
+
+    .quiz-step-num {
+        width: 18px !important;
+        height: 18px !important;
+        font-size: 10px !important;
+    }
+
+    /* 阶段三对话框与输入框 */
+    .chat-messages {
+        padding: 8px !important;
+        gap: 8px !important;
+    }
+
+    .chat-bubble {
+        max-width: 85% !important;
+        padding: 8px 12px !important;
+        font-size: 12.5px !important;
+    }
+
+    .chat-input-area {
+        padding: 8px 10px !important;
+    }
+
+    .chat-input {
+        font-size: 12px !important;
+        padding: 6px 12px !important;
+    }
+
+    .action-bar {
+        padding: 10px 0 0 0 !important;
+        gap: 8px !important;
+    }
+
+    .arena-btn {
+        padding: 8px 12px !important;
+        font-size: 12px !important;
+    }
+
+    /* 底部通栏排版修复 */
+    #code-review-section {
+        margin-top: 10px !important;
+        padding: 0 6px !important;
     }
 }
 

@@ -145,6 +145,13 @@ class LLMEvaluator:
                 
         current_model = params.get("model", self.model_name)
         
+        try:
+            from services.llm_client import SharedLLMClient
+            import time
+            SharedLLMClient.last_user_request_time = time.time()
+        except Exception:
+            pass
+
         for attempt in range(max_retries):
             try:
                 params["model"] = current_model

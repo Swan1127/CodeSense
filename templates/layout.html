@@ -85,79 +85,87 @@
                 <span>CodeSense 酷森思</span>
             </a>
 
-            <ul class="navbar-nav">
-                {% if session.get('login') %}
-                <li><a href="{{ url_for('main.home') }}"
-                        class="navbar-link {% if request.path == url_for('main.home') or 'dashboard' in request.path or request.path == '/' %}active{% endif %}">首页</a>
-                </li>
+            <!-- Hamburger Button for Mobile -->
+            <button class="navbar-toggler-btn" id="navbar-menu-toggle" aria-label="Toggle navigation">
+                <i class="bi bi-list"></i>
+            </button>
 
-                {# Student Links #}
-                {% if session.get('usertype') == '学生' %}
-                <li><a href="{{ url_for('assignments.student_assignments') }}"
-                        class="navbar-link {% if 'student_assignments' in request.path %}active{% endif %}">我的作业</a>
-                </li>
-                <li><a href="{{ url_for('users.view_submissions') }}"
-                        class="navbar-link {% if 'submission' in request.path %}active{% endif %}">提交记录</a></li>
-                {% endif %}
+            <!-- Menu Wrapper that collapses on mobile -->
+            <div class="navbar-menu-wrapper" id="navbar-menu-wrapper">
+                <ul class="navbar-nav">
+                    {% if session.get('login') %}
+                    <li><a href="{{ url_for('main.home') }}"
+                            class="navbar-link {% if request.path == url_for('main.home') or 'dashboard' in request.path or request.path == '/' %}active{% endif %}">首页</a>
+                    </li>
 
-                {# Teacher Links #}
-                {% if session.get('usertype') == '教师' %}
-                <li><a href="{{ url_for('classes.class_list') }}"
-                        class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
-                <li><a href="{{ url_for('assignments.teacher_assignments') }}"
-                        class="navbar-link {% if 'assignments' in request.path or request.path == '/teacher' %}active{% endif %}">作业管理</a>
-                </li>
-                {% endif %}
-
-                {# Admin Links #}
-                {% if session.get('usertype') == '管理员' %}
-                <li><a href="{{ url_for('assignments.manage_assignments') }}"
-                        class="navbar-link {% if 'assignments' in request.path or request.path == '/assignments' %}active{% endif %}">作业管理</a>
-                </li>
-                <li><a href="{{ url_for('users.manage_users') }}"
-                        class="navbar-link {% if 'users' in request.path %}active{% endif %}">用户管理</a></li>
-                <li><a href="{{ url_for('classes.class_list') }}"
-                        class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
-                <li><a href="{{ url_for('api.api_docs') }}"
-                        class="navbar-link {% if 'api' in request.path %}active{% endif %}">API文档</a></li>
-                {% endif %}
-                {% else %}
-                <li><a href="{{ url_for('auth.login') }}"
-                        class="navbar-link {% if request.path == url_for('auth.login') %}active{% endif %}">登录</a></li>
-                <li><a href="{{ url_for('auth.register') }}"
-                        class="navbar-link {% if request.path == url_for('auth.register') %}active{% endif %}">注册</a>
-                </li>
-                {% endif %}
-            </ul>
-
-            <div class="navbar-user">
-                {% if session.get('login') %}
-                <span class="badge 
-                    {% if session.get('usertype') == '管理员' %}
-                        bg-danger
-                    {% elif session.get('usertype') == '教师' %}
-                        bg-success
-                    {% else %}
-                        bg-primary
+                    {# Student Links #}
+                    {% if session.get('usertype') == '学生' %}
+                    <li><a href="{{ url_for('assignments.student_assignments') }}"
+                            class="navbar-link {% if 'student_assignments' in request.path %}active{% endif %}">我的作业</a>
+                    </li>
+                    <li><a href="{{ url_for('users.view_submissions') }}"
+                            class="navbar-link {% if 'submission' in request.path %}active{% endif %}">提交记录</a></li>
                     {% endif %}
-                ">
-                    {{ session.get('usertype') }}
-                </span>
-                <a href="{% if session.get('usertype') == '管理员' %}{{ url_for('main.profile') }}{% else %}{{ url_for('main.profile') }}{% endif %}"
-                    class="navbar-link">
-                    <i class="bi bi-person-circle" style="margin-right: 8px;"></i>
-                    {{ session.get('full_name') or session.get('username') }}
-                </a>
-                <a href="{{ url_for('auth.logout') }}" class="navbar-link">
-                    <i class="bi bi-box-arrow-right" style="margin-right: 8px;"></i>
-                    退出
-                </a>
-                {% else %}
-                <a href="{{ url_for('auth.login') }}" class="navbar-button">
-                    <i class="bi bi-box-arrow-in-right" style="margin-right: 10px;"></i>
-                    登录系统
-                </a>
-                {% endif %}
+
+                    {# Teacher Links #}
+                    {% if session.get('usertype') == '教师' %}
+                    <li><a href="{{ url_for('classes.class_list') }}"
+                            class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
+                    <li><a href="{{ url_for('assignments.teacher_assignments') }}"
+                            class="navbar-link {% if 'assignments' in request.path or request.path == '/teacher' %}active{% endif %}">作业管理</a>
+                    </li>
+                    {% endif %}
+
+                    {# Admin Links #}
+                    {% if session.get('usertype') == '管理员' %}
+                    <li><a href="{{ url_for('assignments.manage_assignments') }}"
+                            class="navbar-link {% if 'assignments' in request.path or request.path == '/assignments' %}active{% endif %}">作业管理</a>
+                    </li>
+                    <li><a href="{{ url_for('users.manage_users') }}"
+                            class="navbar-link {% if 'users' in request.path %}active{% endif %}">用户管理</a></li>
+                    <li><a href="{{ url_for('classes.class_list') }}"
+                            class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
+                    <li><a href="{{ url_for('api.api_docs') }}"
+                            class="navbar-link {% if 'api' in request.path %}active{% endif %}">API文档</a></li>
+                    {% endif %}
+                    {% else %}
+                    <li><a href="{{ url_for('auth.login') }}"
+                            class="navbar-link {% if request.path == url_for('auth.login') %}active{% endif %}">登录</a></li>
+                    <li><a href="{{ url_for('auth.register') }}"
+                            class="navbar-link {% if request.path == url_for('auth.register') %}active{% endif %}">注册</a>
+                    </li>
+                    {% endif %}
+                </ul>
+
+                <div class="navbar-user">
+                    {% if session.get('login') %}
+                    <span class="badge 
+                        {% if session.get('usertype') == '管理员' %}
+                            bg-danger
+                        {% elif session.get('usertype') == '教师' %}
+                            bg-success
+                        {% else %}
+                            bg-primary
+                        {% endif %}
+                    ">
+                        {{ session.get('usertype') }}
+                    </span>
+                    <a href="{% if session.get('usertype') == '管理员' %}{{ url_for('main.profile') }}{% else %}{{ url_for('main.profile') }}{% endif %}"
+                        class="navbar-link">
+                        <i class="bi bi-person-circle" style="margin-right: 8px;"></i>
+                        {{ session.get('full_name') or session.get('username') }}
+                    </a>
+                    <a href="{{ url_for('auth.logout') }}" class="navbar-link">
+                        <i class="bi bi-box-arrow-right" style="margin-right: 8px;"></i>
+                        退出
+                    </a>
+                    {% else %}
+                    <a href="{{ url_for('auth.login') }}" class="navbar-button">
+                        <i class="bi bi-box-arrow-in-right" style="margin-right: 10px;"></i>
+                        登录系统
+                    </a>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </nav>
@@ -417,6 +425,35 @@
             // 暴露全局函数供各页面调用
             window.renderMarkdownElements = renderAllMarkdown;
         })();
+    </script>
+
+    <!-- 导航栏移动端折叠 JS -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var toggleBtn = document.getElementById('navbar-menu-toggle');
+            var menuWrapper = document.getElementById('navbar-menu-wrapper');
+            if (toggleBtn && menuWrapper) {
+                toggleBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    menuWrapper.classList.toggle('active');
+                    var icon = toggleBtn.querySelector('i');
+                    if (menuWrapper.classList.contains('active')) {
+                        icon.className = 'bi bi-x';
+                    } else {
+                        icon.className = 'bi bi-list';
+                    }
+                });
+
+                // 点击外部关闭菜单
+                document.addEventListener('click', function(e) {
+                    if (menuWrapper.classList.contains('active') && !menuWrapper.contains(e.target) && e.target !== toggleBtn) {
+                        menuWrapper.classList.remove('active');
+                        var icon = toggleBtn.querySelector('i');
+                        icon.className = 'bi bi-list';
+                    }
+                });
+            }
+        });
     </script>
 
     <!-- 页面特定的JavaScript -->

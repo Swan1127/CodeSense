@@ -381,15 +381,43 @@ def stage2_verify():
         passed = True
         wrong_steps = []
         
-        normalize = lambda s: ' '.join(str(s).split()).strip()
+        import re
+        def normalize(code):
+            if not code:
+                return ''
+            s = ' '.join(str(code).split()).strip()
+            regex = r'\s*([+*/%=<>!&|^~?:,;\(\)\[\]\{\}-])\s*'
+            s = re.sub(regex, r'\1', s)
+            return s
+
+        from utils.thinking_ai import check_quiz_equivalence
+
+        wrong_step_explanations = {}
 
         for step in quiz_steps:
             step_id = str(step.get('step_id', ''))
-            correct_val = normalize(step.get('correct_answer', ''))
-            student_val = normalize(quiz_answers.get(step_id, ''))
-            if student_val != correct_val:
+            correct_raw = step.get('correct_answer', '')
+            student_raw = quiz_answers.get(step_id, '')
+
+            # 1. 快速空格归一化字符比对
+            if normalize(student_raw) == normalize(correct_raw):
+                continue
+
+            # 2. 如果不匹配，使用大模型进行语义/逻辑等价性检查
+            equiv_check = check_quiz_equivalence(
+                student_answer=student_raw,
+                correct_answer=correct_raw,
+                question=step.get('question', ''),
+                reference_code=preset.reference_code or ''
+            )
+
+            if equiv_check.get('equivalent'):
+                # 语义等价，视为正确！
+                continue
+            else:
                 passed = False
                 wrong_steps.append(step_id)
+                wrong_step_explanations[step_id] = equiv_check.get('reason') or step.get('explanation', '请再想想')
 
         # 更新会话答题进度
         ts.stage2_block_order = json.dumps(quiz_answers, ensure_ascii=False)
@@ -400,7 +428,7 @@ def stage2_verify():
             _log_event(session_id, 2, 'stage_pass', 'system', '逐步构建程序验证通过')
         else:
             _log_event(session_id, 2, 'verify_fail', 'system', '验证未通过',
-                       metadata={'wrong_steps': wrong_steps})
+                       metadata={'wrong_steps': wrong_steps, 'wrong_step_explanations': wrong_step_explanations})
 
         db.session.commit()
 
@@ -411,6 +439,8 @@ def stage2_verify():
         return jsonify({
             'success': True,
             'passed': passed,
+            'wrong_steps': wrong_steps,
+            'feedback_details': wrong_step_explanations,
             'feedback': feedback
         })
 
@@ -512,6 +542,143 @@ def companion_chat():
         print(f"伴学对话失败: {e}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+@thinking.route('/api/stt/optimize', methods=['POST'])
+@login_required
+def stt_optimize():
+    """使用大模型智能优化语音识别文本（修正错别字并自动添加中文标点）"""
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
+        if not text:
+            return jsonify({'success': True, 'optimized_text': ''})
+            
+        from services.llm_client import SharedLLMClient
+        client = SharedLLMClient()
+        if not client.is_available():
+            return jsonify({'success': True, 'optimized_text': text})
+            
+        system_prompt = """你是一个语音转文字（STT）优化助手。
+你的任务是将一段可能有语音识别错误（如同音字错误、中英混杂标点缺失、没有断句）的粗糙口语文本，整理为通顺、排版正确、带合适中文标点的自然文本。
+
+优化规则：
+1. 【仅修正语音识别错误和错别字】：例如将 "大小安" 修正为 "大小n"，"目标之K" 修正为 "目标值k"，"在输入" 修正为 "再输入"，"最后输出目标时" 修正为 "最后输出目标值"。
+2. 【补充缺失的标点】：合理添加逗号（，）、句号（。）、顿号（、）、问号（？）等中文标点。
+3. 【保持原意和口语化语气】：绝对不要重写、扩写或改变用户的原意和口语叙述节奏。只做最小程度的纠错和标点补充。
+4. 【直接输出结果】：只返回优化后的文本，不要输出任何解释或多余的文字。"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"请优化以下语音识别文本：\n{text}"}
+        ]
+        
+        optimized_text = client.chat(messages, temperature=0.2, max_tokens=300)
+        if optimized_text:
+            optimized_text = optimized_text.strip()
+            # 移除可能的多余包围引号
+            if optimized_text.startswith('"') and optimized_text.endswith('"'):
+                optimized_text = optimized_text[1:-1]
+            elif optimized_text.startswith('“') and optimized_text.endswith('”'):
+                optimized_text = optimized_text[1:-1]
+            return jsonify({'success': True, 'optimized_text': optimized_text})
+        else:
+            return jsonify({'success': True, 'optimized_text': text})
+    except Exception as e:
+        print(f"STT优化失败: {e}")
+        return jsonify({'success': True, 'optimized_text': text})
+
+
+@thinking.route('/api/stt/transcribe', methods=['POST'])
+@login_required
+def stt_transcribe():
+    """接收上传的录音文件，调用大模型（Whisper 或 GLM-ASR-2512）识别为文本并自动润色纠错"""
+    temp_path = None
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '未包含音频文件'}), 400
+            
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '文件名为空'}), 400
+            
+        import uuid
+        import os
+        
+        # 确保临时上传目录存在
+        upload_dir = os.path.join(current_app.root_path, 'uploads', 'audio')
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # 保存为临时文件
+        ext = os.path.splitext(file.filename)[1] or '.webm'
+        filename = f"{uuid.uuid4()}{ext}"
+        temp_path = os.path.join(upload_dir, filename)
+        file.save(temp_path)
+        
+        from services.llm_client import SharedLLMClient
+        client = SharedLLMClient()
+        if not client.is_available():
+            return jsonify({'error': '大模型客户端不可用'}), 503
+            
+        provider = client.provider
+        raw_text = ""
+        
+        # 1. 音频转文字 (ASR)
+        with open(temp_path, 'rb') as audio_file:
+            if provider == 'openai':
+                response = client._client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file
+                )
+                raw_text = getattr(response, 'text', '') or getattr(response, 'transcript', '') or str(response)
+            elif provider == 'zhipu':
+                response = client._client.audio.transcriptions.create(
+                    model="glm-asr-2512",
+                    file=audio_file
+                )
+                raw_text = getattr(response, 'text', '') or getattr(response, 'transcript', '') or str(response)
+                
+        raw_text = raw_text.strip()
+        if not raw_text:
+            return jsonify({'success': True, 'text': ''})
+            
+        # 2. 润色纠错
+        system_prompt = """你是一个语音转文字（STT）优化助手。
+你的任务是将一段可能有语音识别错误（如同音字错误、中英混杂标点缺失、没有断句）的粗糙口语文本，整理为通顺、排版正确、带合适中文标点的自然文本。
+
+优化规则：
+1. 【仅修正语音识别错误和错别字】：例如将 "大小安" 修正为 "大小n"，"目标之K" 修正为 "目标值k"，"在输入" 修正为 "再输入"，"最后输出目标时" 修正为 "最后输出目标值"。
+2. 【补充缺失的标点】：合理添加逗号（，）、句号（。）、顿号（、）、问号（？）等中文标点。
+3. 【保持原意和口语化语气】：绝对不要重写、扩写或改变用户的原意和口语叙述节奏。只做最小程度 of 纠错和标点补充。
+4. 【直接输出结果】：只返回优化后的文本，不要输出任何解释或多余的文字。"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"请优化以下语音识别文本：\n{raw_text}"}
+        ]
+        
+        optimized_text = client.chat(messages, temperature=0.2, max_tokens=300)
+        if optimized_text:
+            optimized_text = optimized_text.strip()
+            if optimized_text.startswith('"') and optimized_text.endswith('"'):
+                optimized_text = optimized_text[1:-1]
+            elif optimized_text.startswith('“') and optimized_text.endswith('”'):
+                optimized_text = optimized_text[1:-1]
+            return jsonify({'success': True, 'text': optimized_text})
+            
+        return jsonify({'success': True, 'text': raw_text})
+        
+    except Exception as e:
+        print(f"音频识别失败: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        # 清理临时文件
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 
 # ============================================================
