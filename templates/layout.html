@@ -114,6 +114,8 @@
                     <li><a href="{{ url_for('assignments.teacher_assignments') }}"
                             class="navbar-link {% if 'assignments' in request.path or request.path == '/teacher' %}active{% endif %}">作业管理</a>
                     </li>
+                    <li><a href="{{ url_for('grades.grade_statistics') }}"
+                            class="navbar-link {% if request.path == url_for('grades.grade_statistics') %}active{% endif %}">成绩统计</a></li>
                     {% endif %}
 
                     {# Admin Links #}
@@ -125,6 +127,8 @@
                             class="navbar-link {% if 'users' in request.path %}active{% endif %}">用户管理</a></li>
                     <li><a href="{{ url_for('classes.class_list') }}"
                             class="navbar-link {% if 'classes' in request.path %}active{% endif %}">班级管理</a></li>
+                    <li><a href="{{ url_for('grades.grade_statistics') }}"
+                            class="navbar-link {% if request.path == url_for('grades.grade_statistics') %}active{% endif %}">成绩统计</a></li>
                     <li><a href="{{ url_for('api.api_docs') }}"
                             class="navbar-link {% if 'api' in request.path %}active{% endif %}">API文档</a></li>
                     {% endif %}
