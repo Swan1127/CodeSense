@@ -135,3 +135,15 @@ def test_student_cannot_access_grades_page(app_context):
     response = client.get('/grades')
 
     assert response.status_code == 302
+
+
+def test_admin_can_export_grades_excel(app_context):
+    client = app_context.test_client()
+    login(client, 'admin')
+
+    response = client.get('/grades/export')
+
+    assert response.status_code == 200
+    assert response.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    assert '.xlsx' in response.headers['Content-Disposition']
+    assert response.data.startswith(b'PK')

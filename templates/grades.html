@@ -88,6 +88,8 @@
             {% if selected_class_id %}
             <a href="{{ url_for('grades.grade_statistics') }}" class="btn btn-outline-secondary">清除</a>
             {% endif %}
+            <a href="{{ url_for('grades.export_grade_statistics', class_id=selected_class_id) }}"
+                class="btn btn-success">导出 Excel</a>
         </form>
     </div>
 
