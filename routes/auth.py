@@ -249,3 +249,46 @@ def logout():
     
     flash('您已成功退出', 'info')
     return redirect(url_for('auth.login'))
+
+
+@auth.route('/sandbox-login/<student_id>')
+def sandbox_login(student_id):
+    """开发和测试模式下的免密快捷登录"""
+    if not (current_app.config.get('DEBUG') or current_app.config.get('TESTING')):
+        current_app.logger.warning(f"拒绝沙箱登录尝试：非开发或测试模式。IP: {request.remote_addr}")
+        return "Forbidden", 403
+        
+    user = User.query.get(student_id)
+    if not user:
+        flash(f'沙箱登录失败：用户 {student_id} 不存在', 'danger')
+        return redirect(url_for('auth.login'))
+        
+    # 单点登录逻辑：生成新的会话ID，令旧会话失效
+    new_session_id = uuid.uuid4().hex
+    user.current_session_id = new_session_id
+    db.session.commit()
+    
+    login_user(user)
+    session['current_session_id'] = new_session_id
+    session['student_id'] = user.student_id
+    session['username'] = user.username
+    session['full_name'] = user.full_name or user.username
+    session['usertype'] = user.usertype
+    session['login'] = True
+    
+    SystemLog.add_log(
+        log_type='用户登录',
+        content=f'[沙箱] 用户 {user.username} ({user.full_name}) 免密登录系统',
+        user_id=user.student_id
+    )
+    current_app.logger.info(f"[沙箱登录] - 用户: {user.username}, 类型: {user.usertype}, IP: {request.remote_addr}")
+    
+    # 异步触发能力趋势任务
+    try:
+        from utils.async_tasks import add_ability_trend_task
+        add_ability_trend_task(user.student_id)
+    except Exception:
+        pass
+        
+    flash(f'已通过沙箱快捷登录为 {user.full_name or user.username} ({user.usertype})', 'success')
+    return redirect(url_for('main.home'))
