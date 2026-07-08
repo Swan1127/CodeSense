@@ -9,6 +9,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, session,
 from flask_login import login_required, current_user
 from sqlalchemy import func
 from models import db, User, Assignment, Submission, SystemLog, SystemConfig
+from services.teacher_analytics import build_teacher_dashboard_data
 from utils.auth import admin_required
 from utils.maturity_calculator import calculate_maturity_components
 
@@ -559,47 +560,18 @@ def teacher_dashboard():
         return redirect(url_for('main.home'))
 
     teacher = current_user
-    managed_classes = teacher.managed_classes.all()
-    class_ids = [c.id for c in managed_classes]
-    
-    student_count = User.query.filter(User.class_id.in_(class_ids)).count() if class_ids else 0
-    
-    # 获取这些班级学生的ID
-    student_ids = db.session.query(User.student_id).filter(User.class_id.in_(class_ids)).scalar_subquery()
-    
-    # 获取最近的提交
-    recent_submissions = Submission.query.filter(
-        Submission.student_id.in_(student_ids)
-    ).order_by(Submission.submitted_at.desc()).limit(10).all() if class_ids else []
-
-    # 统计数据
-    total_submissions = Submission.query.filter(Submission.student_id.in_(student_ids)).count() if class_ids else 0
-
-    # 准备图表数据: 1) 各班级学生人数 2) 各班级平均分
-    class_names = []
-    class_sizes = []
-    class_avg_scores = []
-    
-    for c in managed_classes:
-        class_names.append(c.name)
-        class_sizes.append(c.student_count)
-        # 获取班级平均分
-        stats = c.get_statistics()
-        class_avg_scores.append(round(stats.get('avg_score', 0), 1))
-        
-    chart_data = {
-        'labels': class_names,
-        'sizes': class_sizes,
-        'scores': class_avg_scores
-    }
+    dashboard = build_teacher_dashboard_data(teacher)
 
     return render_template('teacher_home.html',
                            teacher=teacher,
-                           managed_classes=managed_classes,
-                           student_count=student_count,
-                           total_submissions=total_submissions,
-                           recent_submissions=recent_submissions,
-                           chart_data=chart_data)
+                           dashboard=dashboard,
+                           managed_classes=dashboard['managed_classes'],
+                           student_count=dashboard['student_count'],
+                           total_submissions=dashboard['total_submissions'],
+                           recent_submissions=dashboard['recent_submissions'],
+                           class_cards=dashboard['class_cards'],
+                           attention=dashboard['attention'],
+                           chart_data=dashboard['chart_data'])
 
 @main.route('/profile')
 @login_required

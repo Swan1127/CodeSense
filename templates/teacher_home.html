@@ -49,6 +49,76 @@
     .list-group-item:hover {
         background-color: #f8f9fa;
     }
+
+    .attention-grid,
+    .class-card-grid {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .attention-grid {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .attention-card,
+    .class-learning-card {
+        border: 1px solid #e9ecef;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        background: #fff;
+    }
+
+    .attention-card strong {
+        display: block;
+        font-size: 1.75rem;
+        line-height: 1;
+    }
+
+    .attention-card span,
+    .class-learning-card .meta {
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+
+    .class-card-grid {
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+
+    .class-learning-card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+    }
+
+    .class-learning-card h5 {
+        margin: 0;
+        font-weight: 700;
+    }
+
+    .metric-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+        text-align: center;
+    }
+
+    .metric-row strong {
+        display: block;
+        color: var(--primary-color);
+        font-size: 1.15rem;
+    }
+
+    .metric-row span {
+        color: #6c757d;
+        font-size: 0.8rem;
+    }
+
+    .student-chip-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
 </style>
 {% endblock %}
 
@@ -87,22 +157,73 @@
 
     <!-- 统计数据 -->
     <div class="row">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="stat-card">
                 <h3>{{ managed_classes|length }}</h3>
                 <p>管理的班级</p>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="stat-card">
                 <h3>{{ student_count }}</h3>
                 <p>学生总数</p>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="stat-card">
                 <h3>{{ total_submissions }}</h3>
                 <p>学生提交总数</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h3>{{ attention.low_score_count + attention.no_submission_count + attention.inactive_count }}</h3>
+                <p>需要关注项</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-section">
+        <div class="section-title">
+            <span><i class="bi bi-exclamation-triangle text-warning me-2"></i>今日需要关注</span>
+            <span class="badge bg-light text-dark">名单未注册 {{ attention.unregistered_roster_count }} 人</span>
+        </div>
+        <div class="attention-grid">
+            <div class="attention-card">
+                <strong class="text-danger">{{ attention.no_submission_count }}</strong>
+                <span>还没有提交过作业</span>
+                {% if attention.no_submission_rows %}
+                <div class="student-chip-list">
+                    {% for row in attention.no_submission_rows[:4] %}
+                    <a href="{{ url_for('users.view_student_details', student_id=row.student.student_id) }}"
+                        class="badge bg-light text-dark text-decoration-none">
+                        {{ row.student.full_name or row.student.username }}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="attention-card">
+                <strong class="text-warning">{{ attention.low_score_count }}</strong>
+                <span>平均分或最近得分低于 3 分</span>
+                {% if attention.low_score_rows %}
+                <div class="student-chip-list">
+                    {% for row in attention.low_score_rows[:4] %}
+                    <a href="{{ url_for('users.view_student_details', student_id=row.student.student_id) }}"
+                        class="badge bg-light text-dark text-decoration-none">
+                        {{ row.student.full_name or row.student.username }}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="attention-card">
+                <strong class="text-secondary">{{ attention.inactive_count }}</strong>
+                <span>7 天内没有新的提交</span>
+            </div>
+            <div class="attention-card">
+                <strong class="text-primary">{{ attention.unregistered_roster_count }}</strong>
+                <span>导入名单后尚未注册</span>
             </div>
         </div>
     </div>
@@ -133,23 +254,55 @@
 
     <div class="row">
         <!-- 我管理的班级 -->
-        <div class="col-md-6">
+        <div class="col-md-7">
             <div class="dashboard-section">
                 <div class="section-title">
-                    <span><i class="bi bi-collection-fill text-primary me-2"></i>我管理的班级</span>
+                    <span><i class="bi bi-collection-fill text-primary me-2"></i>班级学习概况</span>
                     <a href="{{ url_for('classes.class_list') }}" class="btn btn-sm btn-outline-primary">查看全部</a>
                 </div>
-                {% if managed_classes %}
-                <ul class="list-group list-group-flush">
-                    {% for class in managed_classes %}
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <a href="{{ url_for('classes.class_detail', class_id=class.id) }}">
-                            <strong>{{ class.name }}</strong>
-                        </a>
-                        <span class="badge bg-primary rounded-pill">{{ class.students.count() }} 学生</span>
-                    </li>
+                {% if class_cards %}
+                <div class="class-card-grid">
+                    {% for card in class_cards %}
+                    <a href="{{ url_for('classes.class_detail', class_id=card['class'].id) }}"
+                        class="class-learning-card text-decoration-none text-dark">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h5>{{ card['class'].name }}</h5>
+                                <div class="meta">{{ card['class'].major or '计算机相关专业' }} · {{ card.student_count }} 人</div>
+                            </div>
+                            <span class="badge {% if card.risk_count > 0 %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                                关注 {{ card.risk_count }}
+                            </span>
+                        </div>
+                        <div>
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span>最近作业完成率</span>
+                                <span>{{ card.latest_completed }}/{{ card.latest_total }} · {{ card.completion_rate }}%</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar" style="width: {{ card.completion_rate }}%"></div>
+                            </div>
+                            <div class="meta mt-1">
+                                {{ card.latest_assignment.title if card.latest_assignment else '暂无已分配作业' }}
+                            </div>
+                        </div>
+                        <div class="metric-row">
+                            <div>
+                                <strong>{{ card.active_rate }}%</strong>
+                                <span>7天活跃</span>
+                            </div>
+                            <div>
+                                <strong>{{ card.low_score_count }}</strong>
+                                <span>低分</span>
+                            </div>
+                            <div>
+                                <strong>{{ card.inactive_count }}</strong>
+                                <span>不活跃</span>
+                            </div>
+                        </div>
+                    </a>
                     {% endfor %}
-                </ul>
+                </div>
                 {% else %}
                 <p class="text-center text-muted">您当前未被指派任何班级。</p>
                 {% endif %}
@@ -157,7 +310,7 @@
         </div>
 
         <!-- 最近提交记录 -->
-        <div class="col-md-6">
+        <div class="col-md-5">
             <div class="dashboard-section">
                 <div class="section-title">
                     <span><i class="bi bi-clock-history text-primary me-2"></i>学生最近提交</span>

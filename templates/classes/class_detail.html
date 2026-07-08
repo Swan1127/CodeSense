@@ -84,6 +84,37 @@
         justify-content: center;
         font-weight: 600;
     }
+
+    .learning-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .learning-pill {
+        border: 1px solid #e9ecef;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        background: #fff;
+    }
+
+    .learning-pill strong {
+        display: block;
+        font-size: 1.35rem;
+        color: var(--primary-color);
+    }
+
+    .learning-pill span {
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+
+    .risk-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
 </style>
 {% endblock %}
 
@@ -245,7 +276,33 @@
 
     <!-- 学生列表 -->
     <div class="student-table">
-        <h4>学生列表</h4>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h4 class="mb-1">学生学情概览</h4>
+                <p class="text-muted mb-0">按平均分排序，优先看状态和风险标签。</p>
+            </div>
+            <a href="{{ url_for('assignments.teacher_assignments') }}"
+                class="btn btn-sm btn-outline-primary">
+                查看作业管理
+            </a>
+        </div>
+
+        {% if learning_rows %}
+        <div class="learning-summary">
+            <div class="learning-pill">
+                <strong>{{ learning_rows|selectattr('status', 'equalto', '优秀')|list|length }}</strong>
+                <span>表现优秀</span>
+            </div>
+            <div class="learning-pill">
+                <strong>{{ learning_rows|selectattr('status', 'equalto', '需关注')|list|length }}</strong>
+                <span>需要关注</span>
+            </div>
+            <div class="learning-pill">
+                <strong>{{ learning_rows|selectattr('status', 'equalto', '未开始')|list|length }}</strong>
+                <span>还未开始</span>
+            </div>
+        </div>
+        {% endif %}
 
         {% if students.items %}
         <div class="table-responsive">
@@ -254,14 +311,18 @@
                     <tr>
                         <th>学生</th>
                         <th>学号</th>
+                        <th>状态</th>
                         <th>平均分</th>
+                        <th>最近得分</th>
                         <th>提交次数</th>
                         <th>最近提交</th>
+                        <th>风险标签</th>
                         <th>操作</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for student in students.items %}
+                    {% for row in learning_rows %}
+                    {% set student = row.student %}
                     <tr>
                         <td>
                             <div class="d-flex align-items-center">
@@ -275,12 +336,39 @@
                         </td>
                         <td>{{ student.student_id }}</td>
                         <td>
+                            <span
+                                class="badge {% if row.status == '优秀' %}bg-success{% elif row.status == '需关注' %}bg-warning text-dark{% elif row.status == '未开始' %}bg-secondary{% else %}bg-primary{% endif %}">
+                                {{ row.status }}
+                            </span>
+                        </td>
+                        <td>
                             <span class="badge badge-score-{{ student.user_ascore|round|int }}">
                                 {{ "%.1f"|format(student.user_ascore) }}
                             </span>
                         </td>
-                        <td>{{ student.submit_count }}</td>
-                        <td>{{ student.created_at.strftime('%Y-%m-%d') if student.created_at else '-' }}</td>
+                        <td>
+                            {% if row.latest_score is not none %}
+                            <span
+                                class="badge {% if row.latest_score >= 4 %}bg-success{% elif row.latest_score >= 3 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                                {{ row.latest_score }}
+                            </span>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>{{ row.submit_count }}</td>
+                        <td>{{ row.latest_submitted_at.strftime('%Y-%m-%d %H:%M') if row.latest_submitted_at else '-' }}</td>
+                        <td>
+                            <div class="risk-tags">
+                                {% if row.risk_tags %}
+                                {% for tag in row.risk_tags %}
+                                <span class="badge bg-light text-dark">{{ tag }}</span>
+                                {% endfor %}
+                                {% else %}
+                                <span class="text-muted">无</span>
+                                {% endif %}
+                            </div>
+                        </td>
                         <td>
                             <a href="{{ url_for('users.view_student_details', student_id=student.student_id) }}"
                                 class="btn btn-sm btn-outline-primary">

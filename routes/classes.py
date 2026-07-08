@@ -6,6 +6,7 @@ from flask_login import login_required, current_user
 from sqlalchemy import func, desc
 import pandas as pd
 from models import db, Class, StudentRoster, User, Assignment, Submission
+from services.teacher_analytics import build_class_learning_rows
 from utils.auth import admin_required, admin_or_teacher_required
 
 classes = Blueprint('classes', __name__, url_prefix='/classes')
@@ -238,6 +239,7 @@ def class_detail(class_id):
     students = cls.students.filter_by(usertype='学生')\
                           .order_by(desc(User.user_ascore))\
                           .paginate(page=page, per_page=per_page, error_out=False)
+    learning_rows = build_class_learning_rows(cls, students=students.items)
     
     # 获取作业进度 (支持分页)
     assign_page = request.args.get('assign_page', 1, type=int)
@@ -247,6 +249,7 @@ def class_detail(class_id):
                          cls=cls,
                          stats=stats,
                          students=students,
+                         learning_rows=learning_rows,
                          assignment_progress=assignment_progress['items'],
                          assignment_pagination=assignment_progress['pagination'],
                          roster_total=roster_total,
