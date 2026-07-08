@@ -25,10 +25,11 @@
 - [x] 第二阶段目标测试通过：`tests/test_teacher_analytics.py`。
 - [x] 第二阶段语法编译通过：`py_compile`。
 - [x] 第二阶段完整测试通过：`24 passed`。
+- [x] 第二阶段本地 Git 提交完成：`feat: add teacher learning visuals`。
 
 ## 进行中
 
-- [ ] 第二阶段提交并推送 GitHub。
+- [ ] 第二阶段推送 GitHub。
 
 ## 未完成
 
