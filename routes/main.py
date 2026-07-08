@@ -561,6 +561,9 @@ def teacher_dashboard():
 
     teacher = current_user
     dashboard = build_teacher_dashboard_data(teacher)
+    
+    from models import TeacherAISuggestion
+    ai_suggestions = {sug.class_id: sug for sug in TeacherAISuggestion.query.filter_by(teacher_id=teacher.student_id).all()}
 
     return render_template('teacher_home.html',
                            teacher=teacher,
@@ -572,7 +575,97 @@ def teacher_dashboard():
                            submission_trend=dashboard['submission_trend'],
                            class_cards=dashboard['class_cards'],
                            attention=dashboard['attention'],
-                           chart_data=dashboard['chart_data'])
+                           chart_data=dashboard['chart_data'],
+                           ai_suggestions=ai_suggestions)
+
+
+@main.route('/teacher/ai_suggestions')
+@login_required
+def teacher_ai_suggestions():
+    """AI 教学个性化建议落地页"""
+    if not current_user.is_teacher:
+        flash('您没有权限访问此页面', 'danger')
+        return redirect(url_for('main.home'))
+
+    teacher = current_user
+    managed_classes = teacher.managed_classes.all()
+    
+    # 获取每个班级的AI建议
+    from models import TeacherAISuggestion
+    class_suggestions = []
+    for cls in managed_classes:
+        sug = TeacherAISuggestion.query.filter_by(class_id=cls.id).first()
+        # 如果不存在建议，或者建议为pending，我们可以自动触发首次生成
+        if not sug:
+            sug = TeacherAISuggestion.get_or_create(class_id=cls.id, teacher_id=teacher.student_id)
+            # 异步触发生成
+            from services.teacher_ai_advisor import generate_class_suggestions_async
+            from flask import current_app
+            generate_class_suggestions_async(cls.id, teacher.student_id, current_app._get_current_object())
+            
+        class_suggestions.append({
+            'class': cls,
+            'suggestion': sug,
+            'details': sug.get_suggestion_dict()
+        })
+        
+    return render_template('teacher_ai_suggestions.html',
+                           teacher=teacher,
+                           class_suggestions=class_suggestions)
+
+
+@main.route('/api/teacher/generate_suggestions', methods=['POST'])
+@login_required
+def api_generate_teacher_suggestions():
+    """API: 触发或刷新某班级的 AI 建议"""
+    if not current_user.is_teacher:
+        return jsonify({'success': False, 'message': '仅教师可执行此操作'}), 403
+
+    class_id = request.json.get('class_id') if request.is_json else request.form.get('class_id')
+    if not class_id:
+        return jsonify({'success': False, 'message': '参数缺失 class_id'}), 400
+
+    from models import Class
+    cls = Class.query.get_or_404(class_id)
+    if cls.teacher_id != current_user.student_id:
+        return jsonify({'success': False, 'message': '您无权管理此班级'}), 403
+
+    # 设为 pending 并异步生成
+    from models import TeacherAISuggestion
+    from services.teacher_ai_advisor import generate_class_suggestions_async
+    from flask import current_app
+    
+    sug = TeacherAISuggestion.get_or_create(class_id=cls.id, teacher_id=current_user.student_id)
+    sug.status = 'pending'
+    db.session.commit()
+    
+    generate_class_suggestions_async(cls.id, current_user.student_id, current_app._get_current_object())
+    
+    return jsonify({'success': True, 'message': 'AI 建议生成任务已启动'})
+
+
+@main.route('/api/teacher/suggestion_status/<int:class_id>')
+@login_required
+def api_teacher_suggestion_status(class_id):
+    """API: 获取某班级 AI 建议的生成状态与内容"""
+    if not current_user.is_teacher:
+        return jsonify({'success': False, 'message': '仅教师可访问此数据'}), 403
+
+    from models import Class, TeacherAISuggestion
+    cls = Class.query.get_or_404(class_id)
+    if cls.teacher_id != current_user.student_id:
+        return jsonify({'success': False, 'message': '您无权管理此班级'}), 403
+
+    sug = TeacherAISuggestion.query.filter_by(class_id=class_id).first()
+    if not sug:
+        return jsonify({'status': 'not_found'})
+
+    return jsonify({
+        'status': sug.status,
+        'last_updated': sug.last_updated.strftime('%Y-%m-%d %H:%M:%S') if sug.last_updated else None,
+        'suggestion_markdown': sug.suggestion_markdown,
+        'suggestion_json': sug.get_suggestion_dict()
+    })
 
 @main.route('/profile')
 @login_required

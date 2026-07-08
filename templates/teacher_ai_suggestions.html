@@ -1,0 +1,504 @@
+{% extends "layout.html" %}
+
+{% block title %}AI 教学个性化建议 - CodeSense{% endblock %}
+
+{% block extra_css %}
+<style>
+    .ai-card {
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        border-radius: 1rem;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .ai-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+
+    .gradient-header {
+        background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+        color: white;
+        border-radius: 1rem 1rem 0 0;
+        padding: 2rem;
+    }
+
+    .nav-pills .nav-link {
+        border-radius: 0.5rem;
+        color: #4b5563;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+        background-color: #f3f4f6;
+        margin-right: 0.5rem;
+    }
+
+    .nav-pills .nav-link.active {
+        background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+        color: white;
+        box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+    }
+
+    .nav-pills .nav-link:hover:not(.active) {
+        background-color: #e5e7eb;
+        color: #1f2937;
+    }
+
+    .block-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .point-card {
+        border-left: 4px solid #3b82f6;
+        background-color: #f8fafc;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .student-card {
+        border-left: 4px solid #ef4444;
+        background-color: #fdf2f2;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .assignment-card {
+        border-left: 4px solid #10b981;
+        background-color: #f0fdf4;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .spin {
+        animation: spin 1.5s linear infinite;
+        display: inline-block;
+    }
+
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .markdown-content h2 {
+        font-size: 1.4rem;
+        font-weight: 700;
+        margin-top: 1.5rem;
+        margin-bottom: 1rem;
+        color: #1e293b;
+        border-bottom: 2px solid #f1f5f9;
+        padding-bottom: 0.5rem;
+    }
+
+    .markdown-content h3 {
+        font-size: 1.15rem;
+        font-weight: 600;
+        margin-top: 1.25rem;
+        margin-bottom: 0.75rem;
+        color: #334155;
+    }
+
+    .markdown-content ul, .markdown-content ol {
+        padding-left: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .markdown-content li {
+        margin-bottom: 0.5rem;
+        color: #475569;
+    }
+
+    .markdown-content p {
+        color: #475569;
+        line-height: 1.6;
+        margin-bottom: 1rem;
+    }
+
+    .markdown-content blockquote {
+        border-left: 4px solid #e2e8f0;
+        padding-left: 1rem;
+        color: #64748b;
+        font-style: italic;
+        margin: 1rem 0;
+    }
+
+    /* Soft alert overrides inside Markdown */
+    .markdown-content blockquote p {
+        margin-bottom: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- 面包屑和标题 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="{{ url_for('main.teacher_dashboard') }}" class="text-decoration-none">仪表盘</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">AI 个性化教学建议</li>
+                </ol>
+            </nav>
+            <h1 class="h2 fw-bold text-slate-800">
+                <i class="bi bi-cpu text-primary me-2"></i>AI 教学个性化建议落地页
+            </h1>
+        </div>
+        <a href="{{ url_for('main.teacher_dashboard') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>返回仪表盘
+        </a>
+    </div>
+
+    {% if not class_suggestions %}
+    <div class="alert alert-info shadow-sm rounded-3 p-4">
+        <div class="d-flex align-items-center">
+            <i class="bi bi-info-circle-fill text-info fs-3 me-3"></i>
+            <div>
+                <h5 class="fw-bold mb-1">暂无管理的班级</h5>
+                <p class="mb-0 text-muted">您当前没有绑定任何班级。请先返回主页绑定一个班级后，再来查看 AI 建议。</p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="row">
+        <!-- 班级选项卡导航 -->
+        <div class="col-12 mb-4">
+            <div class="nav nav-pills" id="classTab" role="tablist">
+                {% for item in class_suggestions %}
+                <button class="nav-link {% if loop.first %}active{% endif %}" 
+                        id="tab-{{ item['class'].id }}" 
+                        data-bs-toggle="pill" 
+                        data-bs-target="#panel-{{ item['class'].id }}" 
+                        type="button" 
+                        role="tab" 
+                        aria-controls="panel-{{ item['class'].id }}" 
+                        aria-selected="{% if loop.first %}true{% else %}false{% endif %}">
+                    <i class="bi bi-folder2 me-2"></i>{{ item['class'].name }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 建议详情面板 -->
+        <div class="col-12">
+            <div class="tab-content" id="classTabContent">
+                {% for item in class_suggestions %}
+                {% set cls = item['class'] %}
+                {% set sug = item['suggestion'] %}
+                {% set details = item['details'] %}
+                
+                <div class="tab-pane fade {% if loop.first %}show active{% endif %}" 
+                     id="panel-{{ cls.id }}" 
+                     role="tabpanel" 
+                     aria-labelledby="tab-{{ cls.id }}">
+                    
+                    <div class="ai-card bg-white">
+                        <!-- 头部大卡片 -->
+                        <div class="gradient-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+                            <div>
+                                <h3 class="fw-bold mb-1"><i class="bi bi-robot me-2"></i>{{ cls.name }} 学情分析报告</h3>
+                                <p class="mb-0 text-white-50 small">
+                                    基于本周班级提交活跃度、薄弱知识点及学习偏离度进行综合智能推荐
+                                </p>
+                            </div>
+                            <button class="btn btn-light text-primary fw-bold px-3 py-2 btn-refresh-sug" data-class-id="{{ cls.id }}">
+                                <i class="bi bi-arrow-repeat me-1 btn-refresh-icon"></i>刷新 AI 建议
+                            </button>
+                        </div>
+
+                        <!-- 核心区域 -->
+                        <div class="card-body p-4">
+                            <!-- 状态容器 -->
+                            <div class="status-container-{{ cls.id }} d-none p-5 text-center">
+                                <div class="spinner-border text-primary fs-3 mb-3 spin" role="status" style="width: 3rem; height: 3rem;"></div>
+                                <h5 class="fw-bold text-slate-800">AI 正在深度分析班级学情...</h5>
+                                <p class="text-muted small">我们正在聚合班级提交详情、评估概念掌握度并生成针对性对策，这可能需要大约 10-30 秒，请稍候。</p>
+                            </div>
+
+                            <!-- 内容展示区 -->
+                            <div class="content-container-{{ cls.id }}">
+                                {% if sug.status == 'pending' or sug.status == 'processing' %}
+                                    <div class="p-5 text-center loading-placeholder">
+                                        <div class="spinner-border text-primary fs-3 mb-3 spin" role="status" style="width: 3rem; height: 3rem;"></div>
+                                        <h5 class="fw-bold text-slate-800">AI 正在深度分析班级学情...</h5>
+                                        <script>
+                                            document.addEventListener("DOMContentLoaded", function() {
+                                                pollSuggestionStatus({{ cls.id }});
+                                            });
+                                        </script>
+                                    </div>
+                                {% elif sug.status == 'failed' %}
+                                    <div class="alert alert-danger p-4 text-center rounded-3">
+                                        <i class="bi bi-exclamation-triangle-fill text-danger fs-2 mb-2 d-block"></i>
+                                        <h5 class="fw-bold">AI 建议生成失败</h5>
+                                        <p class="text-muted small">系统在调用 AI 或汇总数据时出现异常，请尝试重新生成。</p>
+                                        <button class="btn btn-danger mt-2 btn-refresh-sug" data-class-id="{{ cls.id }}">重新生成</button>
+                                    </div>
+                                {% else %}
+                                    <!-- 建议已生成 -->
+                                    <div class="row g-4">
+                                        <!-- 左侧：结构化三要素卡片 -->
+                                        <div class="col-lg-5 col-md-12">
+                                            <!-- 重点关注学生 -->
+                                            <div class="mb-4">
+                                                <h5 class="block-title text-danger"><i class="bi bi-person-fill-exclamation me-2"></i>📌 本周重点关注学生</h5>
+                                                {% if details.get('attention_students') %}
+                                                    {% for student in details.get('attention_students') %}
+                                                    <div class="student-card shadow-sm">
+                                                        <div class="fw-bold text-danger mb-1">{{ student['name'] }} ({{ student['student_id'] }})</div>
+                                                        <div class="text-muted small">{{ student['risk_reason'] }}</div>
+                                                    </div>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    <div class="alert alert-light border p-3 rounded text-center small text-muted">
+                                                        <i class="bi bi-check-circle-fill text-success me-1"></i>本周暂无高风险预警学生
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+
+                                            <!-- 建议讲解知识点 -->
+                                            <div class="mb-4">
+                                                <h5 class="block-title text-primary"><i class="bi bi-lightbulb-fill me-2"></i>💡 建议讲解知识点</h5>
+                                                {% if details.get('weak_knowledge_points') %}
+                                                    {% for kp in details.get('weak_knowledge_points') %}
+                                                    <div class="point-card shadow-sm">
+                                                        <div class="fw-bold text-primary mb-1">{{ kp['point_name'] }}</div>
+                                                        <div class="text-muted small">{{ kp['explanation'] }}</div>
+                                                    </div>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    <div class="alert alert-light border p-3 rounded text-center small text-muted">
+                                                        <i class="bi bi-check-circle-fill text-success me-1"></i>暂未发现普遍薄弱概念
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+
+                                            <!-- 建议补练作业 -->
+                                            <div>
+                                                <h5 class="block-title text-success"><i class="bi bi-journals me-2"></i>🏋️ 建议补练作业</h5>
+                                                {% if details.get('suggested_assignments') %}
+                                                    {% for assign in details.get('suggested_assignments') %}
+                                                    <div class="assignment-card shadow-sm">
+                                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                                            <span class="fw-bold text-success">{{ assign['title'] }}</span>
+                                                            <span class="badge bg-success text-white">{{ assign['difficulty'] }}</span>
+                                                        </div>
+                                                        <div class="text-muted small">{{ assign['reason'] }}</div>
+                                                    </div>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    <div class="alert alert-light border p-3 rounded text-center small text-muted">
+                                                        <i class="bi bi-check-circle-fill text-success me-1"></i>暂无推荐作业，可按需发布新题
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+
+                                        <!-- 右侧：AI 详细分析报告 -->
+                                        <div class="col-lg-7 col-md-12">
+                                            <h5 class="block-title text-slate-800"><i class="bi bi-card-text me-2 text-primary"></i>🤖 AI 深度教学诊断报告</h5>
+                                            <div class="border rounded-3 p-4 bg-light markdown-content text-slate-700 shadow-inner" style="min-height: 400px; max-height: 700px; overflow-y: auto;">
+                                                {% if sug.suggestion_markdown %}
+                                                    <!-- 使用简单过滤器或渲染器渲染 Markdown -->
+                                                    <div class="markdown-raw" style="white-space: pre-wrap; font-family: inherit;">{{ sug.suggestion_markdown }}</div>
+                                                {% else %}
+                                                    <p class="text-muted text-center pt-5">暂无详细建议报告内容</p>
+                                                {% endif %}
+                                            </div>
+                                            <div class="text-end mt-2">
+                                                <span class="text-muted small"><i class="bi bi-clock me-1"></i>上次更新: <span class="update-time-{{ cls.id }}">{{ sug.last_updated.strftime('%Y-%m-%d %H:%M:%S') if sug.last_updated else '无' }}</span></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // 绑定刷新按钮事件
+        document.querySelectorAll('.btn-refresh-sug').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const classId = this.getAttribute('data-class-id');
+                triggerSuggestionGeneration(classId, this);
+            });
+        });
+    });
+
+    // 触发建议生成
+    function triggerSuggestionGeneration(classId, buttonElement) {
+        // 显示加载动画
+        const icon = buttonElement.querySelector('.btn-refresh-icon');
+        if (icon) icon.classList.add('spin');
+        buttonElement.disabled = true;
+
+        const statusContainer = document.querySelector(`.status-container-${classId}`);
+        const contentContainer = document.querySelector(`.content-container-${classId}`);
+        
+        if (statusContainer) statusContainer.classList.remove('d-none');
+        if (contentContainer) contentContainer.classList.add('d-none');
+
+        fetch('/api/teacher/generate_suggestions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ class_id: classId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                // 启动轮询
+                pollSuggestionStatus(classId);
+            } else {
+                alert('建议生成任务启动失败: ' + data.message);
+                resetRefreshButton(classId, buttonElement);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('刷新 AI 建议时出错，请稍后重试');
+            resetRefreshButton(classId, buttonElement);
+        });
+    }
+
+    function resetRefreshButton(classId, buttonElement) {
+        const icon = buttonElement.querySelector('.btn-refresh-icon');
+        if (icon) icon.classList.remove('spin');
+        buttonElement.disabled = false;
+
+        const statusContainer = document.querySelector(`.status-container-${classId}`);
+        const contentContainer = document.querySelector(`.content-container-${classId}`);
+        
+        if (statusContainer) statusContainer.classList.add('d-none');
+        if (contentContainer) contentContainer.classList.remove('d-none');
+    }
+
+    // 轮询分析状态
+    function pollSuggestionStatus(classId) {
+        const intervalId = setInterval(() => {
+            fetch(`/api/teacher/suggestion_status/${classId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'completed') {
+                    clearInterval(intervalId);
+                    // 动态更新页面内容
+                    updateSuggestionUI(classId, data);
+                } else if (data.status === 'failed') {
+                    clearInterval(intervalId);
+                    location.reload(); // 出错则刷新页面显示出错占位符
+                }
+            })
+            .catch(err => {
+                console.error('轮询AI状态失败:', err);
+            });
+        }, 3000); // 每3秒轮询一次
+    }
+
+    // 动态渲染UI
+    function updateSuggestionUI(classId, data) {
+        const contentContainer = document.querySelector(`.content-container-${classId}`);
+        const statusContainer = document.querySelector(`.status-container-${classId}`);
+        const updateTimeSpan = document.querySelector(`.update-time-${classId}`);
+        
+        if (updateTimeSpan) updateTimeSpan.textContent = data.last_updated;
+
+        // 重新构建 HTML
+        let htmlContent = '<div class="row g-4">';
+        
+        // 重点关注学生
+        htmlContent += '<div class="col-lg-5 col-md-12">';
+        htmlContent += '  <div class="mb-4">';
+        htmlContent += '    <h5 class="block-title text-danger"><i class="bi bi-person-fill-exclamation me-2"></i>📌 本周重点关注学生</h5>';
+        if (data.suggestion_json.attention_students && data.suggestion_json.attention_students.length > 0) {
+            data.suggestion_json.attention_students.forEach(student => {
+                htmlContent += `    <div class="student-card shadow-sm">
+                                      <div class="fw-bold text-danger mb-1">${student.name} (${student.student_id})</div>
+                                      <div class="text-muted small">${student.risk_reason}</div>
+                                    </div>`;
+            });
+        } else {
+            htmlContent += '    <div class="alert alert-light border p-3 rounded text-center small text-muted"><i class="bi bi-check-circle-fill text-success me-1"></i>本周暂无高风险预警学生</div>';
+        }
+        htmlContent += '  </div>';
+
+        // 建议讲解知识点
+        htmlContent += '  <div class="mb-4">';
+        htmlContent += '    <h5 class="block-title text-primary"><i class="bi bi-lightbulb-fill me-2"></i>💡 建议讲解知识点</h5>';
+        if (data.suggestion_json.weak_knowledge_points && data.suggestion_json.weak_knowledge_points.length > 0) {
+            data.suggestion_json.weak_knowledge_points.forEach(kp => {
+                htmlContent += `    <div class="point-card shadow-sm">
+                                      <div class="fw-bold text-primary mb-1">${kp.point_name}</div>
+                                      <div class="text-muted small">${kp.explanation}</div>
+                                    </div>`;
+            });
+        } else {
+            htmlContent += '    <div class="alert alert-light border p-3 rounded text-center small text-muted"><i class="bi bi-check-circle-fill text-success me-1"></i>暂未发现普遍薄弱概念</div>';
+        }
+        htmlContent += '  </div>';
+
+        // 建议补练作业
+        htmlContent += '  <div>';
+        htmlContent += '    <h5 class="block-title text-success"><i class="bi bi-journals me-2"></i>🏋️ 建议补练作业</h5>';
+        if (data.suggestion_json.suggested_assignments && data.suggestion_json.suggested_assignments.length > 0) {
+            data.suggestion_json.suggested_assignments.forEach(assign => {
+                htmlContent += `    <div class="assignment-card shadow-sm">
+                                      <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="fw-bold text-success">${assign.title}</span>
+                                        <span class="badge bg-success text-white">${assign.difficulty || '中等'}</span>
+                                      </div>
+                                      <div class="text-muted small">${assign.reason}</div>
+                                    </div>`;
+            });
+        } else {
+            htmlContent += '    <div class="alert alert-light border p-3 rounded text-center small text-muted"><i class="bi bi-check-circle-fill text-success me-1"></i>暂无推荐作业，可按需发布新题</div>';
+        }
+        htmlContent += '  </div>';
+        htmlContent += '</div>';
+
+        // 详细报告
+        htmlContent += '<div class="col-lg-7 col-md-12">';
+        htmlContent += '  <h5 class="block-title text-slate-800"><i class="bi bi-card-text me-2 text-primary"></i>🤖 AI 深度教学诊断报告</h5>';
+        htmlContent += '  <div class="border rounded-3 p-4 bg-light markdown-content text-slate-700 shadow-inner" style="min-height: 400px; max-height: 700px; overflow-y: auto;">';
+        htmlContent += `    <div class="markdown-raw" style="white-space: pre-wrap; font-family: inherit;">${data.suggestion_markdown}</div>`;
+        htmlContent += '  </div>';
+        htmlContent += `  <div class="text-end mt-2"><span class="text-muted small"><i class="bi bi-clock me-1"></i>上次更新: <span class="update-time-${classId}">${data.last_updated}</span></span></div>`;
+        htmlContent += '</div>';
+
+        htmlContent += '</div>';
+
+        // 隐藏加载，显示内容
+        if (statusContainer) statusContainer.classList.add('d-none');
+        if (contentContainer) {
+            contentContainer.innerHTML = htmlContent;
+            contentContainer.classList.remove('d-none');
+        }
+
+        // 启用刷新按钮，停止旋转
+        const btn = document.querySelector(`.btn-refresh-sug[data-class-id="${classId}"]`);
+        if (btn) {
+            const icon = btn.querySelector('.btn-refresh-icon');
+            if (icon) icon.classList.remove('spin');
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

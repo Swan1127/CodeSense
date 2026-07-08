@@ -1228,3 +1228,44 @@ class ThinkingStageLog(db.Model):
             return json.loads(self.metadata_json)
         except (json.JSONDecodeError, TypeError):
             return {}
+
+
+class TeacherAISuggestion(db.Model):
+    """教师首页和落地页 AI 个性化建议"""
+    __tablename__ = 'teacher_ai_suggestions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='CASCADE'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    suggestion_markdown = db.Column(db.Text, nullable=True)  # AI 建议 Markdown 内容
+    suggestion_json = db.Column(db.Text, nullable=True)      # 结构化建议（重点学生、弱势知识点、推荐补练作业）
+    last_updated = db.Column(db.DateTime, default=dt.utcnow)  # 最后更新时间
+    status = db.Column(db.String(20), default='pending')      # pending, processing, completed, failed
+
+    # 关系
+    teacher = db.relationship('User', backref=db.backref('class_ai_suggestions', lazy='dynamic'))
+    classroom = db.relationship('Class', backref=db.backref('ai_suggestion', uselist=False))
+
+    @staticmethod
+    def get_or_create(class_id, teacher_id):
+        """获取或创建 AI 建议记录"""
+        from sqlalchemy.exc import IntegrityError
+        suggestion = TeacherAISuggestion.query.filter_by(class_id=class_id).first()
+        if not suggestion:
+            try:
+                suggestion = TeacherAISuggestion(class_id=class_id, teacher_id=teacher_id)
+                db.session.add(suggestion)
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                suggestion = TeacherAISuggestion.query.filter_by(class_id=class_id).first()
+        return suggestion
+
+    def get_suggestion_dict(self):
+        """解析 JSON 格式的建议"""
+        if not self.suggestion_json:
+            return {}
+        try:
+            return json.loads(self.suggestion_json)
+        except (json.JSONDecodeError, TypeError):
+            return {}

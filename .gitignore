@@ -54,3 +54,8 @@ Thumbs.db
 run.py
 gunicorn_config.py
 wsgi.py
+
+# 临时测试与自动生成文件
+.playwright-mcp/
+original_hash.txt
+新登录页/
