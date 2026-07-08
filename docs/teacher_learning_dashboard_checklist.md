@@ -26,10 +26,11 @@
 - [x] 第二阶段语法编译通过：`py_compile`。
 - [x] 第二阶段完整测试通过：`24 passed`。
 - [x] 第二阶段本地 Git 提交完成：`feat: add teacher learning visuals`。
+- [x] 第二阶段 GitHub 推送完成：`main` 已更新到 `5fe6ad8`。
 
 ## 进行中
 
-- [ ] 第二阶段推送 GitHub。
+- [ ] 等待下一阶段需求。
 
 ## 未完成
 
