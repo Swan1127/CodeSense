@@ -320,16 +320,25 @@
     {% if session.get('usertype') in ['管理员', '教师'] %}
     <div class="progress-card">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4 class="mb-0">学生名单导入</h4>
+            <h4 class="mb-0">学生名单管理与注册进度</h4>
             <span class="text-muted">名单 {{ roster_total }} 人，已注册 {{ roster_registered }} 人</span>
         </div>
+        
+        <!-- 名单上传表单 -->
         <form action="{{ url_for('classes.import_students', class_id=cls.id) }}" method="POST"
-            enctype="multipart/form-data" class="row g-2 align-items-end">
+            enctype="multipart/form-data" class="row g-2 align-items-end mb-4">
             <div class="col-md-8">
                 <label for="studentFile" class="form-label fw-bold">上传名单文件</label>
                 <input type="file" class="form-control" id="studentFile" name="student_file"
                     accept=".xlsx,.xls,.csv" required>
-                <div class="form-text">支持 Excel/CSV，至少包含“学号”和“姓名”两列。导入后学生用名单中的学号注册即可自动绑定本班。</div>
+                <div class="form-text">
+                    支持 Excel/CSV，包含“学号”和“姓名”。导入后学生用名单学号注册自动绑定本班。
+                    <span class="ms-2">下载模板：
+                        <a href="{{ url_for('classes.download_template', format='xlsx') }}" class="text-decoration-none"><i class="bi bi-file-earmark-excel"></i> Excel 模板</a>
+                        <span class="text-muted">|</span>
+                        <a href="{{ url_for('classes.download_template', format='csv') }}" class="text-decoration-none"><i class="bi bi-file-earmark-text"></i> CSV 模板</a>
+                    </span>
+                </div>
             </div>
             <div class="col-md-4">
                 <button type="submit" class="btn btn-success w-100">
@@ -337,6 +346,57 @@
                 </button>
             </div>
         </form>
+
+        <!-- 注册绑定进度展示 -->
+        {% if roster_status_list %}
+        <div class="border rounded p-3 bg-light">
+            <button class="btn btn-sm btn-outline-secondary w-100 d-flex justify-content-between align-items-center" type="button" data-bs-toggle="collapse" data-bs-target="#rosterProgressCollapse" aria-expanded="false" aria-controls="rosterProgressCollapse">
+                <span><i class="bi bi-list-check me-2"></i>查看学生注册绑定进度详情</span>
+                <i class="bi bi-chevron-down"></i>
+            </button>
+            
+            <div class="collapse mt-3" id="rosterProgressCollapse">
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-sm table-striped align-middle mb-0" style="font-size: 0.9rem;">
+                        <thead>
+                            <tr>
+                                <th>学号</th>
+                                <th>名单姓名</th>
+                                <th>注册状态</th>
+                                <th>关联账号</th>
+                                <th>说明/操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in roster_status_list %}
+                            <tr>
+                                <td><code>{{ item.roster.student_id }}</code></td>
+                                <td>{{ item.roster.full_name }}</td>
+                                <td>
+                                    {% if item.status == 'registered' %}
+                                        <span class="badge bg-success">已注册</span>
+                                    {% elif item.status == 'mismatch' %}
+                                        <span class="badge bg-warning text-dark">信息不匹配</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">未注册</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.user %}
+                                        <strong>{{ item.user.username }}</strong> ({{ item.user.full_name or '无姓名' }})
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small text-muted">{{ item.message }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 

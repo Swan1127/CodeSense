@@ -100,7 +100,8 @@ class ClassBindingRosterTestCase(unittest.TestCase):
             follow_redirects=False,
         )
 
-        self.assertEqual(import_response.status_code, 302)
+        self.assertEqual(import_response.status_code, 200)
+        self.assertIn('导入完成', import_response.get_data(as_text=True))
         with self.app.app_context():
             roster = StudentRoster.query.filter_by(student_id='20230001').one()
             self.assertEqual(roster.full_name, '张三')

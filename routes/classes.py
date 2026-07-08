@@ -12,6 +12,45 @@ from utils.auth import admin_required, admin_or_teacher_required
 classes = Blueprint('classes', __name__, url_prefix='/classes')
 
 
+@classes.route('/download-template')
+@login_required
+@admin_or_teacher_required
+def download_template():
+    """下载批量导入学生名单的模板文件 (支持 xlsx 和 csv)"""
+    file_format = request.args.get('format', 'xlsx').lower()
+    
+    df = pd.DataFrame([
+        {'学号': '20260001', '姓名': '张三'},
+        {'学号': '20260002', '姓名': '李四'}
+    ])
+    
+    import io
+    from flask import send_file
+    
+    if file_format == 'csv':
+        buffer = io.BytesIO()
+        df.to_csv(buffer, index=False, encoding='utf-8-sig')
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='student_roster_template.csv'
+        )
+    else: # xlsx
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='学生名单模板')
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='student_roster_template.xlsx'
+        )
+
+
+
 def _can_manage_class(cls):
     return current_user.is_admin or cls.teacher_id == current_user.student_id
 
@@ -169,16 +208,44 @@ def import_students(class_id):
         imported_count = 0
         bound_existing_count = 0
         skipped_count = 0
+        results = []
 
-        for _, row in df.iterrows():
+        for idx, row in df.iterrows():
+            row_num = idx + 2  # 行号（表头为第1行，数据从第2行开始）
             student_id = _clean_cell(row.get(student_id_col))
             full_name = _clean_cell(row.get(full_name_col))
-            if not student_id or not full_name:
+
+            if not student_id:
+                results.append({
+                    'row_num': row_num,
+                    'student_id': '-',
+                    'full_name': full_name or '-',
+                    'status': 'error',
+                    'message': '学号为空'
+                })
+                skipped_count += 1
+                continue
+
+            if not full_name:
+                results.append({
+                    'row_num': row_num,
+                    'student_id': student_id,
+                    'full_name': '-',
+                    'status': 'error',
+                    'message': '姓名为空'
+                })
                 skipped_count += 1
                 continue
 
             existing_user = User.query.get(student_id)
             if existing_user and existing_user.usertype != '学生':
+                results.append({
+                    'row_num': row_num,
+                    'student_id': student_id,
+                    'full_name': full_name,
+                    'status': 'error',
+                    'message': f'该账号已注册为{existing_user.usertype}，无法导入'
+                })
                 skipped_count += 1
                 continue
 
@@ -187,10 +254,21 @@ def import_students(class_id):
                 roster = StudentRoster(student_id=student_id, full_name=full_name, class_id=cls.id,
                                        class_name_snapshot=cls.name)
                 db.session.add(roster)
+                action_status = 'inserted'
+                msg = '成功录入名单（待注册）'
+                imported_count += 1
+            else:
+                old_class_name = roster.class_name_snapshot
+                roster.full_name = full_name
+                roster.class_id = cls.id
+                roster.class_name_snapshot = cls.name
+                action_status = 'updated'
+                if old_class_name and old_class_name != cls.name:
+                    msg = f'覆盖并更新班级（原班级：{old_class_name}）'
+                else:
+                    msg = '更新姓名信息'
+                imported_count += 1
 
-            roster.full_name = full_name
-            roster.class_id = cls.id
-            roster.class_name_snapshot = cls.name
             roster.imported_by = current_user.student_id
 
             if existing_user:
@@ -199,19 +277,37 @@ def import_students(class_id):
                 existing_user.class_name = cls.name
                 roster.is_registered = True
                 roster.registered_user_id = existing_user.student_id
+                action_status = 'bound'
+                msg = '已自动激活并关联当前注册的学生'
                 bound_existing_count += 1
             else:
                 roster.is_registered = False
                 roster.registered_user_id = None
-                imported_count += 1
+
+            results.append({
+                'row_num': row_num,
+                'student_id': student_id,
+                'full_name': full_name,
+                'status': action_status,
+                'message': msg
+            })
 
         db.session.commit()
-        flash(f'名单导入完成：新增待注册 {imported_count} 人，已绑定现有学生 {bound_existing_count} 人，跳过 {skipped_count} 行', 'success')
+        return render_template(
+            'classes/import_result.html',
+            cls=cls,
+            results=results,
+            summary={
+                'total': len(df),
+                'imported': imported_count,
+                'bound': bound_existing_count,
+                'skipped': skipped_count
+            }
+        )
     except Exception as e:
         db.session.rollback()
         flash(f'导入失败：{str(e)}', 'danger')
-
-    return redirect(url_for('classes.class_detail', class_id=class_id))
+        return redirect(url_for('classes.class_detail', class_id=class_id))
 
 @classes.route('/<int:class_id>')
 @login_required
@@ -231,6 +327,29 @@ def class_detail(class_id):
     db.session.commit()
     roster_total = StudentRoster.query.filter_by(class_id=cls.id).count()
     roster_registered = StudentRoster.query.filter_by(class_id=cls.id, is_registered=True).count()
+    
+    # 获取名单绑定状态列表
+    roster_list = StudentRoster.query.filter_by(class_id=cls.id).order_by(StudentRoster.student_id).all()
+    roster_status_list = []
+    for r in roster_list:
+        user = User.query.get(r.student_id)
+        if not user:
+            status = 'unregistered'
+            msg = '未注册'
+        else:
+            if user.full_name and user.full_name.strip() != r.full_name.strip():
+                status = 'mismatch'
+                msg = f'已注册为 {user.username}，但姓名不匹配 (注册姓名: {user.full_name}，名单姓名: {r.full_name})'
+            else:
+                status = 'registered'
+                msg = f'已绑定用户 {user.username}'
+                
+        roster_status_list.append({
+            'roster': r,
+            'status': status,
+            'message': msg,
+            'user': user
+        })
     
     # 获取班级学生列表（分页）
     page = request.args.get('page', 1, type=int)
@@ -255,7 +374,8 @@ def class_detail(class_id):
                          assignment_progress=assignment_progress['items'],
                          assignment_pagination=assignment_progress['pagination'],
                          roster_total=roster_total,
-                         roster_registered=roster_registered)
+                         roster_registered=roster_registered,
+                         roster_status_list=roster_status_list)
 
 @classes.route('/<int:class_id>/assignment/<int:assignment_id>')
 @login_required
