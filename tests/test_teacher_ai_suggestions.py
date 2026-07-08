@@ -93,8 +93,25 @@ class TeacherAISuggestionsTestCase(unittest.TestCase):
                 creator_id='teacher_002',
                 created_time=dt.utcnow(),
             )
+            assign2 = Assignment(
+                title='指针初探',
+                target_classes='其他班级',
+                creator_id='teacher_002',
+                created_time=dt.utcnow(),
+                difficulty_level=2
+            )
             
-            db.session.add_all([s1, s2, k1, k2, k3, assign1])
+            db.session.add_all([s1, s2, k1, k2, k3, assign1, assign2])
+            db.session.flush()
+
+            from models import AssignmentKnowledgePoint
+            akp = AssignmentKnowledgePoint(
+                assignment_id=assign2.id,
+                knowledge_point='pointer',
+                weight=1.0,
+                difficulty=1.0
+            )
+            db.session.add(akp)
             db.session.flush()
 
             # 创建提交
@@ -161,6 +178,15 @@ class TeacherAISuggestionsTestCase(unittest.TestCase):
             # 指针的平均分应当是 (85 + 35) / 2 = 60.0，且在薄弱概念里
             weak_kps = [wp['point_name'] for wp in details['weak_knowledge_points']]
             self.assertIn('指针', weak_kps)
+
+            # 指针初探应当在建议补练作业里，且难度是“较易”
+            self.assertIn('suggested_assignments', details)
+            suggested_titles = [a['title'] for a in details['suggested_assignments']]
+            self.assertIn('指针初探', suggested_titles)
+            
+            # 找到指针初探
+            assign_detail = [a for a in details['suggested_assignments'] if a['title'] == '指针初探'][0]
+            self.assertEqual(assign_detail['difficulty'], '较易')
 
     def test_routes_accessibility(self):
         self.login_teacher()

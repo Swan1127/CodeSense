@@ -96,7 +96,7 @@ def generate_class_suggestions(class_id, teacher_id):
                             'id': assign.id,
                             'title': assign.title,
                             'description': assign.description or '暂无描述',
-                            'difficulty': assign.difficulty or '中等'
+                            'difficulty': {1: '简单', 2: '较易', 3: '中等', 4: '较难', 5: '困难'}.get(assign.difficulty_level, '中等')
                         })
 
         # 兜底生成缺省推荐
