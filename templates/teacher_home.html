@@ -69,6 +69,22 @@
         </div>
     </div>
 
+    <div class="dashboard-section">
+        <div class="section-title">
+            <span><i class="bi bi-link-45deg text-primary me-2"></i>绑定已有班级</span>
+        </div>
+        <form action="{{ url_for('classes.bind_class') }}" method="POST" class="row g-2 align-items-end">
+            <div class="col-md-8">
+                <label for="dashboardBindCode" class="form-label fw-bold">班级绑定码</label>
+                <input type="text" class="form-control" id="dashboardBindCode" name="bind_code"
+                    placeholder="请输入管理员提供的班级绑定码" required>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary w-100">绑定班级</button>
+            </div>
+        </form>
+    </div>
+
     <!-- 统计数据 -->
     <div class="row">
         <div class="col-md-4">

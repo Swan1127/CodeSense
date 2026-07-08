@@ -8,13 +8,19 @@
         <div class="col-md-4">
             <div class="card">
                 <div class="card-body text-center">
+                    {% if user.avatar_path %}
+                    <img src="{{ url_for('static', filename=user.avatar_path.replace('static/', '', 1)) }}" alt="头像"
+                        style="width:4rem;height:4rem;object-fit:cover;border-radius:50%;">
+                    {% else %}
                     <i class="bi bi-person-workspace" style="font-size: 4rem; color: var(--primary-color);"></i>
+                    {% endif %}
                     <h4 class="card-title mt-3">{{ user.full_name or user.username }}</h4>
                     <p class="text-muted">{{ user.username }}</p>
                     <span class="badge bg-success">教师</span>
                 </div>
                 <ul class="list-group list-group-flush">
                     <li class="list-group-item"><strong>教师工号:</strong> {{ user.student_id }}</li>
+                    <li class="list-group-item"><strong>邮箱:</strong> {{ user.email or '未设置' }}</li>
                     <li class="list-group-item"><strong>注册时间:</strong> {{ user.created_at.strftime('%Y-%m-%d') }}</li>
                 </ul>
                 <div class="card-body">

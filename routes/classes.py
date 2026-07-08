@@ -4,10 +4,38 @@
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
 from flask_login import login_required, current_user
 from sqlalchemy import func, desc
-from models import db, Class, User, Assignment, Submission
+import pandas as pd
+from models import db, Class, StudentRoster, User, Assignment, Submission
 from utils.auth import admin_required, admin_or_teacher_required
 
 classes = Blueprint('classes', __name__, url_prefix='/classes')
+
+
+def _can_manage_class(cls):
+    return current_user.is_admin or cls.teacher_id == current_user.student_id
+
+
+def _clean_cell(value):
+    if value is None or pd.isna(value):
+        return ''
+    return str(value).strip()
+
+
+def _pick_column(df, candidates):
+    normalized = {str(col).strip(): col for col in df.columns}
+    for name in candidates:
+        if name in normalized:
+            return normalized[name]
+    return None
+
+
+def _read_roster_dataframe(file_storage):
+    filename = (file_storage.filename or '').lower()
+    if filename.endswith(('.xlsx', '.xls')):
+        return pd.read_excel(file_storage, dtype=str)
+    if filename.endswith('.csv'):
+        return pd.read_csv(file_storage, dtype=str, encoding='utf-8-sig')
+    raise ValueError('仅支持 .xlsx、.xls、.csv 格式的学生名单')
 
 @classes.route('/')
 @login_required
@@ -20,6 +48,10 @@ def class_list():
         all_classes = Class.query.order_by(Class.name).all()
     else: # is_teacher
         all_classes = current_user.managed_classes.order_by(Class.name).all()
+
+    for cls in all_classes:
+        cls.ensure_teacher_bind_code()
+    db.session.commit()
 
     for cls in all_classes:
         stats = cls.get_statistics()
@@ -52,6 +84,134 @@ def class_list():
                          overall_avg_score=overall_avg_score,
                          teachers=teachers)
 
+
+@classes.route('/bind', methods=['POST'])
+@login_required
+@admin_or_teacher_required
+def bind_class():
+    """教师使用班级绑定码绑定已有班级。"""
+    if not current_user.is_teacher:
+        flash('只有教师账号可以使用班级绑定码', 'danger')
+        return redirect(url_for('classes.class_list'))
+
+    bind_code = (request.form.get('bind_code') or '').strip().upper()
+    if not bind_code:
+        flash('请输入班级绑定码', 'danger')
+        return redirect(url_for('classes.class_list'))
+
+    cls = Class.query.filter(func.upper(Class.teacher_bind_code) == bind_code).first()
+    if not cls:
+        flash('班级绑定码无效，请检查后重试', 'danger')
+        return redirect(url_for('classes.class_list'))
+
+    if cls.teacher_id and cls.teacher_id != current_user.student_id:
+        flash(f'班级 "{cls.name}" 已绑定其他教师，请联系管理员处理', 'danger')
+        return redirect(url_for('classes.class_list'))
+
+    cls.teacher_id = current_user.student_id
+    db.session.commit()
+    flash(f'已绑定班级 "{cls.name}"', 'success')
+    return redirect(url_for('classes.class_list'))
+
+
+@classes.route('/<int:class_id>/unbind', methods=['POST'])
+@login_required
+@admin_or_teacher_required
+def unbind_class(class_id):
+    """解绑教师与班级的关系。"""
+    cls = Class.query.get_or_404(class_id)
+    if not _can_manage_class(cls):
+        flash('您没有权限解绑此班级', 'danger')
+        return redirect(url_for('classes.class_list'))
+
+    cls.teacher_id = None
+    db.session.commit()
+    flash(f'已解绑班级 "{cls.name}"', 'success')
+    return redirect(url_for('classes.class_list'))
+
+
+@classes.route('/<int:class_id>/reset-bind-code', methods=['POST'])
+@login_required
+@admin_required
+def reset_bind_code(class_id):
+    """管理员重置班级绑定码。"""
+    cls = Class.query.get_or_404(class_id)
+    new_code = cls.reset_teacher_bind_code()
+    db.session.commit()
+    flash(f'班级 "{cls.name}" 的新绑定码为 {new_code}', 'success')
+    return redirect(url_for('classes.class_detail', class_id=class_id))
+
+
+@classes.route('/<int:class_id>/import-students', methods=['POST'])
+@login_required
+@admin_or_teacher_required
+def import_students(class_id):
+    """导入当前班级学生名单，供学生注册时自动绑定班级。"""
+    cls = Class.query.get_or_404(class_id)
+    if not _can_manage_class(cls):
+        flash('您没有权限导入此班级的学生名单', 'danger')
+        return redirect(url_for('classes.class_list'))
+
+    upload = request.files.get('student_file')
+    if not upload or not upload.filename:
+        flash('请选择要导入的学生名单文件', 'danger')
+        return redirect(url_for('classes.class_detail', class_id=class_id))
+
+    try:
+        df = _read_roster_dataframe(upload)
+        student_id_col = _pick_column(df, ['学号', 'student_id', '学生学号', '账号'])
+        full_name_col = _pick_column(df, ['姓名', 'full_name', '学生姓名', '名字'])
+        if not student_id_col or not full_name_col:
+            flash('名单必须包含“学号”和“姓名”两列', 'danger')
+            return redirect(url_for('classes.class_detail', class_id=class_id))
+
+        imported_count = 0
+        bound_existing_count = 0
+        skipped_count = 0
+
+        for _, row in df.iterrows():
+            student_id = _clean_cell(row.get(student_id_col))
+            full_name = _clean_cell(row.get(full_name_col))
+            if not student_id or not full_name:
+                skipped_count += 1
+                continue
+
+            existing_user = User.query.get(student_id)
+            if existing_user and existing_user.usertype != '学生':
+                skipped_count += 1
+                continue
+
+            roster = StudentRoster.query.filter_by(student_id=student_id).first()
+            if not roster:
+                roster = StudentRoster(student_id=student_id, full_name=full_name, class_id=cls.id,
+                                       class_name_snapshot=cls.name)
+                db.session.add(roster)
+
+            roster.full_name = full_name
+            roster.class_id = cls.id
+            roster.class_name_snapshot = cls.name
+            roster.imported_by = current_user.student_id
+
+            if existing_user:
+                existing_user.full_name = existing_user.full_name or full_name
+                existing_user.class_id = cls.id
+                existing_user.class_name = cls.name
+                roster.is_registered = True
+                roster.registered_user_id = existing_user.student_id
+                bound_existing_count += 1
+            else:
+                roster.is_registered = False
+                roster.registered_user_id = None
+                imported_count += 1
+
+        db.session.commit()
+        flash(f'名单导入完成：新增待注册 {imported_count} 人，已绑定现有学生 {bound_existing_count} 人，跳过 {skipped_count} 行', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'导入失败：{str(e)}', 'danger')
+
+    return redirect(url_for('classes.class_detail', class_id=class_id))
+
 @classes.route('/<int:class_id>')
 @login_required
 @admin_or_teacher_required
@@ -66,6 +226,10 @@ def class_detail(class_id):
 
     # 获取班级统计
     stats = cls.get_statistics()
+    cls.ensure_teacher_bind_code()
+    db.session.commit()
+    roster_total = StudentRoster.query.filter_by(class_id=cls.id).count()
+    roster_registered = StudentRoster.query.filter_by(class_id=cls.id, is_registered=True).count()
     
     # 获取班级学生列表（分页）
     page = request.args.get('page', 1, type=int)
@@ -84,7 +248,9 @@ def class_detail(class_id):
                          stats=stats,
                          students=students,
                          assignment_progress=assignment_progress['items'],
-                         assignment_pagination=assignment_progress['pagination'])
+                         assignment_pagination=assignment_progress['pagination'],
+                         roster_total=roster_total,
+                         roster_registered=roster_registered)
 
 @classes.route('/<int:class_id>/assignment/<int:assignment_id>')
 @login_required

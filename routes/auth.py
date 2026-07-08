@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import uuid
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 from flask_login import login_user, logout_user, current_user
-from models import db, User, SystemLog, SystemConfig
+from models import db, Class, StudentRoster, User, SystemLog, SystemConfig
 from forms import LoginForm, RegistrationForm
 from utils.auth import redirect_if_logged_in
 
@@ -27,10 +27,15 @@ def login():
     """登录页面"""
     form = LoginForm()
     if form.validate_on_submit():
-        username = form.username.data
+        username = form.username.data.strip()
         password = form.password.data
         current_app.logger.info(f"登录尝试 - 用户名: {username}, IP: {request.remote_addr}")
-        user = User.query.filter_by(username=username).first()
+        user = User.query.filter(
+            db.or_(
+                User.username == username,
+                db.func.lower(User.email) == username.lower()
+            )
+        ).first()
         if user and user.verify_password(password):
             # 单点登录逻辑：生成新的会话ID，令旧会话失效
             new_session_id = uuid.uuid4().hex
@@ -79,6 +84,7 @@ def register():
     if form.validate_on_submit():
         username = form.username.data
         student_id = form.student_id.data
+        email = (form.email.data or '').strip().lower() or None
         current_app.logger.info(f"学生注册尝试 - 用户名: {username}, 学号: {student_id}, IP: {request.remote_addr}")
         
         existing_user = User.query.filter(
@@ -89,17 +95,37 @@ def register():
             current_app.logger.warning(f"注册失败 - 用户名或学号已存在: {username}/{student_id}, IP: {request.remote_addr}")
             flash('用户名或学号已存在，请使用其他的用户名和学号', 'danger')
             return render_template('register.html', form=form)
+
+        if email and User.query.filter(db.func.lower(User.email) == email).first():
+            flash('邮箱已被使用，请更换邮箱或直接登录。', 'danger')
+            return render_template('register.html', form=form)
+
+        roster = StudentRoster.query.filter_by(student_id=student_id).first()
+        if not roster:
+            current_app.logger.warning(f"注册失败 - 学号不在导入名单中: {student_id}, IP: {request.remote_addr}")
+            flash('未在教师导入的学生名单中找到该学号，请联系任课教师或管理员导入名单后再注册。', 'danger')
+            return render_template('register.html', form=form)
+
+        target_class = Class.query.get(roster.class_id)
+        if not target_class:
+            current_app.logger.warning(f"注册失败 - 花名册班级不存在: {student_id}, class_id={roster.class_id}")
+            flash('学生名单关联的班级不存在，请联系管理员处理。', 'danger')
+            return render_template('register.html', form=form)
         
         try:
             user = User(
                 username=username,
                 student_id=student_id,
                 usertype='学生',
-                full_name=form.full_name.data,
-                class_name=form.class_name.data
+                full_name=form.full_name.data or roster.full_name,
+                email=email,
+                class_name=target_class.name,
+                class_id=target_class.id
             )
             user.password = form.password.data
             db.session.add(user)
+            roster.is_registered = True
+            roster.registered_user_id = student_id
             db.session.commit()
             
             SystemLog.add_log(
@@ -153,6 +179,7 @@ def register_teacher(token):
     if form.validate_on_submit():
         username = form.username.data
         teacher_id = form.student_id.data
+        email = (form.email.data or '').strip().lower() or None
 
         existing_user = User.query.filter(
             (User.username == username) | (User.student_id == teacher_id)
@@ -162,12 +189,17 @@ def register_teacher(token):
             flash('用户名或教师工号已存在。', 'danger')
             return render_template('register_teacher.html', form=form, token=token)
 
+        if email and User.query.filter(db.func.lower(User.email) == email).first():
+            flash('邮箱已被使用，请更换邮箱或直接登录。', 'danger')
+            return render_template('register_teacher.html', form=form, token=token)
+
         try:
             user = User(
                 username=username,
                 student_id=teacher_id,
                 usertype='教师',
-                full_name=form.full_name.data
+                full_name=form.full_name.data,
+                email=email
             )
             user.password = form.password.data
             db.session.add(user)

@@ -196,7 +196,12 @@
 <div class="profile-header">
     <div class="profile-info">
         <div class="profile-avatar">
+            {% if user.avatar_path %}
+            <img src="{{ url_for('static', filename=user.avatar_path.replace('static/', '', 1)) }}" alt="头像"
+                style="width:100%;height:100%;object-fit:cover;border-radius:50%;">
+            {% else %}
             <i class="bi bi-person"></i>
+            {% endif %}
         </div>
         <h1 class="profile-name">{{ user.username }}</h1>
         <p class="profile-subtitle">{{ user.usertype }} | {{ user.class_name }}</p>
@@ -250,6 +255,10 @@
                         <tr>
                             <th>姓名</th>
                             <td>{{ user.full_name }}</td>
+                        </tr>
+                        <tr>
+                            <th>邮箱</th>
+                            <td>{{ user.email or '未设置' }}</td>
                         </tr>
                         <tr>
                             <th>班级</th>

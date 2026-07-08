@@ -73,7 +73,7 @@ class AppTestCase(unittest.TestCase):
             'password': 'test_password'
         }, follow_redirects=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'\xe7\xae\xac\xe7\x90\x86\xe5\x91\x98\xe4\xbb\xaa\xe8\xa1\xa8\xe7\x9b\x98', response.data) # '管理员仪表盘'
+        self.assertIn('管理员仪表盘'.encode('utf-8'), response.data)
         
         # 登出以便测试错误登录
         self.client.get('/logout', follow_redirects=True)
@@ -98,7 +98,7 @@ class AppTestCase(unittest.TestCase):
         # 访问主页 (管理员会重定向到仪表盘)
         response = self.client.get('/home', follow_redirects=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'\xe7\xae\xac\xe7\x90\x86\xe5\x91\x98\xe4\xbb\xaa\xe8\xa1\xa8\xe7\x9b\x98', response.data) # '管理员仪表盘'
+        self.assertIn('管理员仪表盘'.encode('utf-8'), response.data)
     
     def test_admin_access_teacher_route(self):
         """测试管理员访问教师专用路由"""

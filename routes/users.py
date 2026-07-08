@@ -7,13 +7,36 @@ from models import db, User, Submission, SystemLog, Class, AbilityTrend
 from utils.auth import login_required, admin_required, admin_or_teacher_required
 from tasks.ability_analysis import trigger_analysis_if_needed
 from sqlalchemy import desc
-from forms import EditProfileForm
+from forms import ChangePasswordForm, EditProfileForm
+from werkzeug.utils import secure_filename
 import pandas as pd
 import io
 from datetime import datetime
+import os
 import random
+import uuid
 
 users = Blueprint('users', __name__)
+
+
+def _normalize_email(value):
+    return (value or '').strip().lower() or None
+
+
+def _save_avatar(file_storage, user_id):
+    if not file_storage or not file_storage.filename:
+        return None
+    filename = secure_filename(file_storage.filename)
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower()
+    if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+        raise ValueError('头像仅支持 jpg、jpeg、png、gif、webp 格式')
+
+    avatar_dir = os.path.join(current_app.root_path, 'static', 'uploads', 'avatars')
+    os.makedirs(avatar_dir, exist_ok=True)
+    saved_name = f'{user_id}_{uuid.uuid4().hex}{ext}'
+    file_storage.save(os.path.join(avatar_dir, saved_name))
+    return f'static/uploads/avatars/{saved_name}'
 
 
 @users.route('/users')
@@ -252,10 +275,25 @@ def edit_profile():
     
     if form.validate_on_submit():
         try:
+            email = _normalize_email(form.email.data)
+            if email:
+                existing_email_user = User.query.filter(
+                    db.func.lower(User.email) == email,
+                    User.student_id != user.student_id
+                ).first()
+                if existing_email_user:
+                    flash('邮箱已被其他账号使用', 'danger')
+                    return render_template('edit_profile.html', form=form, user=user)
+
             # 更新用户信息
             user.username = form.username.data
             user.full_name = form.full_name.data
+            user.email = email
             user.class_name = form.class_name.data
+
+            avatar_path = _save_avatar(form.avatar.data, user.student_id)
+            if avatar_path:
+                user.avatar_path = avatar_path
             
             # 同时更新 class_id 以保持一致
             if form.class_name.data:
@@ -276,9 +314,31 @@ def edit_profile():
     if request.method == 'GET':
         form.username.data = user.username
         form.full_name.data = user.full_name
+        form.email.data = user.email
         form.class_name.data = user.class_name
     
     return render_template('edit_profile.html', form=form, user=user)
+
+
+@users.route('/change_password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    """登录用户修改密码"""
+    user = User.query.get(session.get('student_id'))
+    form = ChangePasswordForm()
+
+    if form.validate_on_submit():
+        if not user.verify_password(form.current_password.data):
+            flash('当前密码不正确', 'danger')
+            return render_template('change_password.html', form=form)
+
+        user.password = form.new_password.data
+        user.password_changed_at = datetime.utcnow()
+        db.session.commit()
+        flash('密码修改成功，请使用新密码登录。', 'success')
+        return redirect(url_for('main.profile'))
+
+    return render_template('change_password.html', form=form)
 
 
 @users.route('/export_users')

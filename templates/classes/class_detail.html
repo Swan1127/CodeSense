@@ -95,13 +95,37 @@
             <div class="col-md-8">
                 <h1>{{ cls.name }}</h1>
                 <p class="mb-0">{{ cls.major or '计算机相关专业' }} | {{ cls.grade or '2024' }}</p>
-                <p class="mb-0">班主任: {{ cls.teacher.full_name or cls.teacher.username or '未分配' }}</p>
+                <p class="mb-0">班主任:
+                    {% if cls.teacher %}
+                    {{ cls.teacher.full_name or cls.teacher.username }}
+                    {% else %}
+                    未分配
+                    {% endif %}
+                </p>
+                {% if session.get('usertype') == '管理员' %}
+                <p class="mb-0">教师绑定码: <code class="text-white">{{ cls.teacher_bind_code or '未生成' }}</code></p>
+                {% endif %}
             </div>
             <div class="col-md-4 text-right">
                 {% if session.get('usertype') == '管理员' %}
                 <a href="{{ url_for('classes.edit_class', class_id=cls.id) }}" class="btn btn-light">
                     <i class="bi bi-pencil"></i> 编辑班级信息
                 </a>
+                <form action="{{ url_for('classes.reset_bind_code', class_id=cls.id) }}" method="POST"
+                    class="d-inline"
+                    onsubmit="return confirm('确定重置该班级绑定码吗？旧绑定码将立即失效。');">
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-arrow-clockwise"></i> 重置绑定码
+                    </button>
+                </form>
+                {% elif cls.teacher_id == session.get('student_id') %}
+                <form action="{{ url_for('classes.unbind_class', class_id=cls.id) }}" method="POST"
+                    class="d-inline"
+                    onsubmit="return confirm('确定解绑该班级吗？解绑后将不再显示在你的班级列表中。');">
+                    <button type="submit" class="btn btn-light">
+                        <i class="bi bi-link-45deg"></i> 解绑班级
+                    </button>
+                </form>
                 {% endif %}
                 <a href="{{ url_for('classes.class_list') }}" class="btn btn-outline-light">
                     <i class="bi bi-arrow-left"></i> 返回列表
@@ -193,6 +217,29 @@
     <div class="progress-card text-center py-4">
         <i class="bi bi-file-earmark-code" style="font-size: 3rem; color: #ddd;"></i>
         <p class="text-muted mt-2">暂无已分配的作业</p>
+    </div>
+    {% endif %}
+
+    {% if session.get('usertype') in ['管理员', '教师'] %}
+    <div class="progress-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0">学生名单导入</h4>
+            <span class="text-muted">名单 {{ roster_total }} 人，已注册 {{ roster_registered }} 人</span>
+        </div>
+        <form action="{{ url_for('classes.import_students', class_id=cls.id) }}" method="POST"
+            enctype="multipart/form-data" class="row g-2 align-items-end">
+            <div class="col-md-8">
+                <label for="studentFile" class="form-label fw-bold">上传名单文件</label>
+                <input type="file" class="form-control" id="studentFile" name="student_file"
+                    accept=".xlsx,.xls,.csv" required>
+                <div class="form-text">支持 Excel/CSV，至少包含“学号”和“姓名”两列。导入后学生用名单中的学号注册即可自动绑定本班。</div>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-success w-100">
+                    <i class="bi bi-upload"></i> 导入学生名单
+                </button>
+            </div>
+        </form>
     </div>
     {% endif %}
 

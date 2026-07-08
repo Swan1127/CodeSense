@@ -2,6 +2,7 @@
 数据库模型定义
 """
 import json  # 添加json导入
+import secrets
 from datetime import datetime as dt
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -22,6 +23,8 @@ class Class(db.Model):
     grade = db.Column(db.String(20))  # 年级
     major = db.Column(db.String(50))  # 专业
     teacher_id = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='SET NULL'), nullable=True)
+    teacher_bind_code = db.Column(db.String(20), unique=True, nullable=True)
+    teacher_bind_code_updated_at = db.Column(db.DateTime, nullable=True)
     student_count = db.Column(db.Integer, default=0)  # 学生数量
     avg_score = db.Column(db.Float, default=0.0)  # 班级平均分
     total_submissions = db.Column(db.Integer, default=0)  # 班级总提交数
@@ -34,6 +37,31 @@ class Class(db.Model):
     # 与学生的一对多关系
     students = db.relationship('User', backref='class_info', lazy='dynamic',
                              foreign_keys='User.class_id')
+
+    @staticmethod
+    def _generate_bind_code():
+        """生成便于人工输入的班级绑定码。"""
+        return secrets.token_urlsafe(6).replace('-', '').replace('_', '')[:8].upper()
+
+    @classmethod
+    def _unique_bind_code(cls):
+        while True:
+            code = cls._generate_bind_code()
+            if not cls.query.filter_by(teacher_bind_code=code).first():
+                return code
+
+    def ensure_teacher_bind_code(self):
+        """确保班级存在教师绑定码。"""
+        if not self.teacher_bind_code:
+            self.teacher_bind_code = self._unique_bind_code()
+            self.teacher_bind_code_updated_at = dt.utcnow()
+        return self.teacher_bind_code
+
+    def reset_teacher_bind_code(self):
+        """重置教师绑定码。"""
+        self.teacher_bind_code = self._unique_bind_code()
+        self.teacher_bind_code_updated_at = dt.utcnow()
+        return self.teacher_bind_code
     
     def get_statistics(self):
         """获取班级统计信息"""
@@ -156,10 +184,13 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
     class_name = db.Column(db.String(50))
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)  # 新增班级外键
     full_name = db.Column(db.String(50))
+    email = db.Column(db.String(120), unique=True, nullable=True, index=True)
+    avatar_path = db.Column(db.String(255), nullable=True)
     submit_count = db.Column(db.Integer, default=0)
     user_ascore = db.Column(db.Float, default=0.0)
     user_tscore = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=dt.utcnow)
+    password_changed_at = db.Column(db.DateTime, nullable=True)
     current_session_id = db.Column(db.String(100), nullable=True, comment='当前合法的会话ID')
     
     # 定义与submissions的关系
@@ -301,6 +332,25 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
             import logging
             logging.error(f"获取班级平均能力评分时出错: {e}")
             return {}
+
+
+class StudentRoster(db.Model):
+    """教师导入的学生花名册，用于学生注册时自动绑定班级。"""
+    __tablename__ = 'student_rosters'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    full_name = db.Column(db.String(50), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
+    class_name_snapshot = db.Column(db.String(50), nullable=False)
+    imported_by = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='SET NULL'), nullable=True)
+    is_registered = db.Column(db.Boolean, default=False, nullable=False)
+    registered_user_id = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='SET NULL'), nullable=True)
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+    updated_at = db.Column(db.DateTime, default=dt.utcnow, onupdate=dt.utcnow)
+
+    class_info = db.relationship('Class', backref=db.backref('roster_entries', lazy='dynamic'))
+    importer = db.relationship('User', foreign_keys=[imported_by])
+    registered_user = db.relationship('User', foreign_keys=[registered_user_id])
 
 
 class Assignment(db.Model):
@@ -656,8 +706,51 @@ def init_db(app):
                     print('已添加 users.current_session_id 列')
                 except Exception:
                     pass  # 列已存在
+
+                try:
+                    conn.execute(db.text('ALTER TABLE users ADD COLUMN email VARCHAR(120) NULL'))
+                    conn.commit()
+                    print('已添加 users.email 列')
+                except Exception:
+                    pass  # 列已存在
+
+                try:
+                    conn.execute(db.text('ALTER TABLE users ADD COLUMN avatar_path VARCHAR(255) NULL'))
+                    conn.commit()
+                    print('已添加 users.avatar_path 列')
+                except Exception:
+                    pass  # 列已存在
+
+                try:
+                    conn.execute(db.text('ALTER TABLE users ADD COLUMN password_changed_at DATETIME NULL'))
+                    conn.commit()
+                    print('已添加 users.password_changed_at 列')
+                except Exception:
+                    pass  # 列已存在
+
+                try:
+                    conn.execute(db.text('ALTER TABLE classes ADD COLUMN teacher_bind_code VARCHAR(20) NULL'))
+                    conn.commit()
+                    print('已添加 classes.teacher_bind_code 列')
+                except Exception:
+                    pass  # 列已存在
+
+                try:
+                    conn.execute(db.text('ALTER TABLE classes ADD COLUMN teacher_bind_code_updated_at DATETIME NULL'))
+                    conn.commit()
+                    print('已添加 classes.teacher_bind_code_updated_at 列')
+                except Exception:
+                    pass  # 列已存在
         except Exception as e:
             print(f'自动迁移跳过: {e}')
+
+        try:
+            for cls in Class.query.all():
+                cls.ensure_teacher_bind_code()
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f'班级绑定码初始化跳过: {e}')
 
         # 初始化系统设置
         default_settings = {

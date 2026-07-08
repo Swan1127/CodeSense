@@ -529,14 +529,14 @@
                 <form action="{{ url_for('auth.login') }}" method="post">
                     {{ form.hidden_tag() }}
 
-                    <!-- 用户名 -->
+                    <!-- 用户名或邮箱 -->
                     <div class="form-group">
                         <label for="username" class="form-label">
-                            <i class="bi bi-person"></i> 用户名
+                            <i class="bi bi-person"></i> 用户名或邮箱
                         </label>
                         <input type="text" id="username" name="username"
                             class="form-control {% if form.username.errors %}is-invalid{% endif %}" 
-                            placeholder="请输入您的用户名" required autofocus>
+                            placeholder="请输入用户名或邮箱" required autofocus>
                         {% if form.username.errors %}
                         <div class="form-error">
                             {% for error in form.username.errors %}

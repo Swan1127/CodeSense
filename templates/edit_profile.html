@@ -92,7 +92,7 @@
         {% endif %}
     </div>
 
-    <form method="POST">
+    <form method="POST" enctype="multipart/form-data">
         {{ form.csrf_token }}
 
         <div class="form-group">
@@ -119,6 +119,31 @@
             {% endif %}
         </div>
 
+        <div class="form-group">
+            {{ form.email.label }}
+            {{ form.email(class="form-control", placeholder="用于邮箱登录和后续找回密码") }}
+            {% if form.email.errors %}
+            <div class="text-danger">
+                {% for error in form.email.errors %}
+                {{ error }}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            {{ form.avatar.label }}
+            {{ form.avatar(class="form-control") }}
+            <div class="form-text">支持 jpg、jpeg、png、gif、webp。</div>
+            {% if form.avatar.errors %}
+            <div class="text-danger">
+                {% for error in form.avatar.errors %}
+                {{ error }}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
         {% if current_user.usertype == '学生' %}
         <div class="form-group">
             {{ form.class_name.label }}
@@ -135,6 +160,10 @@
 
         {{ form.submit(class="btn-submit") }}
     </form>
+
+    <a href="{{ url_for('users.change_password') }}" class="back-link">
+        <i class="bi bi-shield-lock"></i> 修改登录密码
+    </a>
 
     {% if session.get('usertype') == '教师' %}
     <a href="{{ url_for('main.teacher_dashboard') }}" class="back-link">

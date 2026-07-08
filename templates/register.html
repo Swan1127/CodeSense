@@ -320,17 +320,25 @@
                     </div>
                 {% endif %}
             </div>
-            
+
             <div class="form-group">
-                <label for="class_name" class="form-label">班级</label>
-                {{ form.class_name(class="form-control" + (" is-invalid" if form.class_name.errors else ""), id="class_name", placeholder="请输入班级") }}
-                {% if form.class_name.errors %}
+                <label for="email" class="form-label">邮箱（可选）</label>
+                {{ form.email(class="form-control" + (" is-invalid" if form.email.errors else ""), id="email", placeholder="可用于邮箱登录和后续找回密码") }}
+                {% if form.email.errors %}
                     <div class="form-error">
-                        {% for error in form.class_name.errors %}
+                        {% for error in form.email.errors %}
                             {{ error }}
                         {% endfor %}
                     </div>
                 {% endif %}
+            </div>
+            
+            {{ form.class_name(type="hidden", value="") }}
+            <div class="form-group">
+                <div class="alert" style="color:#1f2937;background-color:#eef2ff;">
+                    <i class="bi bi-info-circle"></i>
+                    班级将根据教师导入的学生名单自动绑定。请确认学号与名单一致；如果无法注册，请联系任课教师或管理员先导入名单。
+                </div>
             </div>
             
             <div class="form-group">
