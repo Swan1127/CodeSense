@@ -535,6 +535,8 @@ def sync_classes():
 def add_class():
     """添加新班级 (管理员专属)"""
     name = request.form.get('name')
+    school = request.form.get('school', '酷森思大学')
+    college = request.form.get('college', '计算机学院')
     grade = request.form.get('grade')
     major = request.form.get('major')
     teacher_id = request.form.get('teacher_id')
@@ -551,6 +553,8 @@ def add_class():
     try:
         new_class = Class(
             name=name,
+            school=school,
+            college=college,
             grade=grade,
             major=major,
             teacher_id=teacher_id if teacher_id else None
@@ -577,6 +581,8 @@ def edit_class(class_id):
     if request.method == 'POST':
         teacher_id = request.form.get('teacher_id')
         cls.teacher_id = teacher_id if teacher_id else None
+        cls.school = request.form.get('school', '酷森思大学')
+        cls.college = request.form.get('college', '计算机学院')
         cls.major = request.form.get('major')
         cls.grade = request.form.get('grade')
         cls.name = request.form.get('name')
@@ -586,3 +592,168 @@ def edit_class(class_id):
         return redirect(url_for('classes.class_detail', class_id=class_id))
     
     return render_template('classes/edit_class.html', cls=cls, teachers=teachers)
+
+
+@classes.route('/download-class-template')
+@login_required
+@admin_required
+def download_class_template():
+    """下载批量导入班级的模板文件 (支持 xlsx 和 csv)"""
+    file_format = request.args.get('format', 'xlsx').lower()
+    
+    df = pd.DataFrame([
+        {
+            '学校': '酷森思大学',
+            '学院': '计算机学院',
+            '专业': '软件工程',
+            '年级': '2024',
+            '班级名称': '软工2402',
+            '教师工号': 'teacher_001',
+            '教师姓名': '王老师'
+        }
+    ])
+    
+    import io
+    from flask import send_file
+    
+    if file_format == 'csv':
+        buffer = io.BytesIO()
+        df.to_csv(buffer, index=False, encoding='utf-8-sig')
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='class_import_template.csv'
+        )
+    else: # xlsx
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='班级导入模板')
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='class_import_template.xlsx'
+        )
+
+
+@classes.route('/import-classes', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def import_classes():
+    """管理员批量导入班级及教师绑定关系"""
+    if request.method == 'GET':
+        return render_template('classes/import_classes.html')
+        
+    upload = request.files.get('class_file')
+    if not upload or not upload.filename:
+        flash('请选择要导入的班级文件', 'danger')
+        return redirect(url_for('classes.class_list'))
+        
+    try:
+        df = _read_roster_dataframe(upload)
+        
+        # 寻找匹配的列名
+        school_col = _pick_column(df, ['学校', 'school', '学校名称'])
+        college_col = _pick_column(df, ['学院', 'college', '学院名称', '分院'])
+        major_col = _pick_column(df, ['专业', 'major', '专业名称'])
+        grade_col = _pick_column(df, ['年级', 'grade', '入学年份'])
+        class_name_col = _pick_column(df, ['班级名称', 'name', '班级', 'class_name'])
+        teacher_id_col = _pick_column(df, ['教师工号', 'teacher_id', '工号', '教师账号'])
+        
+        if not class_name_col:
+            flash('导入文件必须包含“班级名称”列', 'danger')
+            return redirect(url_for('classes.import_classes'))
+            
+        results = []
+        imported_count = 0
+        updated_count = 0
+        skipped_count = 0
+        
+        for idx, row in df.iterrows():
+            row_num = idx + 2
+            class_name = _clean_cell(row.get(class_name_col))
+            school = _clean_cell(row.get(school_col)) if school_col else '酷森思大学'
+            college = _clean_cell(row.get(college_col)) if college_col else '计算机学院'
+            major = _clean_cell(row.get(major_col)) if major_col else '计算机相关专业'
+            grade = _clean_cell(row.get(grade_col)) if grade_col else '2024'
+            teacher_id = _clean_cell(row.get(teacher_id_col)) if teacher_id_col else None
+            
+            if not class_name:
+                results.append({
+                    'row_num': row_num,
+                    'class_name': '-',
+                    'school': school,
+                    'college': college,
+                    'status': 'error',
+                    'message': '班级名称为空'
+                })
+                skipped_count += 1
+                continue
+                
+            teacher_user = None
+            teacher_msg = ''
+            if teacher_id:
+                teacher_user = User.query.get(teacher_id)
+                if not teacher_user:
+                    teacher_msg = f'（提示：教师工号 {teacher_id} 未在系统中注册，绑定关系待激活）'
+                elif teacher_user.usertype != '教师':
+                    teacher_msg = f'（警告：工号 {teacher_id} 用户类型非教师，无法绑定）'
+                    teacher_id = None
+                    
+            cls = Class.query.filter_by(name=class_name).first()
+            if not cls:
+                cls = Class(
+                    name=class_name,
+                    school=school or '酷森思大学',
+                    college=college or '计算机学院',
+                    major=major or '计算机相关专业',
+                    grade=grade or '2024',
+                    teacher_id=teacher_id if teacher_user and teacher_user.usertype == '教师' else None
+                )
+                db.session.add(cls)
+                action_status = 'inserted'
+                msg = f'成功新建班级{teacher_msg}'
+                imported_count += 1
+            else:
+                cls.school = school or cls.school
+                cls.college = college or cls.college
+                cls.major = major or cls.major
+                cls.grade = grade or cls.grade
+                if teacher_user and teacher_user.usertype == '教师':
+                    cls.teacher_id = teacher_id
+                action_status = 'updated'
+                msg = f'已更新班级属性{teacher_msg}'
+                updated_count += 1
+                
+            # 记录此行结果
+            results.append({
+                'row_num': row_num,
+                'class_name': class_name,
+                'school': school or '酷森思大学',
+                'college': college or '计算机学院',
+                'major': major or '计算机相关专业',
+                'grade': grade or '2024',
+                'teacher_name': teacher_user.full_name if teacher_user else (teacher_id or '-'),
+                'status': action_status,
+                'message': msg
+            })
+            
+        db.session.commit()
+        return render_template(
+            'classes/import_classes_result.html',
+            results=results,
+            summary={
+                'total': len(df),
+                'imported': imported_count,
+                'updated': updated_count,
+                'skipped': skipped_count
+            }
+        )
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'导入失败: {str(e)}', 'danger')
+        return redirect(url_for('classes.import_classes'))

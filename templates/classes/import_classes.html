@@ -1,0 +1,66 @@
+{% extends "layout.html" %}
+
+{% block title %}批量导入班级 - CodeSense 酷森思{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('classes.class_list') }}">班级管理</a></li>
+            <li class="breadcrumb-item active" aria-current="page">批量导入班级</li>
+        </ol>
+    </nav>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- 导入卡片 -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body p-5">
+                    <h3 class="fw-bold text-center mb-4"><i class="bi bi-file-earmark-arrow-up text-primary me-2"></i> 批量导入班级与教师绑定</h3>
+                    <p class="text-muted text-center mb-4">上传包含班级和教师绑定关系的 Excel 或 CSV 文件，系统将自动建立层级架构与绑定管理权。</p>
+
+                    <!-- 下载模板区域 -->
+                    <div class="bg-light p-4 rounded-3 border mb-4 text-center">
+                        <h6 class="fw-bold mb-2">下载标准导入模板</h6>
+                        <p class="small text-muted mb-3">为避免发生格式解析错误，请下载并使用下方提供的标准导入模板。</p>
+                        <div class="d-flex justify-content-center gap-3">
+                            <a href="{{ url_for('classes.download_class_template', format='xlsx') }}" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-file-earmark-excel me-1"></i> 下载 Excel (.xlsx) 模板
+                            </a>
+                            <a href="{{ url_for('classes.download_class_template', format='csv') }}" class="btn btn-outline-secondary btn-sm">
+                                <i class="bi bi-file-earmark-spreadsheet me-1"></i> 下载 CSV (.csv) 模板
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- 文件上传表单 -->
+                    <form action="{{ url_for('classes.import_classes') }}" method="POST" enctype="multipart/form-data">
+                        <div class="mb-4">
+                            <label for="class_file" class="form-label fw-bold">选择班级导入文件</label>
+                            <input class="form-control" type="file" id="class_file" name="class_file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text mt-2">支持的格式：Excel 电子表格 (<code>.xlsx</code> / <code>.xls</code>) 或 UTF-8 编码的逗号分隔值文件 (<code>.csv</code>)</div>
+                        </div>
+
+                        <!-- 模板说明 -->
+                        <div class="mb-4">
+                            <h6 class="fw-bold text-slate-800"><i class="bi bi-info-circle me-1"></i> 导入规则与字段说明：</h6>
+                            <ul class="small text-muted ps-3 mb-0">
+                                <li class="mb-1"><strong>班级名称 (必填)</strong>：班级唯一标识，若班级已存在将更新其关联属性，不存在则将新建。</li>
+                                <li class="mb-1"><strong>学校 / 学院 / 专业 / 年级 (选填)</strong>：有助于构建分层级筛选，留空时系统默认设定为“酷森思大学”、“计算机学院”、“计算机相关专业”、“2024”。</li>
+                                <li class="mb-1"><strong>教师工号 (选填)</strong>：如提供工号，系统会自动检索该账号并建立班级与该教师的绑定管理关系。如果工号对应的账号尚未注册，绑定关系将在其注册后生效。</li>
+                            </ul>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary py-2 fw-bold">
+                                <i class="bi bi-cloud-arrow-up me-1"></i> 开始导入数据
+                            </button>
+                            <a href="{{ url_for('classes.class_list') }}" class="btn btn-link text-muted">返回班级管理</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -20,6 +20,8 @@ class Class(db.Model):
     __tablename__ = 'classes'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)  # 班级名称
+    school = db.Column(db.String(100), default='酷森思大学', nullable=False)  # 学校
+    college = db.Column(db.String(100), default='计算机学院', nullable=False)  # 学院
     grade = db.Column(db.String(20))  # 年级
     major = db.Column(db.String(50))  # 专业
     teacher_id = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='SET NULL'), nullable=True)
@@ -741,6 +743,20 @@ def init_db(app):
                     print('已添加 classes.teacher_bind_code_updated_at 列')
                 except Exception:
                     pass  # 列已存在
+
+                try:
+                    conn.execute(db.text('ALTER TABLE classes ADD COLUMN school VARCHAR(100) DEFAULT "酷森思大学"'))
+                    conn.commit()
+                    print('已添加 classes.school 列')
+                except Exception:
+                    pass
+
+                try:
+                    conn.execute(db.text('ALTER TABLE classes ADD COLUMN college VARCHAR(100) DEFAULT "计算机学院"'))
+                    conn.commit()
+                    print('已添加 classes.college 列')
+                except Exception:
+                    pass
         except Exception as e:
             print(f'自动迁移跳过: {e}')
 

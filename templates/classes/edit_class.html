@@ -66,6 +66,16 @@
                 <label class="form-label" for="name">班级名称</label>
                 <input type="text" class="form-control" id="name" name="name" value="{{ cls.name }}" required>
             </div>
+
+            <div class="form-group">
+                <label class="form-label" for="school">学校</label>
+                <input type="text" class="form-control" id="school" name="school" value="{{ cls.school or '酷森思大学' }}" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="college">学院</label>
+                <input type="text" class="form-control" id="college" name="college" value="{{ cls.college or '计算机学院' }}" required>
+            </div>
             
             <div class="form-group">
                 <label class="form-label" for="grade">年级</label>
