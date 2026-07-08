@@ -569,6 +569,7 @@ def teacher_dashboard():
                            student_count=dashboard['student_count'],
                            total_submissions=dashboard['total_submissions'],
                            recent_submissions=dashboard['recent_submissions'],
+                           submission_trend=dashboard['submission_trend'],
                            class_cards=dashboard['class_cards'],
                            attention=dashboard['attention'],
                            chart_data=dashboard['chart_data'])

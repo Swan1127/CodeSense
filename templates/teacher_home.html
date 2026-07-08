@@ -119,6 +119,22 @@
         gap: 0.5rem;
         margin-top: 0.75rem;
     }
+
+    .trend-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .trend-total {
+        border-radius: 0.5rem;
+        background: #eef4ff;
+        color: #2e59d9;
+        padding: 0.45rem 0.75rem;
+        font-weight: 700;
+    }
 </style>
 {% endblock %}
 
@@ -229,6 +245,20 @@
     </div>
 
     <!-- 可视化图表区 -->
+    <div class="dashboard-section">
+        <div class="trend-toolbar">
+            <div class="section-title mb-0">
+                <span><i class="bi bi-activity text-primary me-2"></i>近 14 天提交趋势</span>
+            </div>
+            <div class="trend-total">
+                共 {{ submission_trend|sum(attribute='count') }} 次提交
+            </div>
+        </div>
+        <div style="height: 260px;">
+            <canvas id="submissionTrendChart"></canvas>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-md-6">
             <div class="dashboard-section">
@@ -361,8 +391,44 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const chartData = {{ chart_data| tojson | safe
-    }};
+        const chartData = {{ chart_data|tojson|safe }};
+        const submissionTrend = {{ submission_trend|tojson|safe }};
+
+        const trendCtx = document.getElementById('submissionTrendChart');
+        if (trendCtx && submissionTrend && submissionTrend.length > 0) {
+            new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: submissionTrend.map(item => item.label),
+                    datasets: [{
+                        label: '提交次数',
+                        data: submissionTrend.map(item => item.count),
+                        borderColor: '#2e59d9',
+                        backgroundColor: 'rgba(78, 115, 223, 0.12)',
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
 
     // 如果没有数据则不渲染图表
     if (!chartData.labels || chartData.labels.length === 0) return;

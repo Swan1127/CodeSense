@@ -8,7 +8,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app import create_app
 from models import Assignment, Class, StudentRoster, Submission, User, db
-from services.teacher_analytics import build_class_learning_rows, build_teacher_dashboard_data
+from services.teacher_analytics import (
+    build_assignment_completion_matrix,
+    build_class_learning_rows,
+    build_submission_trend,
+    build_teacher_dashboard_data,
+)
 
 
 class TeacherAnalyticsTestCase(unittest.TestCase):
@@ -105,6 +110,14 @@ class TeacherAnalyticsTestCase(unittest.TestCase):
                     submitted_at=dt.utcnow() - timedelta(days=2),
                     status='evaluated',
                 ),
+                Submission(
+                    student_id='20230001',
+                    assignment_id=older_assignment.id,
+                    code='print(3)',
+                    score=4,
+                    submitted_at=dt.utcnow() - timedelta(days=10),
+                    status='evaluated',
+                ),
                 StudentRoster(
                     student_id='20230004',
                     full_name='赵六',
@@ -139,11 +152,13 @@ class TeacherAnalyticsTestCase(unittest.TestCase):
             dashboard = build_teacher_dashboard_data(teacher)
 
             self.assertEqual(dashboard['student_count'], 3)
-            self.assertEqual(dashboard['total_submissions'], 2)
+            self.assertEqual(dashboard['total_submissions'], 3)
             self.assertEqual(dashboard['attention']['low_score_count'], 1)
             self.assertEqual(dashboard['attention']['inactive_count'], 1)
             self.assertEqual(dashboard['attention']['no_submission_count'], 1)
             self.assertEqual(dashboard['attention']['unregistered_roster_count'], 1)
+            self.assertEqual(len(dashboard['submission_trend']), 14)
+            self.assertEqual(sum(day['count'] for day in dashboard['submission_trend']), 3)
 
             card = dashboard['class_cards'][0]
             self.assertEqual(card['class'].name, '软件2302')
@@ -153,6 +168,43 @@ class TeacherAnalyticsTestCase(unittest.TestCase):
             self.assertEqual(card['latest_completed'], 2)
             self.assertEqual(card['latest_total'], 3)
             self.assertEqual(card['completion_rate'], 66.7)
+
+    def test_submission_trend_builds_daily_buckets(self):
+        with self.app.app_context():
+            trend = build_submission_trend(
+                ['20230001', '20230002', '20230003'],
+                days=14,
+                now=dt.utcnow(),
+            )
+
+            self.assertEqual(len(trend), 14)
+            self.assertEqual(trend[-2]['count'], 1)
+            self.assertEqual(trend[-3]['count'], 1)
+            self.assertEqual(trend[-11]['count'], 1)
+            self.assertEqual(trend[-1]['count'], 0)
+
+    def test_assignment_completion_matrix_marks_recent_assignment_cells(self):
+        with self.app.app_context():
+            cls = Class.query.get(self.class_id)
+
+            matrix = build_assignment_completion_matrix(cls)
+
+            self.assertEqual([assignment.title for assignment in matrix['assignments']], [
+                '循环结构练习',
+                '数组基础',
+            ])
+            self.assertEqual(matrix['summary'][0]['completed'], 2)
+            self.assertEqual(matrix['summary'][0]['completion_rate'], 66.7)
+
+            by_id = {row['student'].student_id: row for row in matrix['rows']}
+            active_cells = {cell['assignment'].title: cell for cell in by_id['20230001']['cells']}
+            low_cells = {cell['assignment'].title: cell for cell in by_id['20230002']['cells']}
+            quiet_cells = {cell['assignment'].title: cell for cell in by_id['20230003']['cells']}
+
+            self.assertEqual(active_cells['循环结构练习']['status'], '优秀')
+            self.assertEqual(active_cells['数组基础']['status'], '优秀')
+            self.assertEqual(low_cells['循环结构练习']['status'], '低分')
+            self.assertEqual(quiet_cells['循环结构练习']['status'], '缺交')
 
     def test_class_learning_rows_label_student_statuses(self):
         with self.app.app_context():
@@ -178,6 +230,7 @@ class TeacherAnalyticsTestCase(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn('今日需要关注', body)
         self.assertIn('班级学习概况', body)
+        self.assertIn('近 14 天提交趋势', body)
         self.assertIn('软件2302', body)
 
     def test_class_detail_renders_learning_rows(self):
@@ -188,6 +241,7 @@ class TeacherAnalyticsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertIn('学生学情概览', body)
+        self.assertIn('最近作业完成矩阵', body)
         self.assertIn('需关注', body)
         self.assertIn('未开始', body)
 

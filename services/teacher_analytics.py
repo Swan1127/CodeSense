@@ -1,4 +1,4 @@
-from datetime import datetime as dt, timedelta
+from datetime import datetime as dt, time, timedelta
 
 from models import Assignment, Class, StudentRoster, Submission, User, db
 
@@ -67,6 +67,127 @@ def _assignment_completion(cls, assignment, students):
     ).distinct().count()
     rate = round(completed / total * 100, 1) if total else 0.0
     return completed, total, rate
+
+
+def build_submission_trend(student_ids, days=14, now=None):
+    """Build daily submission counts for the teacher dashboard trend chart."""
+    now = now or dt.utcnow()
+    end_date = now.date()
+    start_date = end_date - timedelta(days=days - 1)
+    buckets = {
+        (start_date + timedelta(days=offset)): 0
+        for offset in range(days)
+    }
+
+    if student_ids:
+        submissions = Submission.query.filter(
+            Submission.student_id.in_(student_ids),
+            Submission.submitted_at >= dt.combine(start_date, time.min),
+            Submission.submitted_at <= dt.combine(end_date, time.max),
+        ).all()
+        for submission in submissions:
+            submitted_date = submission.submitted_at.date()
+            if submitted_date in buckets:
+                buckets[submitted_date] += 1
+
+    return [
+        {
+            'date': day.isoformat(),
+            'label': day.strftime('%m-%d'),
+            'count': buckets[day],
+        }
+        for day in sorted(buckets)
+    ]
+
+
+def _cell_status(best_score, submitted):
+    if not submitted:
+        return '缺交'
+    if best_score is not None and best_score < LOW_SCORE_THRESHOLD:
+        return '低分'
+    if best_score is not None and best_score >= EXCELLENT_SCORE_THRESHOLD:
+        return '优秀'
+    return '已交'
+
+
+def build_assignment_completion_matrix(cls, students=None, assignment_limit=5):
+    """Build a recent-assignment completion matrix for a class."""
+    if students is None:
+        students = cls.students.filter_by(usertype='学生')\
+            .order_by(User.user_ascore.desc())\
+            .all()
+    else:
+        students = list(students)
+
+    assignments = _assigned_assignments_for_class(cls, limit=assignment_limit)
+    student_ids = _student_ids(students)
+    assignment_ids = [assignment.id for assignment in assignments]
+
+    submissions_by_key = {}
+    if student_ids and assignment_ids:
+        submissions = Submission.query.filter(
+            Submission.student_id.in_(student_ids),
+            Submission.assignment_id.in_(assignment_ids),
+        ).all()
+        for submission in submissions:
+            key = (submission.student_id, submission.assignment_id)
+            current = submissions_by_key.get(key)
+            if current is None:
+                submissions_by_key[key] = submission
+            elif submission.score is not None and (
+                current.score is None or submission.score > current.score
+            ):
+                submissions_by_key[key] = submission
+
+    rows = []
+    for student in students:
+        cells = []
+        completed_count = 0
+        for assignment in assignments:
+            submission = submissions_by_key.get((student.student_id, assignment.id))
+            submitted = submission is not None
+            if submitted:
+                completed_count += 1
+            best_score = submission.score if submission else None
+            status = _cell_status(best_score, submitted)
+            cells.append({
+                'assignment': assignment,
+                'submitted': submitted,
+                'best_score': best_score,
+                'status': status,
+                'status_class': {
+                    '优秀': 'excellent',
+                    '已交': 'submitted',
+                    '低分': 'low',
+                    '缺交': 'missing',
+                }[status],
+            })
+        rows.append({
+            'student': student,
+            'cells': cells,
+            'completed_count': completed_count,
+            'total_count': len(assignments),
+        })
+
+    summary = []
+    for assignment in assignments:
+        completed = len([
+            row for row in rows
+            if any(cell['assignment'].id == assignment.id and cell['submitted'] for cell in row['cells'])
+        ])
+        total = len(students)
+        summary.append({
+            'assignment': assignment,
+            'completed': completed,
+            'total': total,
+            'completion_rate': round(completed / total * 100, 1) if total else 0.0,
+        })
+
+    return {
+        'assignments': assignments,
+        'rows': rows,
+        'summary': summary,
+    }
 
 
 def _risk_tags_for_student(student, latest_submission, submission_count, now):
@@ -221,6 +342,7 @@ def build_teacher_dashboard_data(teacher, now=None):
         'student_count': len(students),
         'total_submissions': total_submissions,
         'recent_submissions': recent_submissions,
+        'submission_trend': build_submission_trend(student_ids, days=14, now=now),
         'class_cards': class_cards,
         'attention': {
             'low_score_count': len(low_score_rows),
