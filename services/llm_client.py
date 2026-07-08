@@ -256,6 +256,63 @@ class SharedLLMClient:
                     print(traceback.format_exc())
                     return None
 
+    def chat_stream(self, messages: list, temperature: float = 0.7, max_tokens: int = 2000):
+        """
+        发送流式对话请求
+        """
+        if not self.is_available():
+            print("[!] LLM 客户端不可用")
+            return
+
+        import threading
+        import time
+
+        is_worker = threading.current_thread().name.startswith('worker-')
+        if not is_worker:
+            SharedLLMClient.last_user_request_time = time.time()
+        else:
+            # Worker thread yields to active user requests
+            while True:
+                elapsed = time.time() - SharedLLMClient.last_user_request_time
+                if elapsed < 10.0:
+                    print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request. Sleeping 2s...")
+                    time.sleep(2.0)
+                else:
+                    break
+
+        current_model = self._model_name
+        try:
+            if self._provider == LLMProvider.ZHIPU:
+                response = self._client.chat.completions.create(
+                    model=current_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    extra_body={"thinking": {"type": "disabled"}},
+                    stream=True
+                )
+                for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+
+            elif self._provider == LLMProvider.OPENAI:
+                response = self._client.chat.completions.create(
+                    model=current_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True
+                )
+                for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+
+        except Exception as e:
+            import traceback
+            print(f"LLM API 流式调用失败: {e}")
+            print(traceback.format_exc())
+
+
     def evaluate_code(self, code: str, assignment_title: str = None) -> Tuple[int, str]:
         """
         评估代码

@@ -212,5 +212,13 @@ class TeacherAISuggestionsTestCase(unittest.TestCase):
         res_json = json.loads(response.get_data(as_text=True))
         self.assertIn('status', res_json)
 
+        # 4. 访问流式建议接口 (SSE)
+        response = self.client.get(f'/api/teacher/stream_suggestions?class_id={self.class_id}')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'text/event-stream')
+        stream_data = response.get_data(as_text=True)
+        self.assertIn('data:', stream_data)
+
 if __name__ == '__main__':
     unittest.main()
+

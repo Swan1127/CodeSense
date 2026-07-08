@@ -303,3 +303,241 @@ def generate_class_suggestions_async(class_id, teacher_id, app):
     thread.daemon = True
     thread.start()
     return thread
+
+
+def generate_class_suggestions_stream(class_id, teacher_id):
+    """
+    流式生成班级学情建议，计算规则引擎结果，并流式输出LLM反馈报告，最后保存入库
+    """
+    yield f"data: {json.dumps({'type': 'status', 'message': '正在读取班级基本数据...'})}\n\n"
+    
+    cls = Class.query.get(class_id)
+    if not cls:
+        yield f"data: {json.dumps({'type': 'error', 'message': '班级未找到'})}\n\n"
+        return
+
+    suggestion = TeacherAISuggestion.get_or_create(class_id=class_id, teacher_id=teacher_id)
+    suggestion.status = 'processing'
+    db.session.commit()
+
+    yield f"data: {json.dumps({'type': 'status', 'message': '正在分析学生提交与风险情况...'})}\n\n"
+    students = User.query.filter_by(class_id=class_id, usertype='学生').all()
+    student_ids = [s.student_id for s in students]
+
+    attention_students = []
+    if students:
+        learning_rows = build_class_learning_rows(cls, students=students)
+        for row in learning_rows:
+            if row['status'] == '需关注' or row['status'] == '未开始':
+                attention_students.append({
+                    'student_id': row['student'].student_id,
+                    'name': row['student'].full_name or row['student'].username,
+                    'risk_tags': row['risk_tags'],
+                    'latest_score': row['latest_score']
+                })
+
+    yield f"data: {json.dumps({'type': 'status', 'message': '正在聚合知识点雷达掌握度...'})}\n\n"
+    weak_points = []
+    if student_ids:
+        rows = db.session.query(
+            KnowledgePointScore.knowledge_point,
+            db.func.avg(KnowledgePointScore.score).label('avg_score'),
+            db.func.sum(KnowledgePointScore.total_attempts).label('total_attempts')
+        ).filter(
+            KnowledgePointScore.student_id.in_(student_ids)
+        ).group_by(
+            KnowledgePointScore.knowledge_point
+        ).order_by(
+            db.func.avg(KnowledgePointScore.score).asc()
+        ).all()
+
+        for row in rows:
+            kp_code = row.knowledge_point
+            kp_display = KnowledgePointScore.KNOWLEDGE_POINTS.get(kp_code, kp_code)
+            weak_points.append({
+                'code': kp_code,
+                'name': kp_display,
+                'avg_score': round(float(row.avg_score), 1) if row.avg_score else 0.0,
+                'total_attempts': int(row.total_attempts) if row.total_attempts else 0
+            })
+
+    yield f"data: {json.dumps({'type': 'status', 'message': '正在匹配系统作业并生成推荐大纲...'})}\n\n"
+    suggested_assignments = []
+    if weak_points:
+        weak_kp_codes = [wp['code'] for wp in weak_points[:3]]
+        candidate_assignments = Assignment.query.join(
+            AssignmentKnowledgePoint, Assignment.id == AssignmentKnowledgePoint.assignment_id
+        ).filter(
+            AssignmentKnowledgePoint.knowledge_point.in_(weak_kp_codes)
+        ).all()
+
+        for assign in candidate_assignments:
+            if cls.name not in assign.get_target_class_list():
+                if assign.id not in [a['id'] for a in suggested_assignments]:
+                    suggested_assignments.append({
+                        'id': assign.id,
+                        'title': assign.title,
+                        'description': assign.description or '暂无描述',
+                        'difficulty': {1: '简单', 2: '较易', 3: '中等', 4: '较难', 5: '困难'}.get(assign.difficulty_level, '中等')
+                    })
+
+    if not suggested_assignments and weak_points:
+        for wp in weak_points[:2]:
+            suggested_assignments.append({
+                'id': 0,
+                'title': f'针对【{wp["name"]}】的巩固练习',
+                'description': f'建议为班级新建一份涵盖【{wp["name"]}】的编程作业，帮助学生专项突破该知识点。',
+                'difficulty': '中等'
+            })
+
+    rule_markdown = _generate_rule_based_markdown(cls, weak_points, attention_students, suggested_assignments)
+    rule_json_dict = {
+        'attention_students': [
+            {
+                'student_id': s['student_id'],
+                'name': s['name'],
+                'risk_reason': f"存在{'/'.join(s['risk_tags'])}风险，最近得分 {s['latest_score'] if s['latest_score'] is not None else '无'}"
+            } for s in attention_students
+        ],
+        'weak_knowledge_points': [
+            {
+                'point_code': wp['code'],
+                'point_name': wp['name'],
+                'explanation': f"班级掌握度较低，平均分：{wp['avg_score']}/100，尝试：{wp['total_attempts']}次。建议课堂串讲基本概念。"
+            } for wp in weak_points[:3]
+        ],
+        'suggested_assignments': [
+            {
+                'title': a['title'],
+                'reason': f"针对弱势概念进行课后巩固训练。",
+                'difficulty': a['difficulty']
+            } for a in suggested_assignments[:3]
+        ]
+    }
+
+    llm = SharedLLMClient()
+    if llm.is_available():
+        try:
+            yield f"data: {json.dumps({'type': 'status', 'message': '正在与 AI 助手建立流式会话...'})}\n\n"
+            
+            attention_details_str = "\n".join([
+                f"- {s['name']} ({s['student_id']}): 风险标签 {s['risk_tags']}, 最近得分 {s['latest_score']}" 
+                for s in attention_students
+            ]) if attention_students else "暂无高风险学生"
+
+            weak_points_str = "\n".join([
+                f"- {wp['name']}: {wp['avg_score']}分, 尝试 {wp['total_attempts']} 次" 
+                for wp in weak_points
+            ]) if weak_points else "暂无评分数据"
+
+            assignments_str = "\n".join([
+                f"- {a['title']} (难度: {a['difficulty']}): {a['description']}" 
+                for a in suggested_assignments[:3]
+            ]) if suggested_assignments else "无推荐作业"
+
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一个专业的编程教育专家，擅长从班级 student 分数、提交活跃度、弱点概念等多维度给出建议。\n"
+                        "请用学术严谨且易懂的中文直接输出分析内容，并在正文结束后，输出一行由 `===JSON===` 分隔的 JSON 字符串，包含系统结构。"
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": f"""请针对以下班级学情数据，为授课教师生成本周的 AI 个性化建议报告。
+
+班级: {cls.name}
+学生数: {len(students)} 人
+需关注的学生:
+{attention_details_str}
+
+本班概念掌握情况(平均分):
+{weak_points_str}
+
+可供派发的关联作业:
+{assignments_str}
+
+请生成一份详细的教学建议报告，必须包含以下三个核心部分：
+1. 本周重点关注学生：列出高风险学生、原因及对应的关怀建议。
+2. 建议讲解知识点：针对薄弱概念，提供核心讲解策略和典型错误提醒。
+3. 建议补练作业：推荐具体的练习方案。
+
+必须按 Markdown 格式排版正文。
+正文结束后，输出一行 `===JSON===`，紧接着输出以下 JSON 格式的解析字典:
+{{
+  "attention_students": [
+     {{"student_id": "学号", "name": "学生姓名", "risk_reason": "具体风险和建议建议"}}
+  ],
+  "weak_knowledge_points": [
+     {{"point_code": "概念代码", "point_name": "概念名称", "explanation": "掌握现状及对策建议"}}
+  ],
+  "suggested_assignments": [
+     {{"title": "作业标题", "reason": "推荐原因", "difficulty": "中等/困难"}}
+  ]
+}}
+"""
+                }
+            ]
+
+            full_text = ""
+            json_started = False
+            has_sent_start = False
+            
+            for chunk in llm.chat_stream(messages):
+                full_text += chunk
+                if "===" in chunk or "JSON" in chunk or json_started:
+                    json_started = True
+                else:
+                    if not has_sent_start:
+                        yield f"data: {json.dumps({'type': 'start'})}\n\n"
+                        has_sent_start = True
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+
+            # 提取 JSON 部分
+            parts = full_text.split('===JSON===')
+            markdown_part = parts[0].strip()
+            json_part = parts[1].strip() if len(parts) > 1 else "{}"
+
+            if json_part.startswith('```'):
+                lines = json_part.splitlines()
+                if lines[0].startswith('```json') or lines[0].startswith('```'):
+                    lines = lines[1:]
+                if lines[-1].startswith('```'):
+                    lines = lines[:-1]
+                json_part = "\n".join(lines).strip()
+
+            try:
+                parsed_json = json.loads(json_part)
+                if 'attention_students' in parsed_json and 'weak_knowledge_points' in parsed_json:
+                    suggestion.suggestion_markdown = markdown_part
+                    suggestion.suggestion_json = json.dumps(parsed_json, ensure_ascii=False)
+                    suggestion.status = 'completed'
+                    suggestion.last_updated = dt.utcnow()
+                    db.session.commit()
+                    
+                    yield f"data: {json.dumps({'type': 'complete', 'suggestion_json': parsed_json, 'last_updated': suggestion.last_updated.strftime('%Y-%m-%d %H:%M:%S')})}\n\n"
+                    return
+            except Exception as je:
+                print(f"LLM JSON 流解析失败: {je}")
+
+        except Exception as le:
+            print(f"LLM 流式分析失败: {le}")
+
+    # Fallback to rules-based
+    yield f"data: {json.dumps({'type': 'start'})}\n\n"
+    chunk_size = 30
+    import time
+    for i in range(0, len(rule_markdown), chunk_size):
+        chunk = rule_markdown[i:i+chunk_size]
+        yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+        time.sleep(0.04)
+
+    suggestion.suggestion_markdown = rule_markdown
+    suggestion.suggestion_json = json.dumps(rule_json_dict, ensure_ascii=False)
+    suggestion.status = 'completed'
+    suggestion.last_updated = dt.utcnow()
+    db.session.commit()
+
+    yield f"data: {json.dumps({'type': 'complete', 'suggestion_json': rule_json_dict, 'last_updated': suggestion.last_updated.strftime('%Y-%m-%d %H:%M:%S')})}\n\n"
+

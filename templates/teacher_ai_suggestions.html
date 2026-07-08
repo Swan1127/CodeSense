@@ -231,7 +231,7 @@
                                         <h5 class="fw-bold text-slate-800">AI 正在深度分析班级学情...</h5>
                                         <script>
                                             document.addEventListener("DOMContentLoaded", function() {
-                                                pollSuggestionStatus({{ cls.id }});
+                                                startSuggestionStream({{ cls.id }});
                                             });
                                         </script>
                                     </div>
@@ -306,10 +306,10 @@
                                         <div class="col-lg-7 col-md-12">
                                             <h5 class="block-title text-slate-800"><i class="bi bi-card-text me-2 text-primary"></i>🤖 AI 深度教学诊断报告</h5>
                                             <div class="border rounded-3 p-4 bg-light markdown-content text-slate-700 shadow-inner" style="min-height: 400px; max-height: 700px; overflow-y: auto;">
-                                                {% if sug.suggestion_markdown %}
-                                                    <!-- 使用简单过滤器或渲染器渲染 Markdown -->
-                                                    <div class="markdown-raw" style="white-space: pre-wrap; font-family: inherit;">{{ sug.suggestion_markdown }}</div>
-                                                {% else %}
+                                                 {% if sug.suggestion_markdown %}
+                                                     <!-- 使用 marked.js 渲染 -->
+                                                     <div class="markdown-render-inline" data-markdown="{{ sug.suggestion_markdown | e }}"></div>
+                                                 {% else %}
                                                     <p class="text-muted text-center pt-5">暂无详细建议报告内容</p>
                                                 {% endif %}
                                             </div>
@@ -334,56 +334,138 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        // 渲染已存在的 markdown 建议
+        document.querySelectorAll('.markdown-render-inline').forEach(el => {
+            const raw = el.getAttribute('data-markdown') || el.textContent || '';
+            if (raw.trim() && typeof marked !== 'undefined') {
+                el.innerHTML = marked.parse(raw);
+            }
+        });
+
         // 绑定刷新按钮事件
         document.querySelectorAll('.btn-refresh-sug').forEach(btn => {
             btn.addEventListener('click', function() {
                 const classId = this.getAttribute('data-class-id');
-                triggerSuggestionGeneration(classId, this);
+                startSuggestionStream(classId, this);
             });
         });
     });
 
-    // 触发建议生成
-    function triggerSuggestionGeneration(classId, buttonElement) {
-        // 显示加载动画
-        const icon = buttonElement.querySelector('.btn-refresh-icon');
-        if (icon) icon.classList.add('spin');
-        buttonElement.disabled = true;
+    // 触发并流式获取建议生成过程
+    function startSuggestionStream(classId, buttonElement = null) {
+        // 动画控制：旋转图标并禁用按钮
+        if (buttonElement) {
+            buttonElement.disabled = true;
+            const icon = buttonElement.querySelector('.btn-refresh-icon');
+            if (icon) icon.classList.add('spin');
+        }
 
         const statusContainer = document.querySelector(`.status-container-${classId}`);
         const contentContainer = document.querySelector(`.content-container-${classId}`);
         
-        if (statusContainer) statusContainer.classList.remove('d-none');
-        if (contentContainer) contentContainer.classList.add('d-none');
+        // 显示初始分析进度条/状态面板
+        if (statusContainer) {
+            statusContainer.querySelector('h5').innerText = "AI 正在深度分析班级学情...";
+            statusContainer.querySelector('p').innerText = "正在分析学生数据与雷达能力分布...";
+            statusContainer.classList.remove('d-none');
+        }
+        if (contentContainer) {
+            contentContainer.classList.add('d-none');
+        }
 
-        fetch('/api/teacher/generate_suggestions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ class_id: classId })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                // 启动轮询
-                pollSuggestionStatus(classId);
-            } else {
-                alert('建议生成任务启动失败: ' + data.message);
+        // 如果该班级已经存在流式连接，先关闭之
+        if (window.suggestionEventSources && window.suggestionEventSources[classId]) {
+            window.suggestionEventSources[classId].close();
+        }
+        if (!window.suggestionEventSources) {
+            window.suggestionEventSources = {};
+        }
+
+        // 建立 Server-Sent Events 连接
+        const source = new EventSource(`/api/teacher/stream_suggestions?class_id=${classId}`);
+        window.suggestionEventSources[classId] = source;
+
+        let markdownBuffer = "";
+        let hasInitializedUI = false;
+
+        source.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'status') {
+                // 更新阶段性状态消息
+                if (statusContainer) {
+                    statusContainer.querySelector('p').innerText = data.message;
+                }
+            } else if (data.type === 'start') {
+                // AI 开始输出，初始化实时流界面布局
+                hasInitializedUI = true;
+                if (statusContainer) statusContainer.classList.add('d-none');
+                if (contentContainer) {
+                    contentContainer.innerHTML = getStreamingUILayout(classId);
+                    contentContainer.classList.remove('d-none');
+                }
+            } else if (data.type === 'chunk') {
+                // 安全判定：若没收到 start 事件就已经到了数据块，强制进行 UI 初始化
+                if (!hasInitializedUI) {
+                    hasInitializedUI = true;
+                    if (statusContainer) statusContainer.classList.add('d-none');
+                    if (contentContainer) {
+                        contentContainer.innerHTML = getStreamingUILayout(classId);
+                        contentContainer.classList.remove('d-none');
+                    }
+                }
+                markdownBuffer += data.content;
+                const reportContentDiv = document.querySelector(`.report-content-box-${classId}`);
+                if (reportContentDiv && typeof marked !== 'undefined') {
+                    // 使用 marked 渲染实时 Markdown
+                    reportContentDiv.innerHTML = marked.parse(markdownBuffer);
+                    
+                    // 滚动到底部以提升观感
+                    reportContentDiv.scrollTop = reportContentDiv.scrollHeight;
+                }
+            } else if (data.type === 'complete') {
+                // 传输完成，断开流连接
+                source.close();
+                delete window.suggestionEventSources[classId];
+                
+                // 将 markdown 块与结构化 JSON 组合，渲染最终页面
+                const finalData = {
+                    suggestion_markdown: markdownBuffer || data.suggestion_markdown || "分析报告生成成功",
+                    suggestion_json: data.suggestion_json,
+                    last_updated: data.last_updated
+                };
+                updateSuggestionUI(classId, finalData);
+                
+                // 复位刷新按钮状态
+                if (buttonElement) {
+                    buttonElement.disabled = false;
+                    const icon = buttonElement.querySelector('.btn-refresh-icon');
+                    if (icon) icon.classList.remove('spin');
+                }
+            } else if (data.type === 'error') {
+                source.close();
+                delete window.suggestionEventSources[classId];
+                alert('流式生成 AI 建议失败: ' + (data.message || '系统繁忙'));
                 resetRefreshButton(classId, buttonElement);
             }
-        })
-        .catch(err => {
-            console.error(err);
-            alert('刷新 AI 建议时出错，请稍后重试');
+        };
+
+        source.onerror = function(err) {
+            console.error('SSE connection error:', err);
+            source.close();
+            delete window.suggestionEventSources[classId];
+            alert('AI 诊断流连接异常中断，建议您刷新页面重试。');
             resetRefreshButton(classId, buttonElement);
-        });
+        };
     }
 
+    // 复位按钮与布局
     function resetRefreshButton(classId, buttonElement) {
-        const icon = buttonElement.querySelector('.btn-refresh-icon');
-        if (icon) icon.classList.remove('spin');
-        buttonElement.disabled = false;
+        if (buttonElement) {
+            buttonElement.disabled = false;
+            const icon = buttonElement.querySelector('.btn-refresh-icon');
+            if (icon) icon.classList.remove('spin');
+        }
 
         const statusContainer = document.querySelector(`.status-container-${classId}`);
         const contentContainer = document.querySelector(`.content-container-${classId}`);
@@ -392,28 +474,31 @@
         if (contentContainer) contentContainer.classList.remove('d-none');
     }
 
-    // 轮询分析状态
-    function pollSuggestionStatus(classId) {
-        const intervalId = setInterval(() => {
-            fetch(`/api/teacher/suggestion_status/${classId}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'completed') {
-                    clearInterval(intervalId);
-                    // 动态更新页面内容
-                    updateSuggestionUI(classId, data);
-                } else if (data.status === 'failed') {
-                    clearInterval(intervalId);
-                    location.reload(); // 出错则刷新页面显示出错占位符
-                }
-            })
-            .catch(err => {
-                console.error('轮询AI状态失败:', err);
-            });
-        }, 3000); // 每3秒轮询一次
+    // 获取流式输出中时的布局大纲
+    function getStreamingUILayout(classId) {
+        return `
+        <div class="row g-4">
+            <!-- 左侧：卡片加载等待态 -->
+            <div class="col-lg-5 col-md-12">
+                <div class="p-4 text-center border rounded-3 bg-light" style="min-height: 400px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                    <div class="spinner-border text-primary mb-3 spin" role="status" style="width: 2.5rem; height: 2.5rem;"></div>
+                    <h6 class="fw-bold text-slate-800">正在同步汇总行动要素...</h6>
+                    <p class="text-muted small px-3">本周重点关注学生、薄弱知识点及关联补练题目正由 AI 从诊断报告中提炼，报告流完后将呈现在此处。</p>
+                </div>
+            </div>
+            
+            <!-- 右侧：AI 详细诊断报告打字机流式呈现 -->
+            <div class="col-lg-7 col-md-12">
+                <h5 class="block-title text-slate-800"><i class="bi bi-card-text me-2 text-primary"></i>🤖 AI 深度教学诊断报告</h5>
+                <div class="border rounded-3 p-4 bg-light markdown-content text-slate-700 shadow-inner report-content-box-${classId}" style="min-height: 400px; max-height: 700px; overflow-y: auto;">
+                    <p class="text-muted italic"><i class="bi bi-chat-left-dots me-2"></i>AI 助手正在为您编写本周教学周报...</p>
+                </div>
+            </div>
+        </div>
+        `;
     }
 
-    // 动态渲染UI
+    // 渲染最终完整的 UI
     function updateSuggestionUI(classId, data) {
         const contentContainer = document.querySelector(`.content-container-${classId}`);
         const statusContainer = document.querySelector(`.status-container-${classId}`);
@@ -421,7 +506,7 @@
         
         if (updateTimeSpan) updateTimeSpan.textContent = data.last_updated;
 
-        // 重新构建 HTML
+        // 拼接 HTML
         let htmlContent = '<div class="row g-4">';
         
         // 重点关注学生
@@ -465,7 +550,7 @@
                                         <span class="fw-bold text-success">${assign.title}</span>
                                         <span class="badge bg-success text-white">${assign.difficulty || '中等'}</span>
                                       </div>
-                                      <div class="text-muted small">${assign.reason}</div>
+                                      <div class="text-muted small">${assign.reason || assign.description || '课后针对巩固学习。'}</div>
                                     </div>`;
             });
         } else {
@@ -474,25 +559,28 @@
         htmlContent += '  </div>';
         htmlContent += '</div>';
 
-        // 详细报告
+        // 详细报告 Markdown 渲染
         htmlContent += '<div class="col-lg-7 col-md-12">';
         htmlContent += '  <h5 class="block-title text-slate-800"><i class="bi bi-card-text me-2 text-primary"></i>🤖 AI 深度教学诊断报告</h5>';
-        htmlContent += '  <div class="border rounded-3 p-4 bg-light markdown-content text-slate-700 shadow-inner" style="min-height: 400px; max-height: 700px; overflow-y: auto;">';
-        htmlContent += `    <div class="markdown-raw" style="white-space: pre-wrap; font-family: inherit;">${data.suggestion_markdown}</div>`;
+        htmlContent += '  <div class="border rounded-3 p-4 bg-light markdown-content text-slate-700 shadow-inner markdown-body" style="min-height: 400px; max-height: 700px; overflow-y: auto;">';
+        
+        const renderedMd = (typeof marked !== 'undefined') ? marked.parse(data.suggestion_markdown) : data.suggestion_markdown;
+        htmlContent += `    <div>${renderedMd}</div>`;
+        
         htmlContent += '  </div>';
         htmlContent += `  <div class="text-end mt-2"><span class="text-muted small"><i class="bi bi-clock me-1"></i>上次更新: <span class="update-time-${classId}">${data.last_updated}</span></span></div>`;
         htmlContent += '</div>';
 
         htmlContent += '</div>';
 
-        // 隐藏加载，显示内容
+        // 复位状态
         if (statusContainer) statusContainer.classList.add('d-none');
         if (contentContainer) {
             contentContainer.innerHTML = htmlContent;
             contentContainer.classList.remove('d-none');
         }
 
-        // 启用刷新按钮，停止旋转
+        // 复位按钮旋转
         const btn = document.querySelector(`.btn-refresh-sug[data-class-id="${classId}"]`);
         if (btn) {
             const icon = btn.querySelector('.btn-refresh-icon');

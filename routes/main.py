@@ -667,6 +667,36 @@ def api_teacher_suggestion_status(class_id):
         'suggestion_json': sug.get_suggestion_dict()
     })
 
+
+@main.route('/api/teacher/stream_suggestions')
+@login_required
+def api_stream_teacher_suggestions():
+    """流式生成并返回班级 AI 建议 (SSE)"""
+    if not current_user.is_teacher:
+        return Response(f"data: {json.dumps({'type': 'error', 'message': '仅教师可执行此操作'})}\n\n", mimetype='text/event-stream')
+
+    class_id = request.args.get('class_id', type=int)
+    if not class_id:
+        return Response(f"data: {json.dumps({'type': 'error', 'message': '参数缺失 class_id'})}\n\n", mimetype='text/event-stream')
+
+    from models import Class
+    cls = Class.query.get_or_404(class_id)
+    if cls.teacher_id != current_user.student_id:
+        return Response(f"data: {json.dumps({'type': 'error', 'message': '您无权管理此班级'})}\n\n", mimetype='text/event-stream')
+
+    from services.teacher_ai_advisor import generate_class_suggestions_stream
+    from flask import Response, stream_with_context
+
+    return Response(
+        stream_with_context(generate_class_suggestions_stream(cls.id, current_user.student_id)),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'
+        }
+    )
+
+
 @main.route('/profile')
 @login_required
 def profile():
