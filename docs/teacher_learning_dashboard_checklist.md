@@ -15,11 +15,12 @@
 - [x] 语法编译通过：`py_compile`。
 - [x] 完整测试通过：`22 passed`。
 - [x] 本地 Git 提交完成：`feat: enrich teacher learning dashboard`。
+- [x] GitHub 推送完成：`main` 已更新到 `812fb76`。
 
 ## 进行中
 
-- [ ] 更新到 GitHub。
+- [ ] 等待下一阶段需求。
 
 ## 未完成
 
-- [ ] 等待 GitHub 推送结果确认。
+- [ ] 后续可继续增加知识点薄弱项、班级趋势图、学生个人风险轨迹。
