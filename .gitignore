@@ -57,5 +57,6 @@ wsgi.py
 
 # 临时测试与自动生成文件
 .playwright-mcp/
+.worktrees/
 original_hash.txt
 新登录页/
