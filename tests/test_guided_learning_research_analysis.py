@@ -5,6 +5,7 @@ from scripts.analyze_guided_learning_research import (
     active_seconds,
     build_submission_pairs,
     build_stage_funnel,
+    build_student_usage,
     build_version_summary,
     classify_version,
     count_student_users,
@@ -205,3 +206,41 @@ def test_submission_pairs_use_post_launch_rows_and_final_outcome():
     assert pairs.iloc[0]["guided_before_first"] == 1
     assert pairs.iloc[0]["final_full_pass"] == 1
     assert pairs.iloc[0]["attempts"] == 2
+
+
+def test_student_usage_is_aggregated_without_anonymous_ids():
+    sessions = [
+        {
+            "anonymous_user_id": "u1",
+            "anonymous_assignment_id": "a1",
+            "status": "completed",
+        },
+        {
+            "anonymous_user_id": "u1",
+            "anonymous_assignment_id": "a2",
+            "status": "in_progress",
+        },
+        {
+            "anonymous_user_id": "u2",
+            "anonymous_assignment_id": "a1",
+            "status": "completed",
+        },
+    ]
+
+    result = build_student_usage(sessions)
+
+    assert result == [
+        {
+            "sessions_per_user": 1,
+            "users": 1,
+            "total_sessions": 1,
+            "completed_sessions": 1,
+        },
+        {
+            "sessions_per_user": 2,
+            "users": 1,
+            "total_sessions": 2,
+            "completed_sessions": 1,
+        },
+    ]
+    assert "anonymous_user_id" not in result[0]

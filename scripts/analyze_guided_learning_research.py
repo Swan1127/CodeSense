@@ -126,22 +126,20 @@ def build_student_usage(sessions: list[dict]) -> list[dict]:
     grouped: dict[str, list[dict]] = defaultdict(list)
     for row in sessions:
         grouped[row["anonymous_user_id"]].append(row)
-    return sorted(
-        [
-            {
-                "anonymous_user_id": user_id,
-                "sessions": len(rows),
-                "assignments": len(
-                    {row["anonymous_assignment_id"] for row in rows}
-                ),
-                "completed_sessions": sum(
-                    row["status"].strip().lower() == "completed" for row in rows
-                ),
-            }
-            for user_id, rows in grouped.items()
-        ],
-        key=lambda row: (-row["sessions"], row["anonymous_user_id"]),
+    distribution: dict[int, dict[str, int]] = defaultdict(
+        lambda: {"users": 0, "total_sessions": 0, "completed_sessions": 0}
     )
+    for rows in grouped.values():
+        count = len(rows)
+        distribution[count]["users"] += 1
+        distribution[count]["total_sessions"] += count
+        distribution[count]["completed_sessions"] += sum(
+            row["status"].strip().lower() == "completed" for row in rows
+        )
+    return [
+        {"sessions_per_user": count, **distribution[count]}
+        for count in sorted(distribution)
+    ]
 
 
 def build_stage_funnel(sessions: list[dict], logs: list[dict]) -> list[dict]:
