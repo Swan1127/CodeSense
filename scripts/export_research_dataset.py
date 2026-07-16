@@ -60,6 +60,39 @@ def resolve_output_path(args) -> Path:
     return (args.output_dir / filename).expanduser().resolve()
 
 
+def load_project_environment(dotenv_path: Path | None = None) -> None:
+    """Load the same project .env file used by the web application."""
+
+    from dotenv import load_dotenv
+
+    load_dotenv(dotenv_path or PROJECT_ROOT / ".env", override=False)
+
+
+def database_config_source(config_name: str) -> tuple[str, str]:
+    """Return a credential-free description of the selected database config."""
+
+    from sqlalchemy.engine import make_url
+
+    database_url = os.environ.get("DATABASE_URL")
+    source = "DATABASE_URL"
+    if not database_url and config_name in {"development", "default"}:
+        database_url = os.environ.get("DEV_DATABASE_URL")
+        source = "DEV_DATABASE_URL"
+    if not database_url and config_name in {"development", "default"}:
+        database_url = "sqlite:///dev_student_code_review.db"
+        source = "built-in development default"
+    if not database_url and config_name == "testing":
+        database_url = os.environ.get("TEST_DATABASE_URL")
+        source = "TEST_DATABASE_URL"
+    if not database_url and config_name == "testing":
+        database_url = "sqlite:///test_student_code_review.db"
+        source = "built-in testing default"
+    if not database_url:
+        return "missing DATABASE_URL", "unknown"
+
+    return source, make_url(database_url).drivername
+
+
 def _database_engine(config_name: str):
     """Initialize only Flask-SQLAlchemy; do not start the web app or init DB."""
 
@@ -81,6 +114,7 @@ def _database_engine(config_name: str):
 def main(argv=None) -> int:
     args = parse_args(argv)
     output_path = resolve_output_path(args)
+    load_project_environment()
 
     if args.include_text:
         print(
@@ -90,6 +124,17 @@ def main(argv=None) -> int:
         )
 
     config_name = os.environ.get("FLASK_CONFIG", "development")
+    config_source, database_backend = database_config_source(config_name)
+    print(
+        f"Database selected: backend={database_backend}; "
+        f"source={config_source}; FLASK_CONFIG={config_name}"
+    )
+    if config_source == "built-in development default":
+        print(
+            "WARNING: DATABASE_URL and DEV_DATABASE_URL are unset. "
+            "The exporter is using the local development SQLite database.",
+            file=sys.stderr,
+        )
     app, db = _database_engine(config_name)
     anonymizer = Anonymizer(resolve_salt())
 

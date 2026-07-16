@@ -13,7 +13,12 @@ from research_export import (
     redact_text,
     text_metrics,
 )
-from scripts.export_research_dataset import parse_args, resolve_salt
+from scripts.export_research_dataset import (
+    database_config_source,
+    load_project_environment,
+    parse_args,
+    resolve_salt,
+)
 
 
 def _read_csv(archive, name):
@@ -347,3 +352,47 @@ def test_resolve_salt_generates_random_value_when_environment_is_absent(monkeypa
     second = resolve_salt()
     assert len(first) >= 32
     assert first != second
+
+
+def test_load_project_environment_reads_database_url_from_dotenv(tmp_path, monkeypatch):
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "DATABASE_URL=mysql+pymysql://research-user:secret@db.example/codesense\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    load_project_environment(dotenv_path)
+
+    assert (
+        database_config_source("development")
+        == ("DATABASE_URL", "mysql+pymysql")
+    )
+
+
+def test_load_project_environment_does_not_override_process_environment(
+    tmp_path, monkeypatch
+):
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "DATABASE_URL=mysql+pymysql://dotenv-user:secret@db.example/codesense\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DATABASE_URL", "postgresql://runtime/db")
+
+    load_project_environment(dotenv_path)
+
+    assert database_config_source("development") == (
+        "DATABASE_URL",
+        "postgresql",
+    )
+
+
+def test_database_config_source_reports_default_sqlite(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DEV_DATABASE_URL", raising=False)
+
+    assert database_config_source("development") == (
+        "built-in development default",
+        "sqlite",
+    )

@@ -44,6 +44,14 @@ DATABASE_URL=mysql+pymysql://...
 FLASK_CONFIG=production
 ```
 
+脚本会先读取项目根目录的 `.env`，再加载数据库配置。运行后请检查终端中的这一行：
+
+```text
+Database selected: backend=mysql+pymysql; source=DATABASE_URL; FLASK_CONFIG=production
+```
+
+如果显示 `backend=sqlite` 和 `source=built-in development default`，说明脚本没有拿到线上数据库配置。此时不要发送生成的 ZIP，应先确认 `.env` 中存在 `DATABASE_URL`，或者在当前终端环境中设置该变量后重新运行。
+
 不要把数据库连接串写进命令，也不要把 `.env` 文件一并发送。
 
 如果平台平时通过其他方式设置这些环境变量，请使用同一用户和同一运行环境执行脚本。
