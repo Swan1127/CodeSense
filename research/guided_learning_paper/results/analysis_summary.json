@@ -1,0 +1,62 @@
+{
+  "source_file": "codesense-research-export-20260716T090300Z.zip",
+  "row_counts": {
+    "users": 123,
+    "students": 117,
+    "assignments": 85,
+    "submissions": 1858,
+    "thinking_sessions": 492,
+    "thinking_stage_logs": 9940,
+    "thinking_presets": 85
+  },
+  "usage": {
+    "sessions": 492,
+    "users": 42,
+    "completed_sessions": 250,
+    "users_with_completed_session": 34,
+    "exactly_one_session_users": 5,
+    "repeat_users": 37,
+    "cross_assignment_users": 36,
+    "users_with_at_least_5_sessions": 26,
+    "users_with_at_least_10_sessions": 18,
+    "sessions_from_repeat_users": 487,
+    "top_10_user_session_share": 57.7
+  },
+  "stable_version": {
+    "version": "V5",
+    "label": "相对稳定测验版",
+    "sessions": 398,
+    "users": 40,
+    "assignments": 54,
+    "completed_sessions": 224,
+    "completion_percent": 56.28
+  },
+  "active_time": {
+    "gap_cap_seconds": 300,
+    "completed_sessions_with_events": 250,
+    "incomplete_sessions_with_events": 134,
+    "completed_median_active_minutes": 12.54,
+    "incomplete_median_active_minutes": 7.22
+  },
+  "crossing_sessions": {
+    "V2": 4,
+    "V3": 5,
+    "V4": 4,
+    "V5": 13
+  },
+  "student_assignment_pairs": 994,
+  "raw_associations": {
+    "no_guided_before_first": {
+      "pairs": 774,
+      "final_full_pass_percent": 94.7,
+      "final_pass_rate_percent": 96.82,
+      "mean_attempts": 1.491
+    },
+    "guided_before_first": {
+      "pairs": 220,
+      "final_full_pass_percent": 96.36,
+      "final_pass_rate_percent": 97.95,
+      "mean_attempts": 1.768
+    }
+  }
+}

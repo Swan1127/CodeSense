@@ -1,0 +1,4 @@
+﻿outcome,label,n_student_assignment_pairs,coefficient,standard_error,p_value,ci_95_low,ci_95_high
+final_full_pass,最终完全通过,994,-0.018785,0.021834,0.389588,-0.061579,0.024009
+final_pass_rate,最终沙箱通过率,994,-0.004242,0.011757,0.718231,-0.027286,0.018801
+attempts,提交尝试次数,994,0.103224,0.154912,0.505194,-0.200398,0.406845
