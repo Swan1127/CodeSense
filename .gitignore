@@ -60,3 +60,8 @@ wsgi.py
 .worktrees/
 original_hash.txt
 新登录页/
+
+# Research datasets contain anonymized but non-public course records
+research/guided_learning_paper/data/
+research/guided_learning_paper/*.zip
+research/guided_learning_paper/results/raw/
