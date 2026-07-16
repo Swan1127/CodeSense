@@ -10,6 +10,7 @@ from scripts.analyze_guided_learning_research import (
     classify_version,
     count_student_users,
     parse_platform_timestamp,
+    select_sessions_since,
     summarize_usage,
 )
 
@@ -244,3 +245,23 @@ def test_student_usage_is_aggregated_without_anonymous_ids():
         },
     ]
     assert "anonymous_user_id" not in result[0]
+
+
+def test_select_sessions_since_returns_matching_logs():
+    sessions = [
+        {"anonymous_session_id": "old", "started_at": "2026-06-20T00:00:00"},
+        {"anonymous_session_id": "new", "started_at": "2026-06-28T00:00:00"},
+    ]
+    logs = [
+        {"anonymous_session_id": "old", "event_type": "stage_pass"},
+        {"anonymous_session_id": "new", "event_type": "stage_pass"},
+    ]
+
+    selected_sessions, selected_logs = select_sessions_since(
+        sessions,
+        logs,
+        datetime.fromisoformat("2026-06-27T16:26:42+00:00"),
+    )
+
+    assert [row["anonymous_session_id"] for row in selected_sessions] == ["new"]
+    assert [row["anonymous_session_id"] for row in selected_logs] == ["new"]

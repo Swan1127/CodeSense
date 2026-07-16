@@ -275,6 +275,25 @@ def crossing_sessions(
     )
 
 
+def select_sessions_since(
+    sessions: list[dict],
+    logs: list[dict],
+    starts_at_utc: datetime,
+) -> tuple[list[dict], list[dict]]:
+    selected_sessions = [
+        row
+        for row in sessions
+        if parse_platform_timestamp(row["started_at"]) >= starts_at_utc
+    ]
+    selected_ids = {
+        row["anonymous_session_id"] for row in selected_sessions
+    }
+    selected_logs = [
+        row for row in logs if row["anonymous_session_id"] in selected_ids
+    ]
+    return selected_sessions, selected_logs
+
+
 def build_submission_pairs(
     submissions: list[dict],
     sessions: list[dict],
@@ -398,6 +417,12 @@ def analyze(input_path: Path, output_dir: Path) -> dict:
 
     usage = summarize_usage(sessions)
     funnel = build_stage_funnel(sessions, logs)
+    stable_sessions, stable_logs = select_sessions_since(
+        sessions,
+        logs,
+        VERSION_BOUNDARIES[-1].starts_at_utc,
+    )
+    stable_funnel = build_stage_funnel(stable_sessions, stable_logs)
     versions = build_version_summary(sessions)
     active_time = summarize_active_time(sessions, logs)
     pairs = build_submission_pairs(
@@ -437,6 +462,7 @@ def analyze(input_path: Path, output_dir: Path) -> dict:
     )
     write_csv(output_dir / "version_summary.csv", versions)
     write_csv(output_dir / "stage_funnel.csv", funnel)
+    write_csv(output_dir / "stable_stage_funnel.csv", stable_funnel)
     write_csv(output_dir / "student_usage.csv", build_student_usage(sessions))
     write_csv(output_dir / "submission_associations.csv", models)
     return summary
