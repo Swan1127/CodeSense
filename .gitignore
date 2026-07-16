@@ -64,4 +64,5 @@ original_hash.txt
 # Research datasets contain anonymized but non-public course records
 research/guided_learning_paper/data/
 research/guided_learning_paper/*.zip
+research/guided_learning_paper/rendered*/
 research/guided_learning_paper/results/raw/

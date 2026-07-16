@@ -10,6 +10,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.patches import FancyBboxPatch
 
 
 COLORS = {
@@ -166,10 +167,173 @@ def _plot_sample_flow(results_dir: Path, output_dir: Path) -> Path:
     return _save(fig, output_dir / "sample_flow.png")
 
 
+def _plot_conceptual_framework(output_dir: Path) -> Path:
+    fig, ax = plt.subplots(figsize=(12, 6.75))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    def box(x, y, width, height, face, edge):
+        patch = FancyBboxPatch(
+            (x, y),
+            width,
+            height,
+            boxstyle="round,pad=0.012,rounding_size=0.025",
+            linewidth=1.7,
+            edgecolor=edge,
+            facecolor=face,
+            transform=ax.transAxes,
+        )
+        ax.add_patch(patch)
+
+    ax.text(
+        0.5,
+        0.94,
+        "三阶段引导式学习：让学生持续承担认知责任",
+        ha="center",
+        va="center",
+        fontsize=20,
+        fontweight="bold",
+    )
+    ax.text(
+        0.5,
+        0.885,
+        "AI提供提问、反馈与角色模拟；学生完成表达、判断、讲解和纠错",
+        ha="center",
+        va="center",
+        fontsize=11,
+        color=COLORS["gray"],
+    )
+
+    stages = [
+        (
+            0.045,
+            "01  思路外化",
+            "学生说明\n输入 · 关键步骤\n边界条件 · 输出",
+            "#EFF6FF",
+            COLORS["blue"],
+            "AI：分题提示与反馈",
+        ),
+        (
+            0.285,
+            "02  代码重构",
+            "学生把算法思路\n映射为程序结构\n选择 · 填空 · 验证",
+            "#ECFDF5",
+            COLORS["green"],
+            "AI/系统：即时校验与提示",
+        ),
+        (
+            0.525,
+            "03  角色反转与纠错",
+            "学生向虚拟同学讲解\n检查其生成的错误代码\n定位并完成修正",
+            "#FFF7ED",
+            COLORS["orange"],
+            "双角色：教师智能体 + 虚拟学生",
+        ),
+    ]
+    for x, title, body, face, edge, footer in stages:
+        box(x, 0.38, 0.205, 0.39, face, edge)
+        ax.text(
+            x + 0.1025,
+            0.71,
+            title,
+            ha="center",
+            va="center",
+            fontsize=13,
+            fontweight="bold",
+            color=edge,
+        )
+        ax.text(
+            x + 0.1025,
+            0.565,
+            body,
+            ha="center",
+            va="center",
+            fontsize=11.5,
+            linespacing=1.6,
+        )
+        ax.text(
+            x + 0.1025,
+            0.42,
+            footer,
+            ha="center",
+            va="center",
+            fontsize=9.5,
+            color=COLORS["gray"],
+        )
+
+    for left, right in ((0.25, 0.285), (0.49, 0.525)):
+        ax.annotate(
+            "",
+            xy=(right - 0.006, 0.575),
+            xytext=(left + 0.006, 0.575),
+            xycoords=ax.transAxes,
+            arrowprops={
+                "arrowstyle": "-|>",
+                "lw": 2,
+                "color": COLORS["gray"],
+                "mutation_scale": 16,
+            },
+        )
+
+    box(0.77, 0.38, 0.19, 0.39, "#F8FAFC", COLORS["purple"])
+    ax.text(
+        0.865,
+        0.71,
+        "预期学习活动",
+        ha="center",
+        va="center",
+        fontsize=13,
+        fontweight="bold",
+        color=COLORS["purple"],
+    )
+    ax.text(
+        0.865,
+        0.575,
+        "算法理解\n结构化表达\n调试与纠错\n独立编程",
+        ha="center",
+        va="center",
+        fontsize=11.5,
+        linespacing=1.55,
+    )
+    ax.text(
+        0.865,
+        0.42,
+        "学习效果仍需对照研究验证",
+        ha="center",
+        va="center",
+        fontsize=9.5,
+        color=COLORS["purple"],
+    )
+
+    box(0.08, 0.15, 0.84, 0.12, "#F8FAFC", "#CBD5E1")
+    ax.text(
+        0.5,
+        0.22,
+        "学生认知责任链：表达  →  判断  →  讲解  →  纠错",
+        ha="center",
+        va="center",
+        fontsize=13,
+        fontweight="bold",
+        color="#334155",
+    )
+    ax.text(
+        0.5,
+        0.175,
+        "本研究已分析：可实施性、采用、重复使用与阶段推进　｜　尚未验证：因果学习效果",
+        ha="center",
+        va="center",
+        fontsize=10,
+        color=COLORS["gray"],
+    )
+    return _save(fig, output_dir / "conceptual_framework.png")
+
+
 def create_figures(results_dir: Path, output_dir: Path) -> list[Path]:
     _configure_style()
     output_dir.mkdir(parents=True, exist_ok=True)
     return [
+        _plot_conceptual_framework(output_dir),
         _plot_sample_flow(results_dir, output_dir),
         _plot_stage_funnel(results_dir, output_dir),
         _plot_usage_distribution(results_dir, output_dir),

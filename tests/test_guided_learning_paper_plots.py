@@ -10,7 +10,7 @@ def _write_csv(path, rows):
         writer.writerows(rows)
 
 
-def test_create_figures_writes_four_nonempty_pngs(tmp_path):
+def test_create_figures_writes_five_nonempty_pngs(tmp_path):
     results = tmp_path / "results"
     figures = tmp_path / "figures"
     results.mkdir()
@@ -66,6 +66,7 @@ def test_create_figures_writes_four_nonempty_pngs(tmp_path):
     created = create_figures(results, figures)
 
     assert {path.name for path in created} == {
+        "conceptual_framework.png",
         "sample_flow.png",
         "stage_funnel.png",
         "usage_distribution.png",
