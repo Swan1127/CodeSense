@@ -63,12 +63,12 @@ def _save(fig: plt.Figure, path: Path) -> Path:
 
 
 def _plot_activity_chain_evidence(output_dir: Path) -> Path:
-    fig, ax = plt.subplots(figsize=(12, 6.5))
+    fig, ax = plt.subplots(figsize=(13.4, 8.0))
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.axis("off")
 
-    def box(x, y, width, height, face, edge):
+    def box(x, y, width, height, face, edge, *, linestyle="solid"):
         patch = FancyBboxPatch(
             (x, y),
             width,
@@ -77,119 +77,201 @@ def _plot_activity_chain_evidence(output_dir: Path) -> Path:
             linewidth=1.8,
             edgecolor=edge,
             facecolor=face,
+            linestyle=linestyle,
             transform=ax.transAxes,
         )
         ax.add_patch(patch)
 
+    def arrow(start, end, *, color=COLORS["gray"], linestyle="solid"):
+        ax.annotate(
+            "",
+            xy=end,
+            xytext=start,
+            xycoords=ax.transAxes,
+            arrowprops={
+                "arrowstyle": "-|>",
+                "lw": 1.9,
+                "color": color,
+                "linestyle": linestyle,
+                "mutation_scale": 15,
+            },
+        )
+
     ax.text(
         0.5,
-        0.93,
-        "三阶段程序设计引导的活动链与证据边界",
+        0.945,
+        "状态驱动的三阶段程序设计引导方法",
         ha="center",
         va="center",
-        fontsize=19,
+        fontsize=20,
         fontweight="bold",
         color=COLORS["dark"],
     )
     ax.text(
         0.5,
-        0.865,
-        "AI组织提问、校验和角色模拟；学生负责表达、转换、讲解与纠错",
+        0.895,
+        "系统仅在本次会话内读取可观察状态，并调整提示、追问和反馈；学习活动始终由学生完成",
         ha="center",
         va="center",
-        fontsize=11,
+        fontsize=10.8,
         color=COLORS["gray"],
     )
 
-    stages = [
+    top_boxes = [
         (
-            0.06,
-            "1  思路外化",
-            "用自然语言说明\n算法步骤、输入输出与边界",
-            "描述提交 · 提示请求",
+            0.04,
+            "可观察的学生状态",
+            "自然语言回答 · 提示次数 · 当前进度\n错误类型 · 对话历史",
             "#EFF6FF",
             COLORS["blue"],
         ),
         (
             0.365,
-            "2  代码重构",
-            "把自然语言表征\n转换为程序结构表征",
-            "验证失败 · 阶段通过",
-            "#ECFDF5",
-            COLORS["green"],
+            "会话内智能体决策",
+            "诊断当前状态，选择下一步\n不建立跨作业学习者画像",
+            "#F5F3FF",
+            COLORS["purple"],
         ),
         (
-            0.67,
-            "3  讲解纠错",
-            "回应虚拟学生追问\n检查并修正错误代码",
-            "教学对话 · 代码修正",
+            0.69,
+            "适配的学习支架",
+            "提示强度 · 追问对象 · 反馈内容\n阶段推进条件",
             "#FFF7ED",
             COLORS["orange"],
         ),
     ]
-    for x, title, activity, evidence, face, edge in stages:
-        box(x, 0.39, 0.265, 0.34, face, edge)
+    for x, title, detail, face, edge in top_boxes:
+        box(x, 0.69, 0.27, 0.14, face, edge)
         ax.text(
-            x + 0.1325,
-            0.67,
+            x + 0.135,
+            0.79,
             title,
             ha="center",
             va="center",
-            fontsize=14,
+            fontsize=12.2,
             fontweight="bold",
             color=edge,
         )
         ax.text(
-            x + 0.1325,
-            0.56,
-            activity,
+            x + 0.135,
+            0.73,
+            detail,
             ha="center",
             va="center",
-            fontsize=11.5,
-            linespacing=1.5,
-        )
-        ax.text(
-            x + 0.1325,
-            0.445,
-            f"平台证据：{evidence}",
-            ha="center",
-            va="center",
-            fontsize=9.5,
-            color=COLORS["gray"],
+            fontsize=9.8,
+            linespacing=1.45,
+            color=COLORS["dark"],
         )
 
-    for start, end in ((0.325, 0.365), (0.63, 0.67)):
-        ax.annotate(
-            "",
-            xy=(end - 0.006, 0.56),
-            xytext=(start + 0.006, 0.56),
-            xycoords=ax.transAxes,
-            arrowprops={
-                "arrowstyle": "-|>",
-                "lw": 2,
-                "color": COLORS["gray"],
-                "mutation_scale": 16,
-            },
-        )
+    arrow((0.315, 0.76), (0.355, 0.76), color=COLORS["purple"])
+    arrow((0.64, 0.76), (0.68, 0.76), color=COLORS["orange"])
 
-    box(0.08, 0.13, 0.84, 0.14, COLORS["light"], "#CBD5E1")
     ax.text(
         0.5,
-        0.225,
-        "本研究已观察：采用、阶段推进、操作转换与首次提交表现",
+        0.625,
+        "学生在支架支持下完成连续的程序设计活动",
         ha="center",
         va="center",
-        fontsize=11.5,
+        fontsize=10.8,
         fontweight="bold",
         color=COLORS["dark"],
     )
+
+    stages = [
+        (
+            0.04,
+            "1  思路外化",
+            "用自然语言说明算法步骤、\n输入输出与边界条件",
+            "学生表达 → 针对性提示",
+            "#EFF6FF",
+            COLORS["blue"],
+        ),
+        (
+            0.365,
+            "2  程序构建",
+            "把思路转换为程序结构，\n诊断并修正代码错误",
+            "状态诊断 → 反馈与验证",
+            "#ECFDF5",
+            COLORS["green"],
+        ),
+        (
+            0.69,
+            "3  讲解纠错",
+            "教师角色—真实学生—虚拟学生\n围绕讲解与错误代码协同追问",
+            "角色化追问 → 解释与修正",
+            "#FFF7ED",
+            COLORS["orange"],
+        ),
+    ]
+    for x, title, activity, scaffold, face, edge in stages:
+        box(x, 0.35, 0.27, 0.20, face, edge)
+        ax.text(
+            x + 0.135,
+            0.50,
+            title,
+            ha="center",
+            va="center",
+            fontsize=13.6,
+            fontweight="bold",
+            color=edge,
+        )
+        ax.text(
+            x + 0.135,
+            0.435,
+            activity,
+            ha="center",
+            va="center",
+            fontsize=10.2,
+            linespacing=1.45,
+        )
+        ax.text(
+            x + 0.135,
+            0.375,
+            scaffold,
+            ha="center",
+            va="center",
+            fontsize=9.0,
+            color=COLORS["gray"],
+        )
+
+    arrow((0.825, 0.69), (0.825, 0.55), color=COLORS["orange"])
+    arrow((0.31, 0.45), (0.355, 0.45), color=COLORS["gray"])
+    arrow((0.635, 0.45), (0.68, 0.45), color=COLORS["gray"])
+
     ax.text(
         0.5,
-        0.17,
-        "本研究未直接测量：解释质量、认知变化与学习增益",
+        0.285,
+        "过程日志的证据边界",
         ha="center",
         va="center",
-        fontsize=10.5,
+        fontsize=11.8,
+        fontweight="bold",
+        color=COLORS["dark"],
+    )
+    arrow((0.175, 0.35), (0.175, 0.25), linestyle="dashed")
+    arrow((0.50, 0.35), (0.50, 0.25), linestyle="dashed")
+    arrow((0.825, 0.35), (0.825, 0.25), linestyle="dashed")
+
+    box(0.04, 0.09, 0.43, 0.13, "#F0F9FF", COLORS["blue"])
+    ax.text(
+        0.255,
+        0.175,
+        "日志可观察：采用、阶段推进、回退、退出\n及其相邻操作转换",
+        ha="center",
+        va="center",
+        fontsize=10.0,
+        fontweight="bold",
+        color=COLORS["blue"],
+    )
+    box(0.53, 0.09, 0.43, 0.13, COLORS["light"], COLORS["gray"], linestyle="dashed")
+    ax.text(
+        0.745,
+        0.175,
+        "日志不能直接观察：认知质量与学习增益\n需经内容编码或后续对照研究验证",
+        ha="center",
+        va="center",
+        fontsize=10.0,
+        fontweight="bold",
         color=COLORS["gray"],
     )
     return _save(fig, output_dir / "activity_chain_evidence.png")

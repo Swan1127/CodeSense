@@ -141,3 +141,17 @@ def test_create_figures_writes_revised_nonempty_pngs(tmp_path):
     for path in paths:
         with Image.open(path) as image:
             assert min(image.size) >= 1400
+
+
+def test_activity_chain_figure_is_landscape_and_readable(tmp_path):
+    results = tmp_path / "results"
+    figures = tmp_path / "figures"
+    results.mkdir()
+    _write_minimal_revised_results(results)
+
+    create_figures(results, figures)
+
+    with Image.open(figures / "activity_chain_evidence.png") as image:
+        assert image.width > image.height
+        assert image.width >= 3000
+        assert image.height >= 1700
