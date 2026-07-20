@@ -1,0 +1,17 @@
+﻿completion_group,metric,n,median,q1,q3
+completed,stage1_active_minutes,224,0.0,0.0,0.0
+completed,stage1_hints,224,0.0,0.0,0.0
+completed,stage2_active_minutes,224,0.4,0.0,2.2
+completed,stage2_hints,224,0.0,0.0,0.0
+completed,stage2_verify_fail,224,0.0,0.0,1.0
+completed,stage3_active_minutes,224,5.86,4.06,8.94
+completed,stage3_dialogue_rounds,224,7.0,7.0,8.0
+completed,stage3_fix_code,224,1.0,1.0,2.0
+incomplete,stage1_active_minutes,87,0.0,0.0,0.0
+incomplete,stage1_hints,174,0.0,0.0,0.0
+incomplete,stage2_active_minutes,63,4.45,0.82,10.22
+incomplete,stage2_hints,174,0.0,0.0,0.0
+incomplete,stage2_verify_fail,174,0.0,0.0,0.0
+incomplete,stage3_active_minutes,6,6.64,2.5,15.02
+incomplete,stage3_dialogue_rounds,174,0.0,0.0,0.0
+incomplete,stage3_fix_code,174,0.0,0.0,0.0

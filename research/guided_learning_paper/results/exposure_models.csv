@@ -1,0 +1,16 @@
+﻿model,outcome,term,n_pairs,n_students,informative_students,coefficient,standard_error,ci_95_low,ci_95_high,p_value
+three_level,first_full_pass,"C(exposure, Treatment(reference='none'))[T.completed]",994,69,32,-0.027019,0.091228,-0.205822,0.151785,0.767104
+three_level,first_full_pass,"C(exposure, Treatment(reference='none'))[T.incomplete]",994,69,32,-0.076133,0.081336,-0.235549,0.083283,0.349257
+three_level,first_pass_rate,"C(exposure, Treatment(reference='none'))[T.completed]",994,69,32,-0.005756,0.085999,-0.174311,0.162799,0.946635
+three_level,first_pass_rate,"C(exposure, Treatment(reference='none'))[T.incomplete]",994,69,32,-0.020084,0.075435,-0.167933,0.127765,0.790049
+three_level,final_full_pass,"C(exposure, Treatment(reference='none'))[T.completed]",994,69,32,-0.013995,0.017473,-0.048242,0.020251,0.42315
+three_level,final_full_pass,"C(exposure, Treatment(reference='none'))[T.incomplete]",994,69,32,-0.027217,0.039262,-0.104168,0.049735,0.488178
+three_level,final_pass_rate,"C(exposure, Treatment(reference='none'))[T.completed]",994,69,32,-0.002889,0.008633,-0.01981,0.014032,0.737904
+three_level,final_pass_rate,"C(exposure, Treatment(reference='none'))[T.incomplete]",994,69,32,-0.006624,0.02175,-0.049254,0.036006,0.760703
+three_level,attempts,"C(exposure, Treatment(reference='none'))[T.completed]",994,69,32,0.105158,0.269414,-0.422884,0.6332,0.696299
+three_level,attempts,"C(exposure, Treatment(reference='none'))[T.incomplete]",994,69,32,0.099819,0.245202,-0.380768,0.580407,0.683942
+binary,first_full_pass,guided_before_first,994,69,31,-0.044812,0.062056,-0.166439,0.076815,0.470216
+binary,first_pass_rate,guided_before_first,994,69,31,-0.010947,0.055504,-0.119733,0.097839,0.843648
+binary,final_full_pass,guided_before_first,994,69,31,-0.018785,0.021834,-0.061579,0.024009,0.389588
+binary,final_pass_rate,guided_before_first,994,69,31,-0.004242,0.011757,-0.027286,0.018801,0.718231
+binary,attempts,guided_before_first,994,69,31,0.103224,0.154912,-0.200398,0.406845,0.505194

@@ -752,6 +752,9 @@ def analyze(input_path: Path, output_dir: Path) -> dict:
         VERSION_BOUNDARIES[-1].starts_at_utc,
     )
     stable_funnel = build_stage_funnel(stable_sessions, stable_logs)
+    stable_paths = build_stable_session_paths(stable_sessions)
+    stage_friction = summarize_stage_friction(stable_sessions, stable_logs)
+    event_transitions = build_event_transitions(stable_sessions, stable_logs)
     versions = build_version_summary(sessions)
     active_time = summarize_active_time(sessions, logs)
     pairs = build_submission_pairs(
@@ -759,7 +762,11 @@ def analyze(input_path: Path, output_dir: Path) -> dict:
         sessions,
         post_launch_utc=datetime.fromisoformat("2026-06-18T00:00:00+00:00"),
     )
-    models = fit_association_models(pairs)
+    raw_exposure = raw_exposure_rates(pairs)
+    exposure_models = [
+        *fit_exposure_models(pairs, "three_level"),
+        *fit_exposure_models(pairs, "binary"),
+    ]
 
     stable = next(row for row in versions if row["version"] == "V5")
     summary = {
@@ -775,12 +782,26 @@ def analyze(input_path: Path, output_dir: Path) -> dict:
         },
         "usage": usage,
         "stable_version": stable,
+        "stable_paths": {
+            row["path"]: row["sessions"] for row in stable_paths
+        },
         "active_time": active_time,
         "crossing_sessions": {
             boundary.name: crossing_sessions(logs, boundary.starts_at_utc)
             for boundary in VERSION_BOUNDARIES[1:]
         },
         "student_assignment_pairs": len(pairs),
+        "exposure_counts": {
+            row["exposure"]: row["pairs"] for row in raw_exposure
+        },
+        "informative_students": {
+            "three_level": count_informative_students(pairs, "exposure"),
+            "binary": count_informative_students(
+                pairs,
+                "guided_before_first",
+            ),
+        },
+        "raw_exposure_rates": raw_exposure,
         "raw_associations": raw_association_rates(pairs),
     }
 
@@ -792,8 +813,12 @@ def analyze(input_path: Path, output_dir: Path) -> dict:
     write_csv(output_dir / "version_summary.csv", versions)
     write_csv(output_dir / "stage_funnel.csv", funnel)
     write_csv(output_dir / "stable_stage_funnel.csv", stable_funnel)
+    write_csv(output_dir / "stable_session_paths.csv", stable_paths)
+    write_csv(output_dir / "stage_friction.csv", stage_friction)
+    write_csv(output_dir / "event_transitions.csv", event_transitions)
     write_csv(output_dir / "student_usage.csv", build_student_usage(sessions))
-    write_csv(output_dir / "submission_associations.csv", models)
+    write_csv(output_dir / "exposure_raw_rates.csv", raw_exposure)
+    write_csv(output_dir / "exposure_models.csv", exposure_models)
     return summary
 
 

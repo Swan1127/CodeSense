@@ -31,6 +31,12 @@
     "completed_sessions": 224,
     "completion_percent": 56.28
   },
+  "stable_paths": {
+    "no_valid_stage1": 89,
+    "stage2_incomplete": 74,
+    "stage3_incomplete": 11,
+    "all_completed": 224
+  },
   "active_time": {
     "gap_cap_seconds": 300,
     "completed_sessions_with_events": 250,
@@ -45,6 +51,50 @@
     "V5": 13
   },
   "student_assignment_pairs": 994,
+  "exposure_counts": {
+    "none": 774,
+    "incomplete": 37,
+    "completed": 183
+  },
+  "informative_students": {
+    "three_level": 32,
+    "binary": 31
+  },
+  "raw_exposure_rates": [
+    {
+      "exposure": "none",
+      "pairs": 774,
+      "students": 66,
+      "assignments": 57,
+      "first_full_pass_percent": 71.83,
+      "first_pass_rate_percent": 75.7,
+      "final_full_pass_percent": 94.7,
+      "final_pass_rate_percent": 96.82,
+      "mean_attempts": 1.491
+    },
+    {
+      "exposure": "incomplete",
+      "pairs": 37,
+      "students": 20,
+      "assignments": 22,
+      "first_full_pass_percent": 59.46,
+      "first_pass_rate_percent": 68.47,
+      "final_full_pass_percent": 94.59,
+      "final_pass_rate_percent": 97.3,
+      "mean_attempts": 1.838
+    },
+    {
+      "exposure": "completed",
+      "pairs": 183,
+      "students": 24,
+      "assignments": 48,
+      "first_full_pass_percent": 65.57,
+      "first_pass_rate_percent": 69.95,
+      "final_full_pass_percent": 96.72,
+      "final_pass_rate_percent": 98.09,
+      "mean_attempts": 1.754
+    }
+  ],
   "raw_associations": {
     "no_guided_before_first": {
       "pairs": 774,
