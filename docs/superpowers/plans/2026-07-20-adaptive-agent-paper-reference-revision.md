@@ -123,8 +123,8 @@ def test_activity_chain_figure_is_landscape_and_readable(tmp_path):
 
     with Image.open(figures / "activity_chain_evidence.png") as image:
         assert image.width > image.height
-        assert image.width >= 2200
-        assert image.height >= 1200
+        assert image.width >= 3000
+        assert image.height >= 1700
 ```
 
 - [ ] **Step 2: 运行测试并确认失败或暴露旧图尺寸**
