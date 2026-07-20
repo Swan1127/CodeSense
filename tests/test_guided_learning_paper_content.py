@@ -19,6 +19,7 @@ AUDITED_PAPERS = (
 )
 
 AUDIT_FIELDS = (
+    "作者与出版信息",
     "研究设计",
     "智能体定义",
     "数据和评价",
@@ -74,3 +75,24 @@ def test_literature_matrix_records_agent_boundaries():
         "不可外推之处",
     ):
         assert term in text
+
+
+def _parse_pipe_table(text: str, section_heading: str) -> list[dict[str, str]]:
+    section = text.split(section_heading, 1)[1]
+    lines = [line for line in section.splitlines() if line.startswith("|")]
+    headers = [cell.strip() for cell in lines[0].strip("|").split("|")]
+    rows = []
+    for line in lines[2:]:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        rows.append(dict(zip(headers, cells, strict=True)))
+    return rows
+
+
+def test_new_matrix_rows_keep_claim_and_boundary_cells():
+    text = (ROOT / "literature_matrix.md").read_text(encoding="utf-8")
+    rows = _parse_pipe_table(text, "## 四、外部智能体来源与证据边界")
+    assert len(rows) == len(AUDITED_PAPERS)
+    for title, row in zip(AUDITED_PAPERS, rows, strict=True):
+        assert title in row["完整题名"]
+        assert row["可支持的主张"]
+        assert row["不可外推之处"]
