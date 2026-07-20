@@ -513,42 +513,165 @@ def build_submission_pairs(
             (row["anonymous_user_id"], row["anonymous_assignment_id"])
         ].append(row)
 
-    guided_starts: dict[tuple[str, str], list[datetime]] = defaultdict(list)
-    guided_completed: dict[tuple[str, str], bool] = defaultdict(bool)
+    sessions_by_pair: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for row in sessions:
         pair = (row["anonymous_user_id"], row["anonymous_assignment_id"])
-        guided_starts[pair].append(parse_platform_timestamp(row["started_at"]))
-        guided_completed[pair] = guided_completed[pair] or (
-            row["status"].strip().lower() == "completed"
-        )
+        sessions_by_pair[pair].append(row)
 
     records = []
     for (user_id, assignment_id), rows in by_pair.items():
-        ordered = sorted(rows, key=lambda row: row["submitted_at"])
+        ordered = sorted(
+            rows,
+            key=lambda row: parse_platform_timestamp(row["submitted_at"]),
+        )
         first = ordered[0]
         last = ordered[-1]
         first_time = parse_platform_timestamp(first["submitted_at"])
-        starts = guided_starts[(user_id, assignment_id)]
-        last_total = int(last["sandbox_total"] or 0)
-        last_passed = int(last["sandbox_passed"] or 0)
+        prior_sessions = [
+            row
+            for row in sessions_by_pair[(user_id, assignment_id)]
+            if parse_platform_timestamp(row["started_at"]) <= first_time
+        ]
+        completed_before_first = any(
+            row.get("completed_at")
+            and row["status"].strip().lower() == "completed"
+            and parse_platform_timestamp(row["completed_at"]) <= first_time
+            for row in prior_sessions
+        )
+        exposure = (
+            "completed"
+            if completed_before_first
+            else "incomplete"
+            if prior_sessions
+            else "none"
+        )
+        first_full_pass, first_pass_rate = _pass_outcomes(first)
+        final_full_pass, final_pass_rate = _pass_outcomes(last)
         records.append(
             {
                 "user_id": user_id,
                 "assignment_id": assignment_id,
-                "guided_before_first": int(any(t <= first_time for t in starts)),
-                "guided_completed": int(guided_completed[(user_id, assignment_id)]),
+                "exposure": exposure,
+                "guided_before_first": int(exposure != "none"),
+                "completed_before_first": int(exposure == "completed"),
                 "attempts": len(ordered),
-                "final_full_pass": int(
-                    last_total > 0 and last_passed == last_total
-                ),
-                "final_pass_rate": (
-                    last_passed / last_total
-                    if last["sandbox_status"] and last_total > 0
-                    else None
-                ),
+                "first_full_pass": first_full_pass,
+                "first_pass_rate": first_pass_rate,
+                "final_full_pass": final_full_pass,
+                "final_pass_rate": final_pass_rate,
             }
         )
     return pd.DataFrame.from_records(records)
+
+
+def _pass_outcomes(row: dict) -> tuple[int, float | None]:
+    total = int(row["sandbox_total"] or 0)
+    passed = int(row["sandbox_passed"] or 0)
+    pass_rate = (
+        passed / total
+        if row["sandbox_status"] and total > 0
+        else None
+    )
+    return int(total > 0 and passed == total), pass_rate
+
+
+def count_informative_students(pairs: pd.DataFrame, column: str) -> int:
+    """Count students whose records vary on the requested exposure field."""
+    return int((pairs.groupby("user_id")[column].nunique() >= 2).sum())
+
+
+def raw_exposure_rates(pairs: pd.DataFrame) -> list[dict]:
+    """Summarize unadjusted outcomes for the three time-ordered exposures."""
+    rows = []
+    for exposure in ("none", "incomplete", "completed"):
+        group = pairs[pairs["exposure"] == exposure]
+        rows.append(
+            {
+                "exposure": exposure,
+                "pairs": int(len(group)),
+                "students": int(group["user_id"].nunique()),
+                "assignments": int(group["assignment_id"].nunique()),
+                "first_full_pass_percent": round(
+                    100 * float(group["first_full_pass"].mean()),
+                    2,
+                ),
+                "first_pass_rate_percent": round(
+                    100 * float(group["first_pass_rate"].dropna().mean()),
+                    2,
+                ),
+                "final_full_pass_percent": round(
+                    100 * float(group["final_full_pass"].mean()),
+                    2,
+                ),
+                "final_pass_rate_percent": round(
+                    100 * float(group["final_pass_rate"].dropna().mean()),
+                    2,
+                ),
+                "mean_attempts": round(float(group["attempts"].mean()), 3),
+            }
+        )
+    return rows
+
+
+def fit_exposure_models(
+    pairs: pd.DataFrame,
+    exposure_mode: str = "three_level",
+) -> list[dict]:
+    """Fit student and assignment fixed-effects association models."""
+    if exposure_mode not in {"three_level", "binary"}:
+        raise ValueError("exposure_mode must be 'three_level' or 'binary'")
+
+    outcomes = (
+        "first_full_pass",
+        "first_pass_rate",
+        "final_full_pass",
+        "final_pass_rate",
+        "attempts",
+    )
+    term_source = (
+        "C(exposure, Treatment(reference='none'))"
+        if exposure_mode == "three_level"
+        else "guided_before_first"
+    )
+    informative_column = (
+        "exposure" if exposure_mode == "three_level" else "guided_before_first"
+    )
+    rows = []
+    for outcome in outcomes:
+        sample = pairs.dropna(subset=[outcome]).copy()
+        model = smf.ols(
+            f"{outcome} ~ {term_source} + C(user_id) + C(assignment_id)",
+            data=sample,
+        ).fit(
+            cov_type="cluster",
+            cov_kwds={"groups": sample["user_id"]},
+        )
+        terms = [
+            term
+            for term in model.params.index
+            if term.startswith(term_source)
+        ]
+        for term in terms:
+            low, high = model.conf_int().loc[term]
+            rows.append(
+                {
+                    "model": exposure_mode,
+                    "outcome": outcome,
+                    "term": term,
+                    "n_pairs": int(model.nobs),
+                    "n_students": int(sample["user_id"].nunique()),
+                    "informative_students": count_informative_students(
+                        sample,
+                        informative_column,
+                    ),
+                    "coefficient": round(float(model.params[term]), 6),
+                    "standard_error": round(float(model.bse[term]), 6),
+                    "ci_95_low": round(float(low), 6),
+                    "ci_95_high": round(float(high), 6),
+                    "p_value": round(float(model.pvalues[term]), 6),
+                }
+            )
+    return rows
 
 
 def fit_association_models(pairs: pd.DataFrame) -> list[dict]:
