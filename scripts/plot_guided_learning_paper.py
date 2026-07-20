@@ -121,7 +121,7 @@ def _plot_activity_chain_evidence(output_dir: Path) -> Path:
         (
             0.04,
             "可观察的学生状态",
-            "自然语言回答 · 提示次数 · 当前进度\n错误类型 · 对话历史",
+            "自然语言回答 · 提示次数 · 当前进度/得分\n错误/未答步骤 · 代码块错误与修正结果\n对话/教学记录",
             "#EFF6FF",
             COLORS["blue"],
         ),
@@ -141,7 +141,7 @@ def _plot_activity_chain_evidence(output_dir: Path) -> Path:
         ),
     ]
     for x, title, detail, face, edge in top_boxes:
-        box(x, 0.69, 0.27, 0.14, face, edge)
+        box(x, 0.67, 0.27, 0.16, face, edge)
         ax.text(
             x + 0.135,
             0.79,
@@ -154,12 +154,12 @@ def _plot_activity_chain_evidence(output_dir: Path) -> Path:
         )
         ax.text(
             x + 0.135,
-            0.73,
+            0.725,
             detail,
             ha="center",
             va="center",
-            fontsize=9.8,
-            linespacing=1.45,
+            fontsize=8.7,
+            linespacing=1.35,
             color=COLORS["dark"],
         )
 
@@ -169,7 +169,7 @@ def _plot_activity_chain_evidence(output_dir: Path) -> Path:
     ax.text(
         0.5,
         0.625,
-        "学生在支架支持下完成连续的程序设计活动",
+        "基于当前状态的支架贯穿三个阶段",
         ha="center",
         va="center",
         fontsize=10.8,
@@ -234,7 +234,24 @@ def _plot_activity_chain_evidence(output_dir: Path) -> Path:
             color=COLORS["gray"],
         )
 
-    arrow((0.825, 0.69), (0.825, 0.55), color=COLORS["orange"])
+    rail_y = 0.585
+    ax.plot(
+        (0.825, 0.825),
+        (0.67, rail_y),
+        color=COLORS["orange"],
+        linewidth=1.9,
+        transform=ax.transAxes,
+    )
+    ax.plot(
+        (0.175, 0.825),
+        (rail_y, rail_y),
+        color=COLORS["orange"],
+        linewidth=1.9,
+        solid_capstyle="round",
+        transform=ax.transAxes,
+    )
+    for stage_center in (0.175, 0.50, 0.825):
+        arrow((stage_center, rail_y), (stage_center, 0.55), color=COLORS["orange"])
     arrow((0.31, 0.45), (0.355, 0.45), color=COLORS["gray"])
     arrow((0.635, 0.45), (0.68, 0.45), color=COLORS["gray"])
 

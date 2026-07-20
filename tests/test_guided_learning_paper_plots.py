@@ -1,5 +1,6 @@
 import csv
 import json
+from pathlib import Path
 
 from PIL import Image
 
@@ -143,7 +144,7 @@ def test_create_figures_writes_revised_nonempty_pngs(tmp_path):
             assert min(image.size) >= 1400
 
 
-def test_activity_chain_figure_is_landscape_and_readable(tmp_path):
+def test_activity_chain_figure_has_revised_landscape_canvas(tmp_path):
     results = tmp_path / "results"
     figures = tmp_path / "figures"
     results.mkdir()
@@ -155,3 +156,18 @@ def test_activity_chain_figure_is_landscape_and_readable(tmp_path):
         assert image.width > image.height
         assert image.width >= 3000
         assert image.height >= 1700
+
+
+def test_activity_chain_source_labels_cover_required_state_and_shared_support():
+    source = Path("scripts/plot_guided_learning_paper.py").read_text(encoding="utf-8")
+
+    for label in (
+        "自然语言回答",
+        "提示次数",
+        "当前进度/得分",
+        "错误/未答步骤",
+        "代码块错误与修正结果",
+        "对话/教学记录",
+        "基于当前状态的支架贯穿三个阶段",
+    ):
+        assert label in source
