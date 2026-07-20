@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 from pathlib import Path
 
@@ -14,15 +15,11 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
 
-ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "research" / "guided_learning_paper" / "manuscript_zh.md"
-OUTPUT = ROOT / "research" / "guided_learning_paper" / "paper_zh.docx"
-
 CHINESE_BODY = "宋体"
 CHINESE_HEADING = "黑体"
 LATIN_FONT = "Times New Roman"
 INK = RGBColor(0x00, 0x00, 0x00)
-TABLE_HEADER = "E9EEF5"
+TABLE_HEADER = "F4F6F9"
 CONTENT_WIDTH_DXA = 8787  # A4 width minus 3.0 cm left and 2.5 cm right margins.
 
 
@@ -149,20 +146,20 @@ def configure_document(doc: Document) -> None:
 
     normal = doc.styles["Normal"]
     normal.font.name = LATIN_FONT
-    normal.font.size = Pt(12)
+    normal.font.size = Pt(11)
     normal._element.rPr.rFonts.set(qn("w:ascii"), LATIN_FONT)
     normal._element.rPr.rFonts.set(qn("w:hAnsi"), LATIN_FONT)
     normal._element.rPr.rFonts.set(qn("w:eastAsia"), CHINESE_BODY)
     normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    normal.paragraph_format.first_line_indent = Pt(24)
-    normal.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+    normal.paragraph_format.first_line_indent = Pt(22)
+    normal.paragraph_format.line_spacing = 1.333
     normal.paragraph_format.space_before = Pt(0)
-    normal.paragraph_format.space_after = Pt(0)
+    normal.paragraph_format.space_after = Pt(8)
 
     for style_name, size, before, after in (
-        ("Heading 1", 16, 12, 6),
-        ("Heading 2", 14, 10, 4),
-        ("Heading 3", 12, 8, 3),
+        ("Heading 1", 16, 18, 10),
+        ("Heading 2", 13, 12, 6),
+        ("Heading 3", 12, 8, 4),
     ):
         style = doc.styles[style_name]
         style.font.name = LATIN_FONT
@@ -185,7 +182,7 @@ def configure_document(doc: Document) -> None:
 INLINE_TOKEN = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)")
 
 
-def add_inline_text(paragraph, text: str, *, size: float = 12, chinese=CHINESE_BODY) -> None:
+def add_inline_text(paragraph, text: str, *, size: float = 11, chinese=CHINESE_BODY) -> None:
     cursor = 0
     for match in INLINE_TOKEN.finditer(text):
         if match.start() > cursor:
@@ -231,7 +228,7 @@ def add_heading(doc: Document, text: str, level: int) -> None:
     add_inline_text(
         paragraph,
         text,
-        size={1: 16, 2: 14, 3: 12}[level],
+        size={1: 16, 2: 13, 3: 12}[level],
         chinese=CHINESE_HEADING,
     )
     for run in paragraph.runs:
@@ -243,12 +240,30 @@ def add_body_paragraph(doc: Document, text: str) -> None:
     add_inline_text(paragraph, text)
 
 
+def add_equation(doc: Document, text: str) -> None:
+    paragraph = doc.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.first_line_indent = Pt(0)
+    paragraph.paragraph_format.space_before = Pt(4)
+    paragraph.paragraph_format.space_after = Pt(8)
+    add_inline_text(paragraph, text, size=11.5, chinese="Cambria Math")
+
+
 def add_bullet(doc: Document, text: str) -> None:
     paragraph = doc.add_paragraph(style="List Bullet")
     paragraph.paragraph_format.left_indent = Cm(0.74)
     paragraph.paragraph_format.first_line_indent = Cm(-0.37)
-    paragraph.paragraph_format.space_after = Pt(0)
-    paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+    paragraph.paragraph_format.space_after = Pt(4)
+    paragraph.paragraph_format.line_spacing = 1.208
+    add_inline_text(paragraph, text)
+
+
+def add_numbered(doc: Document, text: str) -> None:
+    paragraph = doc.add_paragraph(style="List Number")
+    paragraph.paragraph_format.left_indent = Cm(0.95)
+    paragraph.paragraph_format.first_line_indent = Cm(-0.49)
+    paragraph.paragraph_format.space_after = Pt(4)
+    paragraph.paragraph_format.line_spacing = 1.208
     add_inline_text(paragraph, text)
 
 
@@ -271,8 +286,8 @@ def add_code_block(doc: Document, lines: list[str]) -> None:
     p_pr.append(shd)
 
 
-def add_figure(doc: Document, relative_path: str, caption: str) -> None:
-    image_path = SOURCE.parent / relative_path
+def add_figure(doc: Document, image_path: str | Path, caption: str) -> None:
+    image_path = Path(image_path)
     paragraph = doc.add_paragraph()
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     paragraph.paragraph_format.first_line_indent = Pt(0)
@@ -280,7 +295,7 @@ def add_figure(doc: Document, relative_path: str, caption: str) -> None:
     paragraph.paragraph_format.space_after = Pt(3)
     paragraph.paragraph_format.keep_with_next = True
     run = paragraph.add_run()
-    width = 12.0 if image_path.name == "usage_distribution.png" else 15.2
+    width = 15.2
     run.add_picture(str(image_path), width=Cm(width))
 
     cap = doc.add_paragraph()
@@ -292,20 +307,16 @@ def add_figure(doc: Document, relative_path: str, caption: str) -> None:
 
 
 def add_markdown_table(doc: Document, rows: list[list[str]]) -> None:
-    if rows and rows[0][0] == "版本":
-        caption = doc.add_paragraph()
-        caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        caption.paragraph_format.first_line_indent = Pt(0)
-        caption.paragraph_format.space_before = Pt(6)
-        caption.paragraph_format.space_after = Pt(4)
-        caption.paragraph_format.keep_with_next = True
-        add_inline_text(caption, "表1 五个现场版本的会话与完成情况", size=10.5)
-
     table = doc.add_table(rows=len(rows), cols=len(rows[0]))
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
-    widths = [850, 2450, 1097, 1097, 1097, 1097, 1099]
+    maxima = [max(len(row[index]) for row in rows) for index in range(len(rows[0]))]
+    weights = [max(5, min(value, 22)) for value in maxima]
+    widths = [round(CONTENT_WIDTH_DXA * weight / sum(weights)) for weight in weights]
+    widths[-1] += CONTENT_WIDTH_DXA - sum(widths)
     set_table_geometry(table, widths)
+
+    table_font_size = 9.5 if len(rows[0]) <= 6 else 8.0
 
     for row_index, row_values in enumerate(rows):
         row = table.rows[row_index]
@@ -325,7 +336,7 @@ def add_markdown_table(doc: Document, rows: list[list[str]]) -> None:
             paragraph.paragraph_format.space_before = Pt(0)
             paragraph.paragraph_format.space_after = Pt(0)
             paragraph.paragraph_format.line_spacing = 1.15
-            add_inline_text(paragraph, value, size=9.5)
+            add_inline_text(paragraph, value, size=table_font_size)
             if row_index == 0:
                 for run in paragraph.runs:
                     run.bold = True
@@ -341,8 +352,18 @@ def add_reference(doc: Document, text: str) -> None:
     add_inline_text(paragraph, text, size=10.5)
 
 
-def build() -> Path:
-    lines = SOURCE.read_text(encoding="utf-8").splitlines()
+def add_caption(doc: Document, text: str) -> None:
+    paragraph = doc.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.first_line_indent = Pt(0)
+    paragraph.paragraph_format.space_before = Pt(4)
+    paragraph.paragraph_format.space_after = Pt(4)
+    paragraph.paragraph_format.keep_with_next = True
+    add_inline_text(paragraph, text, size=10.5)
+
+
+def build(manuscript_path: Path, output_path: Path) -> Path:
+    lines = manuscript_path.read_text(encoding="utf-8").splitlines()
     doc = Document()
     configure_document(doc)
 
@@ -380,7 +401,18 @@ def build() -> Path:
         elif re.fullmatch(r"!\[(.+)]\((.+)\)", line):
             match = re.fullmatch(r"!\[(.+)]\((.+)\)", line)
             assert match
-            add_figure(doc, match.group(2), match.group(1))
+            caption = match.group(1)
+            lookahead = index + 1
+            while lookahead < len(lines) and not lines[lookahead].strip():
+                lookahead += 1
+            if lookahead < len(lines) and re.match(r"^(图|附图)\s*[A-Za-z0-9一二三四五六七八九十]+", lines[lookahead].strip()):
+                caption = lines[lookahead].strip()
+                index = lookahead
+            add_figure(
+                doc,
+                (manuscript_path.parent / match.group(2)).resolve(),
+                caption,
+            )
         elif line.startswith("|"):
             table_lines: list[str] = []
             while index < len(lines) and lines[index].lstrip().startswith("|"):
@@ -395,8 +427,14 @@ def build() -> Path:
             continue
         elif line.startswith("- "):
             add_bullet(doc, line[2:].strip())
+        elif re.match(r"^\d+\.\s+", line):
+            add_numbered(doc, re.sub(r"^\d+\.\s+", "", line))
+        elif re.match(r"^(表|附表)\s*[A-Za-z0-9一二三四五六七八九十]+", line):
+            add_caption(doc, line)
+        elif line.startswith("Yᵢⱼ ="):
+            add_equation(doc, line)
         elif line:
-            if line.startswith("程序设计教育；") and doc.paragraphs[-1].text == "关键词":
+            if doc.paragraphs[-1].text == "关键词":
                 paragraph = doc.add_paragraph()
                 paragraph.paragraph_format.first_line_indent = Pt(0)
                 paragraph.paragraph_format.space_after = Pt(8)
@@ -408,16 +446,28 @@ def build() -> Path:
         index += 1
 
     core = doc.core_properties
-    core.title = "程序设计学习中的三阶段引导式学习：设计、课堂应用与行为分析"
+    core.title = next(
+        (line[2:].strip() for line in lines if line.startswith("# ")),
+        manuscript_path.stem,
+    )
     core.subject = "中文研究论文内部审阅稿"
     core.author = ""
     core.last_modified_by = ""
-    core.comments = "内部研究稿；正式投稿前需完成伦理审查或豁免确认。"
+    core.comments = "内部研究稿；正式投稿前需由研究团队确认伦理程序。"
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(OUTPUT)
-    return OUTPUT
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(output_path)
+    return output_path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input-md", required=True, type=Path)
+    parser.add_argument("--output-docx", required=True, type=Path)
+    args = parser.parse_args()
+    print(build(args.input_md, args.output_docx))
+    return 0
 
 
 if __name__ == "__main__":
-    print(build())
+    raise SystemExit(main())

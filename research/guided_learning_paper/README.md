@@ -1,18 +1,50 @@
 # 三阶段引导式学习论文工作区
 
-本目录用于保存 CodeSense 三阶段引导式学习论文的可复核分析结果和写作产物。
+本目录保存CodeSense三阶段引导式学习论文的分析结果、证据审计和双轨稿件。第一版 `manuscript_zh.md` 与 `paper_zh.docx` 保留作修订对照，不由新版生成流程覆盖。
 
-- `manuscript_zh.md`：中文论文正文
-- `literature_matrix.md`：相关研究证据表
-- `target_journals.md`：投稿方向核查
-- `data_provenance.md`：数据来源、版本边界和隐私说明
-- `results/`：分析脚本生成的统计结果
-- `figures/`：论文图表
-- `paper_zh.docx`：经渲染核验的中文 Word 稿
+## 主要文件
 
-匿名数据 ZIP 保存在仓库外，不提交到 Git。正文中的统计数字应来自 `results/` 下的冻结结果，不直接从聊天记录或临时计算结果抄录。
+- `manuscript_core_zh.md` / `paper_core_zh.docx`：中文核心期刊导向稿；
+- `manuscript_practice_zh.md` / `paper_practice_zh.docx`：计算机教育实践稿；
+- `literature_matrix.md`：中英文研究证据矩阵和可外推边界；
+- `peer_review_audit_v2.md`：第二轮模拟外审；
+- `revision_log.md`：第一版问题、改动、证据和剩余限制；
+- `next_study_protocol.md`：下一轮阶梯楔形研究方案；
+- `data_provenance.md`：数据快照、版本边界和隐私说明；
+- `results/`：分析脚本生成的冻结结果；
+- `figures/`：正文与附录图片。
 
-研究设计见：
+## 复现命令
 
-- `docs/superpowers/specs/2026-07-16-guided-learning-paper-design.md`
-- `docs/superpowers/plans/2026-07-16-guided-learning-paper.md`
+在仓库根目录运行：
+
+```powershell
+py scripts/analyze_guided_learning_research.py `
+  --zip-path 'C:\path\to\codesense-research-export-20260716T090300Z.zip' `
+  --output-dir research/guided_learning_paper/results
+
+py scripts/plot_guided_learning_paper.py `
+  --results-dir research/guided_learning_paper/results `
+  --output-dir research/guided_learning_paper/figures
+
+py scripts/build_guided_learning_paper_docx.py `
+  --input-md research/guided_learning_paper/manuscript_core_zh.md `
+  --output-docx research/guided_learning_paper/paper_core_zh.docx
+
+py scripts/build_guided_learning_paper_docx.py `
+  --input-md research/guided_learning_paper/manuscript_practice_zh.md `
+  --output-docx research/guided_learning_paper/paper_practice_zh.docx
+```
+
+正式测试使用 `py -m pytest tests -q`。仓库根目录的 `test_results.txt` 是UTF-16文本，直接运行不限定路径的pytest会被doctest收集器误读，因此不作为测试入口。
+
+## 数据和投稿边界
+
+匿名研究ZIP保存在仓库外，不提交到Git。仓库也不得加入匿名密钥、数据库配置、学生代码、对话正文或可重新识别个体的原始事件序列。正文数字必须来自 `results/` 下的冻结结果。
+
+匿名化不等于伦理程序已经完成。正式投稿前，研究团队仍需确认伦理审批或书面豁免、研究同意、作者顺序与单位、基金、利益冲突和数据可获得性声明。两篇稿件使用同一数据，选择投稿路线时应避免重复发表，并向编辑部说明彼此关系。
+
+设计与执行记录见：
+
+- `docs/superpowers/specs/2026-07-16-guided-learning-paper-revision-design.md`
+- `docs/superpowers/plans/2026-07-16-guided-learning-paper-revision.md`
