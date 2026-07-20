@@ -96,3 +96,53 @@ def test_new_matrix_rows_keep_claim_and_boundary_cells():
         assert title in row["完整题名"]
         assert row["可支持的主张"]
         assert row["不可外推之处"]
+
+
+def test_core_manuscript_uses_bounded_adaptive_agent_claims():
+    text = (ROOT / "manuscript_core_zh.md").read_text(encoding="utf-8")
+    for required in (
+        "状态驱动",
+        "会话内",
+        "提示次数",
+        "错误类型",
+        "对话历史",
+        "平台只是",
+    ):
+        assert required in text
+    for forbidden in (
+        "完全自主决策",
+        "长期学习者画像",
+        "显著提升算法思维",
+        "证明了学习效果",
+    ):
+        assert forbidden not in text
+
+
+def _cited_reference_numbers(text: str) -> list[int]:
+    numbers = []
+    for group in re.findall(r"\[((?:\d+)(?:[-,]\d+)*)\]", text):
+        for part in group.split(","):
+            if "-" in part:
+                start, end = map(int, part.split("-"))
+                numbers.extend(range(start, end + 1))
+            else:
+                numbers.append(int(part))
+    return numbers
+
+
+def test_core_manuscript_numbers_references_by_first_citation():
+    text = (ROOT / "manuscript_core_zh.md").read_text(encoding="utf-8")
+    body = text.split("## 参考文献", 1)[0]
+    first_seen = list(dict.fromkeys(_cited_reference_numbers(body)))
+    assert first_seen == list(range(1, len(first_seen) + 1))
+
+
+def test_core_manuscript_bibliography_matches_body_citations():
+    text = (ROOT / "manuscript_core_zh.md").read_text(encoding="utf-8")
+    body, bibliography = text.split("## 参考文献", 1)
+    cited = set(_cited_reference_numbers(body))
+    listed = {
+        int(number)
+        for number in re.findall(r"^\[(\d+)\] ", bibliography, flags=re.MULTILINE)
+    }
+    assert listed == cited == set(range(1, len(listed) + 1))
