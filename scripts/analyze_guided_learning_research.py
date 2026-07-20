@@ -81,6 +81,42 @@ def as_bool(value: object) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes"}
 
 
+PATH_LABELS = {
+    "no_valid_stage1": "未形成第一阶段有效记录",
+    "stage2_incomplete": "到达第二阶段但未完成",
+    "stage3_incomplete": "完成第二阶段但未完成第三阶段",
+    "all_completed": "完成全部阶段",
+}
+
+
+def classify_session_path(session: dict) -> str:
+    """Classify a session into one mutually exclusive progress path."""
+    if as_bool(session["stage3_completed"]):
+        return "all_completed"
+    if as_bool(session["stage2_completed"]):
+        return "stage3_incomplete"
+    if int(session["current_stage"] or 1) >= 2 or bool(session["stage1_score"]):
+        return "stage2_incomplete"
+    return "no_valid_stage1"
+
+
+def build_stable_session_paths(sessions: list[dict]) -> list[dict]:
+    """Aggregate mutually exclusive progress paths for stable sessions."""
+    counts = {name: 0 for name in PATH_LABELS}
+    for session in sessions:
+        counts[classify_session_path(session)] += 1
+    total = len(sessions)
+    return [
+        {
+            "path": name,
+            "label": label,
+            "sessions": counts[name],
+            "percent": round(100 * counts[name] / total, 2) if total else 0.0,
+        }
+        for name, label in PATH_LABELS.items()
+    ]
+
+
 def count_student_users(users: list[dict]) -> int:
     return sum(row["user_role"] in {"student", "学生"} for row in users)
 
@@ -257,6 +293,89 @@ def summarize_active_time(sessions: list[dict], logs: list[dict]) -> dict[str, f
         "completed_median_active_minutes": round(statistics.median(completed), 2),
         "incomplete_median_active_minutes": round(statistics.median(incomplete), 2),
     }
+
+
+def _five_number(
+    values: list[float],
+) -> tuple[int, float | None, float | None, float | None]:
+    if not values:
+        return 0, None, None, None
+    series = pd.Series(values, dtype=float)
+    return (
+        len(values),
+        round(float(series.median()), 2),
+        round(float(series.quantile(0.25)), 2),
+        round(float(series.quantile(0.75)), 2),
+    )
+
+
+def summarize_stage_friction(
+    sessions: list[dict],
+    logs: list[dict],
+    gap_cap_seconds: int = 300,
+) -> list[dict]:
+    """Summarize per-session process friction without assuming independence."""
+    logs_by_session: dict[str, list[dict]] = defaultdict(list)
+    for row in logs:
+        logs_by_session[row["anonymous_session_id"]].append(row)
+
+    metrics: dict[tuple[str, str], list[float]] = defaultdict(list)
+    for session in sessions:
+        session_id = session["anonymous_session_id"]
+        group = (
+            "completed"
+            if session["status"].strip().lower() == "completed"
+            else "incomplete"
+        )
+        session_logs = logs_by_session[session_id]
+        fixed = {
+            "stage1_hints": float(session["stage1_hint_count"] or 0),
+            "stage2_hints": float(session["stage2_hint_count"] or 0),
+            "stage2_verify_fail": float(
+                sum(
+                    row["event_type"] == "verify_fail" and int(row["stage"]) == 2
+                    for row in session_logs
+                )
+            ),
+            "stage3_dialogue_rounds": float(
+                session["stage3_teacher_rounds"] or 0
+            )
+            + float(session["stage3_student_rounds"] or 0),
+            "stage3_fix_code": float(
+                sum(
+                    row["event_type"] == "fix_code" and int(row["stage"]) == 3
+                    for row in session_logs
+                )
+            ),
+        }
+        for metric, value in fixed.items():
+            metrics[(group, metric)].append(value)
+
+        for stage in (1, 2, 3):
+            times = [
+                parse_platform_timestamp(row["created_at"])
+                for row in session_logs
+                if int(row["stage"]) == stage
+            ]
+            if times:
+                metrics[(group, f"stage{stage}_active_minutes")].append(
+                    active_seconds(times, gap_cap_seconds) / 60
+                )
+
+    rows = []
+    for (group, metric), values in sorted(metrics.items()):
+        n, median, q1, q3 = _five_number(values)
+        rows.append(
+            {
+                "completion_group": group,
+                "metric": metric,
+                "n": n,
+                "median": median,
+                "q1": q1,
+                "q3": q3,
+            }
+        )
+    return rows
 
 
 def crossing_sessions(

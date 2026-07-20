@@ -3,6 +3,7 @@ from datetime import datetime
 from scripts.analyze_guided_learning_research import (
     VersionBoundary,
     active_seconds,
+    build_stable_session_paths,
     build_submission_pairs,
     build_stage_funnel,
     build_student_usage,
@@ -11,6 +12,7 @@ from scripts.analyze_guided_learning_research import (
     count_student_users,
     parse_platform_timestamp,
     select_sessions_since,
+    summarize_stage_friction,
     summarize_usage,
 )
 
@@ -265,3 +267,93 @@ def test_select_sessions_since_returns_matching_logs():
 
     assert [row["anonymous_session_id"] for row in selected_sessions] == ["new"]
     assert [row["anonymous_session_id"] for row in selected_logs] == ["new"]
+
+
+def test_stable_session_paths_use_mutually_exclusive_states():
+    sessions = [
+        {
+            "stage1_score": "",
+            "current_stage": "1",
+            "stage2_completed": "0",
+            "stage3_completed": "0",
+        },
+        {
+            "stage1_score": "50",
+            "current_stage": "2",
+            "stage2_completed": "0",
+            "stage3_completed": "0",
+        },
+        {
+            "stage1_score": "50",
+            "current_stage": "3",
+            "stage2_completed": "1",
+            "stage3_completed": "0",
+        },
+        {
+            "stage1_score": "50",
+            "current_stage": "3",
+            "stage2_completed": "1",
+            "stage3_completed": "1",
+        },
+    ]
+
+    rows = build_stable_session_paths(sessions)
+
+    assert [row["path"] for row in rows] == [
+        "no_valid_stage1",
+        "stage2_incomplete",
+        "stage3_incomplete",
+        "all_completed",
+    ]
+    assert [row["sessions"] for row in rows] == [1, 1, 1, 1]
+    assert sum(row["sessions"] for row in rows) == 4
+
+
+def test_stage_friction_reports_median_iqr_and_active_minutes():
+    sessions = [
+        {
+            "anonymous_session_id": "s1",
+            "status": "completed",
+            "stage1_hint_count": "1",
+            "stage2_hint_count": "2",
+            "stage3_teacher_rounds": "3",
+            "stage3_student_rounds": "4",
+        }
+    ]
+    logs = [
+        {
+            "anonymous_session_id": "s1",
+            "stage": "2",
+            "event_type": "verify_fail",
+            "created_at": "2026-07-01T00:00:00",
+        },
+        {
+            "anonymous_session_id": "s1",
+            "stage": "2",
+            "event_type": "verify_fail",
+            "created_at": "2026-07-01T00:02:00",
+        },
+        {
+            "anonymous_session_id": "s1",
+            "stage": "3",
+            "event_type": "fix_code",
+            "created_at": "2026-07-01T00:03:00",
+        },
+        {
+            "anonymous_session_id": "s1",
+            "stage": "3",
+            "event_type": "chat",
+            "created_at": "2026-07-01T00:13:00",
+        },
+    ]
+
+    rows = summarize_stage_friction(sessions, logs)
+    keyed = {
+        (row["completion_group"], row["metric"]): row
+        for row in rows
+    }
+
+    assert keyed[("completed", "stage2_verify_fail")]["median"] == 2.0
+    assert keyed[("completed", "stage3_fix_code")]["median"] == 1.0
+    assert keyed[("completed", "stage3_active_minutes")]["median"] == 5.0
+    assert keyed[("completed", "stage3_active_minutes")]["n"] == 1

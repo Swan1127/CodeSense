@@ -1290,9 +1290,9 @@ Expected: PNG数量分别等于两份PDF页数。
 
 - [ ] **Step 4: 运行全量测试**
 
-Run: `py -m pytest -q`
+Run: `py -m pytest tests -q`
 
-Expected: 至少保持基线的63项测试全部通过，新增测试同时通过；无FAIL或ERROR。
+Expected: 至少保持基线的63项测试全部通过，新增测试同时通过；无FAIL或ERROR。限定 `tests/` 是为了避免pytest的doctest收集器读取仓库根目录中历史遗留的UTF-16文件 `test_results.txt`。
 
 - [ ] **Step 5: 检查Git差异范围**
 
