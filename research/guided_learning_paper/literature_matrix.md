@@ -1,50 +1,47 @@
-# 相关研究证据表
+# 相关研究证据矩阵
 
-检索日期：2026年7月16日。当前表用于支撑中文初稿，正式投稿前仍需按目标期刊格式核对作者、卷期、页码和DOI。
+核验日期：2026年7月20日。本表服务于正文写作，不是简单的“相关文献罗列”。纳入文献须能回答以下至少一个问题：三阶段活动分别依据什么学习机制，生成式AI怎样嵌入程序设计学习，真实课堂过程数据能支持何种判断，以及研究实施需控制哪些伦理风险。元数据优先取自期刊官网、DOI落地页或论文原文；标为“全文核验”的条目才用于转述具体结果。仅核对到题录或摘要的文献，只用于界定研究议题，不据此推断效应大小。
 
-## 1. 思路外化与脚手架
+## 一、中文研究
 
-| 来源 | 场景与样本 | 学习活动与研究设计 | 主要发现 | 与本文关系 | 可支持的表述 |
-|---|---|---|---|---|---|
-| Bichler et al. (2022), [Learning to solve ill-defined statistics problems](https://doi.org/10.1007/s11251-022-09579-4) | 对既有统计学问题解决实验的自我解释数据进行二次分析 | 编码自我解释质量，检验其在样例学习中的中介作用 | 自我解释是否包含理由和概念应用，比简单复述更能区分解释质量 | 支撑第一阶段要求学生说明步骤与依据，而不是复述题目 | 自我解释的价值取决于解释质量；提示需要引导学习者产生推理和概念联系 |
-| Hefter, Kubik, and Berthold (2023), [Can prompts improve self-explaining an online video lecture?](https://doi.org/10.1186/s41239-023-00383-9) | 在线现场实验 | 比较笔记提示、原理型提示、阐释型提示及组合提示 | 不同提示会改变自我解释过程；中断和坚持程度也影响学习过程 | 说明第一阶段的分题提示属于过程脚手架，其效果不能只看最后得分 | 在线自我解释需要结构化提示，也应记录学习过程和中断 |
-| Zhang et al. (2026), [Using multimodal learning analytics to understand dynamic scaffoldings in programming](https://doi.org/10.1186/s40594-025-00591-x) | 编程学习场景 | 将动态自我调节脚手架、样例学习与多模态学习分析结合 | 过程数据能揭示脚手架下的参与差异；部分结果未出现显著主效应 | 支撑本文采用过程日志而不是只依赖代码成绩 | 编程脚手架研究需要同时观察行为过程、调节活动和结果指标 |
-| Ouyang, Dai, and Chen (2022), [Applying multimodal learning analytics to examine instructor scaffoldings](https://doi.org/10.1186/s40594-022-00361-z) | K-12小组协作编程，持续11周 | 分析教师脚手架后的即时反应和延迟使用 | 学生对脚手架的吸收存在时间差和不同认知参与水平 | 支撑本文按事件序列分析阶段推进，避免只看一次性完成状态 | 脚手架影响可能表现为后续行为变化，过程分析应保留时间顺序 |
+| 作者与年份 | 完整题名 | 期刊/会议 | 卷期页码 | DOI或官方链接 | 研究对象与样本 | 方法 | 可支持的主张 | 不可外推之处 | 核验状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| 孙丹、朱城聪、许作栋、徐光涛（2024） | 基于生成式人工智能的大学生编程学习行为分析研究 | 电化教育研究 | 45(3): 113-120 | [10.13811/j.cnki.eer.2024.03.016](https://doi.org/10.13811/j.cnki.eer.2024.03.016) | 36名大学生参与生成式AI辅助编程活动 | 屏幕录像与平台记录编码，结合滞后序列分析和认知网络分析 | 生成式AI编程研究可以同时分析编码、知识询问及其时序联系；是本文最直接的中文实证参照 | 小样本任务研究不能替代真实课程长期部署；其行为编码不能直接套用到本平台事件 | 全文核验 |
+| 吴林静、戴心来、赵蔚、姜强（2020） | 学习分析视域下学习者编程过程分析研究 | 现代远距离教育 | (2): 68-75 | [期刊题录线索](https://aver.nwnu.edu.cn/upload/formalarticle/202403/2024030527-%E5%9F%BA%E4%BA%8E%E7%94%9F%E6%88%90%E5%BC%8F%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD%E7%9A%84%E5%A4%A7%E5%AD%A6%E7%94%9F%E7%BC%96%E7%A8%8B%E5%AD%A6%E4%B9%A0%E8%A1%8C%E4%B8%BA%E5%88%86%E6%9E%90%E7%A0%94%E7%A9%B6.pdf) | 编程学习者 | 从学习分析视角研究编程过程 | 编程学习评价可利用过程行为，而不只看最终代码或成绩 | 当前仅完成题录核对，不在正文转述其具体统计结果 | 题录核验，正文慎用 |
+| 李海峰、王炜（2023） | 生成式人工智能时代的学生作业设计与评价 | 开放教育研究 | 29(3): 31-39 | [10.13966/j.cnki.kfjyyj.2023.03.003](https://doi.org/10.13966/j.cnki.kfjyyj.2023.03.003) | 生成式AI情境下的学生作业，属理论研究 | 概念分析与作业设计模型建构 | 作业设计应把人机交互过程、表现性活动与真实性评价纳入考察 | 理论模型不能证明某种作业设计已经改善学习结果 | 全文核验 |
+| 王一岩、刘淇、郑永和（2024） | 人机协同学习：实践逻辑与典型模式 | 开放教育研究 | 30(1): 65-72 | [10.13966/j.cnki.kfjyyj.2024.01.007](https://doi.org/10.13966/j.cnki.kfjyyj.2024.01.007) | 人机协同学习场景，属理论与模式研究 | 文献分析与典型模式归纳 | 人机任务分工、角色辨识和自主度调整是活动设计的实质变量 | 不能由模式研究推出本文三阶段流程的效果 | 全文核验 |
+| 董艳、夏亮亮、李心怡、侯彦华（2023） | ChatGPT赋能学生学习的路径探析 | 电化教育研究 | 44(12): 14-20, 34 | [10.13811/j.cnki.eer.2023.12.002](https://doi.org/10.13811/j.cnki.eer.2023.12.002) | ChatGPT支持学生学习，属理论研究 | 文献梳理与路径分析 | 生成式AI可参与目标、资源、过程和评价等学习环节，但需要教学设计约束 | 不能支持具体编程行为或学习增益结论 | 全文核验 |
+| 单俊豪、刘永贵（2024） | 生成式人工智能赋能学习设计研究 | 电化教育研究 | 45(7): 73-80 | [10.13811/j.cnki.eer.2024.07.010](https://doi.org/10.13811/j.cnki.eer.2024.07.010) | 生成式AI支持的学习设计，属理论研究 | 框架建构与案例阐释 | 生成式AI工具需嵌入明确的学习活动、角色和评价安排 | 设计框架本身不构成课堂成效证据 | 全文核验 |
+| 王佑镁、王欣颖、柳晨晨（2024） | 教育领域生成式人工智能应用的伦理风险管理框架研究 | 电化教育研究 | 45(10): 28-35 | [10.13811/j.cnki.eer.2024.10.004](https://doi.org/10.13811/j.cnki.eer.2024.10.004) | 教育领域生成式AI应用，属伦理治理研究 | 风险识别与管理框架建构 | 数据、算法、主体关系及责任边界应进入研究和系统治理方案 | 不能替代具体项目的伦理审查、知情同意与数据保护记录 | 全文核验 |
+| 卢宇、余京蕾、陈鹏鹤、李沐云（2023） | 生成式人工智能的教育应用与展望——以ChatGPT系统为例 | 中国远程教育 | 43(4): 24-31 | [10.13541/j.cnki.chinade.20230301.001](https://doi.org/10.13541/j.cnki.chinade.20230301.001) | ChatGPT教育应用，属综述与展望研究 | 技术分析、场景归纳与风险讨论 | 生成式AI既能提供交互支持，也带来准确性、依赖和数据安全问题 | 不能据此判断三阶段引导的采用率或学习效果 | 元数据与全文核验 |
+| 杨宗凯、王俊、吴砥、陈旭（2023） | ChatGPT/生成式人工智能对教育的影响探析及应对策略 | 华东师范大学学报（教育科学版） | 41(7): 26-35 | [10.16382/j.cnki.1000-5560.2023.07.003](https://doi.org/10.16382/j.cnki.1000-5560.2023.07.003) | 教育系统中的生成式AI应用，属宏观理论研究 | 影响分析与策略研究 | 人机协同、评价变化和能力培养是生成式AI教育应用的重要议题 | 宏观判断不能替代程序设计课程中的过程证据 | 官网全文核验 |
+| 杨欣（2023） | 基于生成式人工智能的教育转型图景——ChatGPT究竟对教育意味着什么 | 中国电化教育 | (5): 1-8, 14 | [期刊官方页](https://zdjy.cbpt.cnki.net/portal/journal/portal/client/paper/8d51f723f153b6bcfe175a0a62112f98) | 生成式AI与教育转型，属理论研究 | 文献与概念分析 | 可用于说明生成式AI引起的教学、学习和评价议题 | 不支持本文系统新颖性或有效性判断 | 官网元数据核验 |
+| 王佑镁、王旦、王海洁、柳晨晨（2023） | 基于风险性监管的AIGC教育应用伦理风险治理研究 | 中国电化教育 | (11): 83-90 | [期刊官方页](https://zdjy.cbpt.cnki.net/portal/journal/portal/client/paper/ee244ab24775dce5fcd223090ef26c37) | AIGC教育应用，属伦理治理研究 | 风险分类与监管框架建构 | 技术试用与研究性数据利用应区分，风险治理需覆盖数据和参与者权益 | 不能视为本研究已经获得伦理批准的依据 | 官网元数据核验 |
+| 吴峰、江凤娟、王璐莹（2026） | 生成式人工智能如何重塑大学生的学习行为 | 中国电化教育 | (5): 49-56 | [期刊官方页](https://zdjy.cbpt.cnki.net/portal/journal/portal/client/paper/5a5f1c6e9bc8518df5773841dcd2f4df) | 大学生生成式AI使用与学习行为 | 实证研究，具体样本与模型按原文引用 | 适合比较生成式AI使用、学习行为与学生差异的近期中文证据 | 不可把一般使用行为等同于本文平台内的阶段事件 | 官网元数据核验；引用结果前复核全文 |
+| 周雪涵、马莉萍、郑翔睿（2026） | “态度—行为—能力”框架下的大学生生成式人工智能使用研究 | 中国电化教育 | (5): 57-66 | [期刊官方页](https://zdjy.cbpt.cnki.net/portal/journal/portal/client/paper/35250de390a3003e448d664c70c25478) | 大学生生成式AI使用 | 框架驱动的实证研究，具体样本按原文引用 | 提醒研究者区分使用态度、实际行为与能力结果 | 平台点击和会话完成不能直接代表能力形成 | 官网元数据核验；引用结果前复核全文 |
+| 冷静、王章涵、李思源、范逸洲（2026） | 从单线回应到协商共建：基于IRF理论的人机与师生对话分析 | 中国电化教育 | (6): 46-54 | [期刊官方页](https://zdjy.cbpt.cnki.net/portal/journal/portal/client/paper/610338caec20d3752eb1aa3124941dbb) | 人机对话与师生对话 | 基于IRF理论的对话分析 | 对话质量需要分析话轮功能与协商过程，单看轮数不足 | 本文没有对话语义编码，不能借其框架声称产生了深层对话 | 官网元数据核验；引用结果前复核全文 |
 
-## 2. Parsons Problems与代码重构
+## 二、英文研究
 
-| 来源 | 场景与样本 | 学习活动与研究设计 | 主要发现 | 与本文关系 | 可支持的表述 |
-|---|---|---|---|---|---|
-| Ericson et al. (2022), [Parsons Problems and Beyond](https://doi.org/10.1145/3571785.3574127) | ITiCSE工作组系统综述，并提供可复用实验设计 | 汇总代码块排序、干扰块、缩进等Parsons变体 | Parsons Problems降低从空白页写代码的负担，但不同变体和研究设计不能被视为同一种干预 | 用于界定早期第二阶段；稳定版选择/填空只能称为代码重构，不能统称Parsons Problems | Parsons Problems通常提供打乱的代码块并要求学习者恢复正确程序结构 |
-| Ericson et al. (2022)附属研究资源，[ITiCSE Working Group supplementary site](https://iticse22-parsons-problems.github.io/) | 面向大规模复现实验 | 公开研究流程、题目资源和测量建议 | 强调清楚记录题型变体、先备知识和结果指标 | 支撑本文披露第二阶段改版并进行版本分层 | 代码重构活动的比较需要明确任务形式和版本边界 |
+| 作者与年份 | 完整题名 | 期刊/会议 | 卷期页码 | DOI或官方链接 | 研究对象与样本 | 方法 | 可支持的主张 | 不可外推之处 | 核验状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| Chi, Bassok, Lewis, Reimann, & Glaser (1989) | Self-explanations: How students study and use examples in learning to solve problems | Cognitive Science | 13(2): 145-182 | [10.1207/s15516709cog1302_1](https://doi.org/10.1207/s15516709cog1302_1) | 学习力学例题的学生 | 口语报告与问题解决比较 | 高质量自我解释涉及规则、条件和推理联系，不能等同于复述 | 经典实验的学科与媒介不同，不能直接预测AI编程活动效果 | DOI与全文核验 |
+| Renkl (1997) | Learning from worked-out examples: A study on individual differences | Learning and Instruction | 7(1): 1-15 | [10.1016/S0959-4752(96)00030-5](https://doi.org/10.1016/S0959-4752(96)00030-5) | 使用样例解决概率问题的学习者 | 自我解释过程编码与个体差异分析 | 学习者处理样例的方式存在差异，解释活动质量比形式完成更重要 | 不支持把一次阶段提交认定为概念理解 | DOI与全文核验 |
+| Bichler, Stadler, Bühner, Greiff, & Fischer (2022) | Learning to solve ill-defined statistics problems: Does self-explanation quality mediate the worked example effect? | Instructional Science | 50: 335-358 | [10.1007/s11251-022-09579-4](https://doi.org/10.1007/s11251-022-09579-4) | 统计学问题解决实验数据 | 自我解释质量编码与中介分析 | 自我解释是否包含理由和概念应用，有助于区分解释质量 | 不能由统计学样例学习推断编程迁移效果 | DOI与全文核验 |
+| Hefter, Kubik, & Berthold (2023) | Can prompts improve self-explaining an online video lecture? Yes, but do not disturb! | International Journal of Educational Technology in Higher Education | 20: 15 | [10.1186/s41239-023-00383-9](https://doi.org/10.1186/s41239-023-00383-9) | 在线视频讲座学习者 | 不同自我解释提示的现场实验 | 结构化提示会改变解释过程，中断与坚持也应记录 | 视频学习结果不能直接外推到代码活动 | DOI与全文核验 |
+| Ericson et al. (2022) | Parsons Problems and Beyond: Systematic Literature Review and Empirical Study Designs | Proceedings of the 2022 Working Group Reports on Innovation and Technology in Computer Science Education | 191-234 | [10.1145/3571785.3574127](https://doi.org/10.1145/3571785.3574127) | Parsons Problems研究与可复现实验设计 | 系统综述和工作组研究 | 代码块重排可降低空白页负担，但题型变体必须明确 | 本文稳定版为选择/填空式代码重构，不能笼统称为Parsons Problems | DOI与全文核验 |
+| Fiorella & Mayer (2013) | The relative benefits of learning by teaching and teaching expectancy | Contemporary Educational Psychology | 38(4): 281-288 | [10.1016/j.cedpsych.2013.06.001](https://doi.org/10.1016/j.cedpsych.2013.06.001) | 学习科学材料的大学生 | 教学预期与实际讲授的实验比较 | 为他人讲解可促使学习者组织和生成解释，但效果取决于活动安排 | 非编程材料、非智能体情境，不能证明虚拟学生对话有效 | DOI与全文核验 |
+| Chase, Chin, Oppezzo, & Schwartz (2009) | Teachable agents and the protégé effect: Increasing the effort towards learning | Journal of Science Education and Technology | 18: 334-352 | [10.1007/s10956-009-9180-4](https://doi.org/10.1007/s10956-009-9180-4) | 使用可教智能体学习科学概念的学生 | 实验与行为比较 | “教授”智能体可能改变学习投入和责任分配 | 不能把会话时长或轮数直接解释为protégé effect | DOI与全文核验 |
+| Jaeger et al. (2019) | The interrelationship between concepts about agency and students’ use of teachable-agent learning technology | Cognitive Research: Principles and Implications | 4: 47 | [10.1186/s41235-019-0163-6](https://doi.org/10.1186/s41235-019-0163-6) | 五个七年级课堂，108名学生入组，74名完成全部测量 | 三项研究考察智能体观念、系统使用和学习结果 | 学生如何理解智能体角色，会影响可教智能体的使用与结果 | 年龄、学科与平台均不同，不能直接外推到大学程序设计 | DOI与全文核验 |
+| Kuhail, Alturki, Alramlawi, & Alhejori (2023) | Interacting with educational chatbots: A systematic review | Education and Information Technologies | 28: 9739-9788 | [10.1007/s10639-022-11177-3](https://doi.org/10.1007/s10639-022-11177-3) | 教育聊天机器人研究 | 系统综述 | 聊天机器人可承担教学、同伴、可教等不同角色，角色决定交互任务 | 综述不能证明“教师Agent+学生Agent”组合首次出现或更有效 | DOI与全文核验 |
+| Ouyang, Dai, & Chen (2022) | Applying multimodal learning analytics to examine the immediate and delayed impacts of instructor scaffoldings on small groups’ collaborative programming | International Journal of STEM Education | 9: 6 | [10.1186/s40594-022-00361-z](https://doi.org/10.1186/s40594-022-00361-z) | K-12小组协作编程，持续11周 | 多模态学习分析与时序比较 | 脚手架的作用可能延迟出现，过程分析应保留时间顺序 | 多模态小组数据与本研究平台事件粒度不同 | DOI与全文核验 |
+| Utamachant, Anutariya, & Pongnumkul (2023) | i-Ntervene: A novel learning analytics framework for promoting student engagement and academic performance in online programming courses | Smart Learning Environments | 10: 31 | [10.1186/s40561-023-00257-7](https://doi.org/10.1186/s40561-023-00257-7) | 253名大学一年级学生，16周Java课程 | LMS、自动评测与学习分析支持教学干预 | 真实课程日志可用于识别过程特征和支持迭代干预 | 干预与平台同时运行，关联结果仍需谨慎解释 | DOI与全文核验 |
+| Yilmaz & Yilmaz (2023) | The effect of generative artificial intelligence (AI)-based tool use on students’ computational thinking skills, programming self-efficacy and motivation | Computers in Human Behavior: Artificial Humans | 1(2): 100005 | [10.1016/j.chbah.2023.100005](https://doi.org/10.1016/j.chbah.2023.100005) | 程序设计学习者 | 生成式AI工具使用的准实验研究 | 可作为生成式AI与编程学习结果研究的实证参照 | 研究设计、工具和结果测量不同，不能用于解释本研究日志关联 | DOI与全文核验 |
+| Becker et al. (2023) | Programming Is Hard—or at Least It Used to Be: Educational Opportunities and Challenges of AI Code Generation | Proceedings of the 54th ACM Technical Symposium on Computer Science Education V. 1 | 500-506 | [10.1145/3545945.3569759](https://doi.org/10.1145/3545945.3569759) | 计算机教育中的AI代码生成 | 立场论文与教学情境分析 | AI代码生成改变了程序设计任务，需要把解释、评价和修正纳入教学 | 立场论文不提供三阶段流程的因果证据 | DOI与全文核验 |
+| Kasneci et al. (2023) | ChatGPT for good? On opportunities and challenges of large language models for education | Learning and Individual Differences | 103: 102274 | [10.1016/j.lindif.2023.102274](https://doi.org/10.1016/j.lindif.2023.102274) | 大语言模型教育应用 | 跨学科综述与风险分析 | LLM可支持反馈和个性化活动，也伴随错误、依赖与公平风险 | 一般性机会和风险不能替代课堂评价 | DOI与全文核验 |
 
-## 3. Learning-by-teaching与可教智能体
+## 三、论证边界
 
-| 来源 | 场景与样本 | 学习活动与研究设计 | 主要发现 | 与本文关系 | 可支持的表述 |
-|---|---|---|---|---|---|
-| Jaeger et al. (2019), [The interrelationship between concepts about agency and students’ use of teachable-agent learning technology](https://doi.org/10.1186/s41235-019-0163-6) | 美国五个七年级课堂，108名学生入组，74名完成全部测量 | 学生通过因果图教授Betty’s Brain；三项实验研究智能体观念与学习的关系 | 学生对智能体能动性的理解与学习结果相关，使用系统也会改变其智能体观念 | 提醒本文不能把虚拟学生当作透明工具；学生如何理解角色会影响交互 | 可教智能体让学生通过解释、监控智能体知识和纠错开展learning-by-teaching |
-| Yang, Pujara, and Li (2025), [Learning by Teaching: Engaging Students as Instructors of Large Language Models](https://openreview.net/forum?id=RUAoV3j6tM) | 本科计算机课程 | 学生向带有预设知识缺口的LLM讲授计算机知识，并与历史队列比较 | 角色反转可用于减少被动依赖；论文报告了相对历史队列的表现改善 | 与第三阶段最接近，应明确本文的差异在于前置两阶段、虚拟学生追问和错误代码修正闭环 | LLM既可以扮演教师，也可以通过预设知识缺口扮演需要被学生教会的学习者 |
-| Kuhail et al. (2023), [Interacting with educational chatbots: A systematic review](https://doi.org/10.1007/s10639-022-11177-3) | 教育聊天机器人系统综述 | 归纳教学、同伴、可教和激励等角色 | 综述中的多数系统扮演教学智能体，可教智能体相对少见 | 支撑双角色设计的文献定位，但不能据此宣称角色组合首次出现 | 教育聊天机器人承担的教学角色不同，角色设定会改变学习者的交互任务 |
+现有研究已分别覆盖自我解释、代码重构、learning-by-teaching、可教智能体、人机协同和生成式AI辅助编程。本文不把其中任何单一机制写成首创，也不以“师—生双智能体”命名替代对学习活动的说明。较稳妥的新颖性表述是：系统把思路外化、代码重构、讲解纠错连续组织在同一程序设计任务中，并在真实课程部署中留下阶段、回退、提示、对话和提交记录。
 
-## 4. 生成式AI与程序设计教育
-
-| 来源 | 场景与样本 | 学习活动与研究设计 | 主要发现 | 与本文关系 | 可支持的表述 |
-|---|---|---|---|---|---|
-| Dickey, Bejarano, and Garg (2023), [The AI-Lab Framework for Generative AI Adoption](https://arxiv.org/abs/2308.12258) | 大学程序设计课程框架，含学生匿名调查 | 引导学生检查生成内容、发现边界条件和修正错误 | 提出通过结构化活动减轻GenAI过度依赖风险 | 与本文的防直接复制、错误代码修正目标一致 | 程序设计课程中的GenAI活动可以把检查错误和解释依据设为学生责任 |
-| Lyu et al. (2025), [Will Your Next Pair Programming Partner Be Human?](https://arxiv.org/abs/2505.08119) | 39名本科生、6次课堂作业、三种协作条件 | 比较人类结对、人与AI结对、单人与AI编程 | 不同协作结构产生不同成绩和体验；学生也报告了AI协作局限 | 说明“使用AI”不是单一干预，角色和任务分配需要明确 | AI在程序设计学习中的影响取决于协作角色及学生承担的认知责任 |
-| Gandhi and Muldner (2025), [That’s Not the Way I Would Explain It](https://icer2025.acm.org/details/icer-2025-papers/27/-That-s-Not-the-Way-I-Would-Explain-It-A-Teacher-Researcher-s-Autoethnography-of-Le) | 一名有教学经验的编程初学者，5次学习会话 | 使用ChatGPT学习Python的自我民族志 | ChatGPT能够组织部分教学活动，但更适合被视为有限的学习中介工具 | 支撑讨论中对AI角色能力的克制表述 | 生成式AI的教学行为需要学习者持续评价和调整，不能等同于稳定的人类教师 |
-| Elnaffar, Rashidi, and Abualkishik (2025), [Teaching with AI: A Systematic Review](https://arxiv.org/abs/2510.03884) | 2022—2025年58项程序设计教育研究 | 综述聊天机器人、生成式AI和智能辅导系统 | 支持性反馈是主要用途，同时频繁报告过度依赖、错误和实施障碍 | 用于交代研究背景和设计风险 | 程序设计教育中的AI工具常用于提供支持，但依赖、可靠性和实施条件仍需研究 |
-| Nathaniel et al. (2025), [Literature Review on the Integration of Generative AI in Programming Education](https://doi.org/10.1007/s40593-025-00524-3) | 程序设计教育文献综述 | 汇总40项GenAI编程教育实证研究 | 指出编程教育中的GenAI研究需要更清楚的教学设计和实证评价 | 支撑本文把系统设计与课堂日志结合，而不是只描述功能 | GenAI编程教育研究需要说明工具如何嵌入具体学习活动 |
-
-## 5. 真实课堂部署与学习分析
-
-| 来源 | 场景与样本 | 学习活动与研究设计 | 主要发现 | 与本文关系 | 可支持的表述 |
-|---|---|---|---|---|---|
-| Utamachant, Anutariya, and Pongnumkul (2023), [i-Ntervene](https://doi.org/10.1186/s40561-023-00257-7) | 253名大学一年级学生、16周Java课程 | 将LMS、自动评测和学习分析整合，支持12次教学干预 | 平台日志可支持持续干预，但不同干预并不都带来预期变化 | 是真实程序设计课程平台研究的直接参照 | 真实课堂学习分析适合支持迭代改进，但平台变化和教学干预必须被记录 |
-| Zhang, Jeffries, and Koprinska (2025), [A Machine Learning Approach for Predicting Student Progress in Online Programming Education](https://doi.org/10.1007/s40593-025-00510-9) | 四个大规模在线编程课程 | 使用内容交互特征和决策树预测模块进展 | 平台行为数据可补充单一结果分数，数据粒度会影响解释 | 支撑本文使用阶段事件而非仅用代码分数 | 在线编程平台产生的过程数据可以描述学习轨迹，但预测或关联不等同于因果效果 |
-
-## 6. 综述落点
-
-现有研究分别讨论了自我解释、Parsons Problems、可教智能体和生成式AI编程支持。与本文最接近的是Yang等人的“学生教授LLM”设计，但CodeSense在角色反转前增加了思路外化和代码重构，并要求学生修正虚拟学生生成的错误代码。
-
-本文不主张任何单一机制首次出现。更合适的贡献是：把三个阶段组织为连续流程，在真实课程中记录阶段事件，并利用Git历史处理部署期间的版本变化。
+孙丹等（2024）是最接近的中文实证研究，但两项工作的问题意识和证据粒度不同：前者分析大学生使用生成式AI编程时的询问和编码行为，本文关注一个预设三阶段流程如何被采用、推进或中止。这个差异足以构成研究空间，却不足以声称本文已经验证了学习增益。由于本次部署没有对照实验、前后测、迁移测验和解释质量编码，正文只能报告采用、路径、过程摩擦及受限的提交关联。
