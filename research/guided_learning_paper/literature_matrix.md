@@ -45,3 +45,21 @@
 现有研究已分别覆盖自我解释、代码重构、learning-by-teaching、可教智能体、人机协同和生成式AI辅助编程。本文不把其中任何单一机制写成首创，也不以“师—生双智能体”命名替代对学习活动的说明。较稳妥的新颖性表述是：系统把思路外化、代码重构、讲解纠错连续组织在同一程序设计任务中，并在真实课程部署中留下阶段、回退、提示、对话和提交记录。
 
 孙丹等（2024）是最接近的中文实证研究，但两项工作的问题意识和证据粒度不同：前者分析大学生使用生成式AI编程时的询问和编码行为，本文关注一个预设三阶段流程如何被采用、推进或中止。这个差异足以构成研究空间，却不足以声称本文已经验证了学习增益。由于本次部署没有对照实验、前后测、迁移测验和解释质量编码，正文只能报告采用、路径、过程摩擦及受限的提交关联。
+
+## 四、外部智能体来源与证据边界
+
+本文的教师型Agent和虚拟学生都只在**会话内**承担具体教学任务：前者对思路外化提供提示，后者接受讲解、追问并给出待修正代码。它们不保存跨会话的学习者画像，不替代真实学生，也不生成合成学习数据。本文所说的**跨作业**使用，是同一真实学生在两项或以上作业中建立会话的日志口径，不是智能体跨作业记忆、个性化建模或迁移学习。
+
+| 作者与年份 | 完整题名 | 期刊/会议 | 研究对象与样本 | 方法与智能体定义 | 可支持的主张 | 不可外推之处 | 核验状态 |
+|---|---|---|---|---|---|---|---|
+| Wang et al. (2025) | Impact of AI-agent-supported collaborative learning on the learning outcomes of University programming courses | *Education and Information Technologies*, 30: 17717-17749；DOI `10.1007/s10639-025-13487-8` | 45名本科生；AI-CL组24人、CSCL组21人；6周、每周70分钟 | 程序设计课程AI-Agent支持协作学习的准实验；比较学习成绩、自我效能、认知负荷和兴趣 | 程序设计课堂中报告AI-Agent效果时，应写清分组、周期、测量与比较条件 | 本研究没有相同的分组、前后测或结果测量；不能将日志关联写成与该文相当的效果证据 | 全文核验 |
+| Gao et al. (2025) | Agent4Edu: Generating Learner Response Data by Generative Agents for Intelligent Education Systems | AAAI-25；PDF未给出DOI、卷期或页码 | EduData：500名高中生、18,045条数学和物理作答记录 | 学习者画像、记忆与行动模块构成的生成式学习者模拟器；以模拟响应评估个性化算法 | 可用来区分真实响应、合成响应和算法评测，说明学习者模拟应单独验证 | 目标是模拟学习者并评估算法，不是引导真实学生；不能将模拟Agent等同于本文会话内的教师型Agent或虚拟学生 | 全文核验 |
+| Xu et al. (2025) | Classroom Simulacra: Building Contextual Student Generative Agents in Online Education for Learning Behavioral Simulation | CHI '25，26页；DOI `10.1145/3706598.3713773` | 6周工作坊，60名学生、8名教师，12次课程活动 | 带可迁移迭代反思的上下文学生代理，学习学生历史和课程材料以模拟行为 | 课程材料与时间序列应和行为记录一起说明；可借鉴真实记录与模拟输出分层报告 | 学习者模拟的目标是虚拟课堂试验，不能把模拟智能体与本文真实学生引导混为一谈，也不能推断本文教学效果 | 全文核验 |
+| Yusuf, Money, & Daylamani-Zad (2025) | Pedagogical AI conversational agents in higher education: a conceptual framework and survey of the state of the art | *Educational Technology Research and Development*, 73: 815-874；DOI `10.1007/s11423-025-10447-4` | 92篇高等教育对话智能体文献 | 主题模板分析；按教学应用、目的、模式、意图、具身性和功能描述Agent | 对话智能体应以角色、任务和交互方式界定，而不以名称代替活动描述 | 综述不能证明本文某一Agent更有效，也不能替代对对话质量和学习结果的实测 | 全文核验 |
+| Chu et al. (2025) | LLM Agents for Education: Advances and Applications | *Findings of the Association for Computational Linguistics: EMNLP 2025*, 13782-13810 | 教育LLM Agents文献、数据集和基准 | 综述反馈生成、课程设计及其算法框架、部署风险 | 可用于核对教育Agent的任务边界、幻觉、依赖和系统整合问题 | 不提供本文可直接比较的真实学生结果 | 全文核验 |
+| Zhang et al. | EduPlanner: LLM-Based Multi-Agent Systems for Customized and Intelligent Instructional Design | PDF未标明正式出版信息或DOI | 数学教学设计；GSM8K与Algebra计算实验 | 评价、优化、题目分析三个Agent协作，以CIDDP评价教学设计质量 | 多智能体写作应交代每个角色的输入、输出和评价维度 | 评估的是教学设计生成，不涉及本文的真实学生会话或跨作业采用 | 全文核验 |
+| Wei et al. | MEDCO: Medical Education Copilots Based on A Multi-Agent Framework | PDF未标明正式出版信息或DOI | 医学教育虚拟训练与医学任务实验 | 患者、专家医生、放射科医生构成多智能体训练环境 | 可借鉴角色职责和交互回合的明确写法 | 医学虚拟训练和模型表现不能证明对真实程序设计学生的影响 | 全文核验 |
+| Zhang et al. | SEFL: A Framework for Generating Synthetic Educational Assignment Feedback with LLM Agents | PDF未标明正式出版信息或DOI | 19.8K合成作业—反馈对；900个输出由3个LLM评审和3位人类专家评价 | 教师与学生角色的LLM生成合成作业和形成性反馈 | 合成数据、模型评审和人工评审应分开报告 | 合成反馈质量不等于真实学生的学习过程，不能解释本文会话完成或提交 | 全文核验 |
+| Lou et al. (2025) | AAAR-1.0: Assessing AI's Potential to Assist Research | ICML 2025，PMLR 267；PDF未见DOI | AI辅助研究的四类基准任务 | 评测通用LLM的公式推断、实验设计、论文弱点识别和评审批评 | 仅在讨论AI辅助研究任务拆分时可作方法线索 | 与程序设计教学、学生引导和课堂过程数据无直接对应，不建议写入正文 | 全文核验 |
+| Sharma et al. (2025) | The role of large language models in personalized learning: a systematic review of educational impact | *Discover Sustainability*, 6: 243；DOI `10.1007/s43621-025-01094-z` | 55项2020-2024年研究 | LLM个性化学习系统综述，讨论参与、进度、公平和伦理 | 可作个性化、隐私与公平背景的核对线索 | 范围宽，不能支持本文三阶段活动的独特性、课堂效果或日志解释；默认不写入正文 | 全文核验 |
+| Kim et al. (2024) | MDAgents: An Adaptive Collaboration of LLMs for Medical Decision-Making | NeurIPS 2024；arXiv:2404.15155v3 | 10个医疗知识、诊断和多模态推理基准 | 先判断复杂度，再由主持者调度专家Agent协作 | 若后续讨论动态协作，可借鉴路由、角色分配和汇总的分步验证 | 医疗决策基准不构成教育活动或教学效果证据，不建议写入正文 | 全文核验 |
