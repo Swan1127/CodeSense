@@ -35,3 +35,29 @@
 已检查变更内容、PNG 尺寸和原始分辨率渲染。图中没有将 CodeSense 放在视觉中心，也没有把日志行为写成认知质量或学习增益。未修改 Task 1 的审计或矩阵文件，未触碰冻结结果；`.tmp/` 与 `static/uploads/` 保持未跟踪状态且不纳入提交。
 
 本任务提交仅包含绘图脚本、绘图测试、生成的活动链 PNG 和本报告。
+
+## 审查修正补充（2026-07-20）
+
+### 修正内容
+
+审查指出支架连接器只落到第三阶段。原因是绘图函数只保留了 `arrow((0.825, 0.69), (0.825, 0.55))` 这一条支架到阶段的连线。现改为从“适配的学习支架”引出一条无箭头的垂直线，接入位于三个阶段上方的水平轨道；轨道再用三条短垂直箭头分别连接思路外化、程序构建和讲解纠错。标签改为“基于当前状态的支架贯穿三个阶段”，连接器不再穿过说明文字。
+
+可观察状态框扩为三行：自然语言回答、提示次数、当前进度/得分；错误/未答步骤、代码块错误与修正结果；对话/教学记录。原有尺寸测试更名为 `test_activity_chain_figure_has_revised_landscape_canvas`，避免把尺寸检查称作可读性检查。另加 `test_activity_chain_source_labels_cover_required_state_and_shared_support`，只核验审查要求的状态标签和共享支架标签。
+
+### RED/GREEN 证据
+
+新增标签断言先运行：
+
+`py -m pytest tests/test_guided_learning_paper_plots.py::test_activity_chain_source_labels_cover_required_state_and_shared_support -q`
+
+旧实现失败，首个缺失标签为“当前进度/得分”。补全状态标签和共享支架标签后，同一测试通过。改名后的画布测试 `test_activity_chain_figure_has_revised_landscape_canvas` 也通过。
+
+### 生成、检查与测试
+
+重新运行 `py scripts/plot_guided_learning_paper.py` 后，`activity_chain_evidence.png` 为 3175×1907 像素。使用原始分辨率查看后确认：水平支架轨道及其三条落箭头清楚指向三个阶段；新增状态字段完整可读；标题、箭头和证据边界没有裁切或重叠。
+
+- 专项绘图测试：`py -m pytest tests/test_guided_learning_paper_plots.py -k activity_chain -q`，2 通过、1 跳过。
+- 绘图测试文件：`py -m pytest tests/test_guided_learning_paper_plots.py -q`，3 通过。
+- 相关论文测试：`py -m pytest tests/test_guided_learning_paper_plots.py tests/test_guided_learning_paper_content.py tests/test_guided_learning_paper_docx.py tests/test_guided_learning_research_analysis.py -q`，26 通过。
+
+实现提交：`0653be0fef944ee3301a0ddf1829d295ad63d823`（`fix: show shared adaptive support across stages`）。本次实现改动包含绘图脚本、绘图测试和活动链 PNG；`.tmp/` 与 `static/uploads/` 继续保持未跟踪状态。
