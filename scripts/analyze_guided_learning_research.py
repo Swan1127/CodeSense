@@ -88,6 +88,17 @@ PATH_LABELS = {
     "all_completed": "完成全部阶段",
 }
 
+EVENT_CATEGORY = {
+    "description_submit": "description_submit",
+    "hint_request": "hint_request",
+    "companion_chat": "companion_chat",
+    "stage_pass": "stage_pass",
+    "verify_fail": "verify_fail",
+    "chat": "dialogue",
+    "write_code": "generated_error_code",
+    "fix_code": "fix_code",
+}
+
 
 def classify_session_path(session: dict) -> str:
     """Classify a session into one mutually exclusive progress path."""
@@ -114,6 +125,82 @@ def build_stable_session_paths(sessions: list[dict]) -> list[dict]:
             "percent": round(100 * counts[name] / total, 2) if total else 0.0,
         }
         for name, label in PATH_LABELS.items()
+    ]
+
+
+def map_event(row: dict) -> str:
+    """Map a raw platform event to a paper-facing activity category."""
+    return EVENT_CATEGORY.get(row["event_type"], "other")
+
+
+def collapse_event_sequence(rows: list[dict]) -> list[str]:
+    """Order events and collapse consecutive runs of the same category."""
+    ordered = sorted(
+        rows,
+        key=lambda row: parse_platform_timestamp(row["created_at"]),
+    )
+    collapsed: list[str] = []
+    for row in ordered:
+        category = map_event(row)
+        if not collapsed or collapsed[-1] != category:
+            collapsed.append(category)
+    return collapsed
+
+
+def build_event_transitions(
+    sessions: list[dict],
+    logs: list[dict],
+) -> list[dict]:
+    """Count adjacent event transitions by session completion group."""
+    completion_group = {
+        row["anonymous_session_id"]: (
+            "completed"
+            if row["status"].strip().lower() == "completed"
+            else "incomplete"
+        )
+        for row in sessions
+    }
+    by_session: dict[str, list[dict]] = defaultdict(list)
+    for row in logs:
+        if row["anonymous_session_id"] in completion_group:
+            by_session[row["anonymous_session_id"]].append(row)
+
+    counts: dict[tuple[str, str, str], int] = defaultdict(int)
+    covered: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    source_totals: dict[tuple[str, str], int] = defaultdict(int)
+    for session_id, rows in by_session.items():
+        group = completion_group[session_id]
+        sequence = collapse_event_sequence(rows)
+        for source, target in zip(sequence, sequence[1:]):
+            key = (group, source, target)
+            counts[key] += 1
+            covered[key].add(session_id)
+            source_totals[(group, source)] += 1
+
+    pair_counts: dict[tuple[str, str], int] = defaultdict(int)
+    pair_sessions: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for (group, source, target), count in counts.items():
+        pair = (source, target)
+        pair_counts[pair] += count
+        pair_sessions[pair].update(covered[(group, source, target)])
+
+    return [
+        {
+            "completion_group": group,
+            "source": source,
+            "target": target,
+            "count": count,
+            "distinct_sessions": len(covered[(group, source, target)]),
+            "conditional_percent": round(
+                100 * count / source_totals[(group, source)],
+                2,
+            ),
+            "show_in_main_figure": int(
+                pair_counts[(source, target)] >= 10
+                and len(pair_sessions[(source, target)]) >= 5
+            ),
+        }
+        for (group, source, target), count in sorted(counts.items())
     ]
 
 

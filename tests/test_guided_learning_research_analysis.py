@@ -3,12 +3,14 @@ from datetime import datetime
 from scripts.analyze_guided_learning_research import (
     VersionBoundary,
     active_seconds,
+    build_event_transitions,
     build_stable_session_paths,
     build_submission_pairs,
     build_stage_funnel,
     build_student_usage,
     build_version_summary,
     classify_version,
+    collapse_event_sequence,
     count_student_users,
     parse_platform_timestamp,
     select_sessions_since,
@@ -357,3 +359,85 @@ def test_stage_friction_reports_median_iqr_and_active_minutes():
     assert keyed[("completed", "stage3_fix_code")]["median"] == 1.0
     assert keyed[("completed", "stage3_active_minutes")]["median"] == 5.0
     assert keyed[("completed", "stage3_active_minutes")]["n"] == 1
+
+
+def test_event_sequence_collapses_consecutive_categories():
+    logs = [
+        {
+            "event_type": "chat",
+            "stage": "3",
+            "created_at": "2026-07-01T00:00:03",
+        },
+        {
+            "event_type": "description_submit",
+            "stage": "1",
+            "created_at": "2026-07-01T00:00:01",
+        },
+        {
+            "event_type": "description_submit",
+            "stage": "1",
+            "created_at": "2026-07-01T00:00:02",
+        },
+        {
+            "event_type": "fix_code",
+            "stage": "3",
+            "created_at": "2026-07-01T00:00:04",
+        },
+    ]
+
+    assert collapse_event_sequence(logs) == [
+        "description_submit",
+        "dialogue",
+        "fix_code",
+    ]
+
+
+def test_event_transitions_split_completed_and_incomplete_sessions():
+    sessions = [
+        {"anonymous_session_id": "done", "status": "completed"},
+        {"anonymous_session_id": "open", "status": "in_progress"},
+    ]
+    logs = [
+        {
+            "anonymous_session_id": "done",
+            "event_type": "description_submit",
+            "stage": "1",
+            "created_at": "2026-07-01T00:00:01",
+        },
+        {
+            "anonymous_session_id": "done",
+            "event_type": "stage_pass",
+            "stage": "1",
+            "created_at": "2026-07-01T00:00:02",
+        },
+        {
+            "anonymous_session_id": "open",
+            "event_type": "description_submit",
+            "stage": "1",
+            "created_at": "2026-07-01T00:00:01",
+        },
+        {
+            "anonymous_session_id": "open",
+            "event_type": "hint_request",
+            "stage": "1",
+            "created_at": "2026-07-01T00:00:02",
+        },
+    ]
+
+    rows = build_event_transitions(sessions, logs)
+
+    assert {
+        (
+            row["completion_group"],
+            row["source"],
+            row["target"],
+            row["count"],
+        )
+        for row in rows
+    } == {
+        ("completed", "description_submit", "stage_pass", 1),
+        ("incomplete", "description_submit", "hint_request", 1),
+    }
+    assert all(row["distinct_sessions"] == 1 for row in rows)
+    assert all(row["conditional_percent"] == 100.0 for row in rows)
+    assert all(row["show_in_main_figure"] == 0 for row in rows)
