@@ -1,9 +1,12 @@
 import json
 import threading
+import time
+from concurrent.futures import Future
 from pathlib import Path
 
 import pytest
 
+import research_eval.concurrency.runner as runner_module
 from research_eval.concurrency.models import RequestRecord
 from research_eval.concurrency.output import JsonlSink
 from research_eval.concurrency.runner import run_staircase
@@ -69,44 +72,189 @@ def test_jsonl_sink_flushes_each_record_before_return(tmp_path, monkeypatch):
     assert handle.flushes == 1
 
 
-def test_keyboard_interrupt_keeps_completed_record_without_waiting_for_pool(tmp_path):
-    class InterruptAfterPersistingSink(JsonlSink):
-        def __init__(self, path):
-            super().__init__(path)
-            self.persisted = threading.Event()
-
-        def append(self, row):
-            super().append(row)
-            self.persisted.set()
-            raise KeyboardInterrupt
-
-    release_worker = threading.Event()
+def test_jsonl_sink_redacts_sensitive_values_in_free_text(tmp_path):
+    sensitive = record(1, 0)
+    sensitive = sensitive.__class__(
+        **{
+            **sensitive.to_dict(),
+            "target": (
+                "https://example.invalid/evaluate?api_key=query-key-123 "
+                "Authorization: Bearer bearer-token-456 "
+                "Cookie: session=cookie-value-789"
+            ),
+            "error_code": "password=pass-value-321; x-api-key: header-key-654",
+        }
+    )
     output = tmp_path / "raw.jsonl"
-    sink = InterruptAfterPersistingSink(output)
+    JsonlSink(output).append(sensitive)
+
+    payload = output.read_text(encoding="utf-8")
+
+    for secret in (
+        "query-key-123",
+        "bearer-token-456",
+        "cookie-value-789",
+        "pass-value-321",
+        "header-key-654",
+    ):
+        assert secret not in payload
+    assert "[REDACTED]" in payload
+
+
+def test_keyboard_interrupt_drains_completed_future_not_yet_yielded(tmp_path, monkeypatch):
+    second_completed = threading.Event()
+    original_as_completed = runner_module.as_completed
+    interrupted = False
+
+    def worker(level, index):
+        if index == 1:
+            second_completed.set()
+        return record(level, index)
+
+    def interrupt_once(futures):
+        nonlocal interrupted
+        if interrupted:
+            yield from original_as_completed(futures)
+            return
+        interrupted = True
+        yield futures[0]
+        assert second_completed.wait(timeout=1)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner_module, "as_completed", interrupt_once)
+    output = tmp_path / "raw.jsonl"
+
+    summaries = run_staircase(worker, [1], 2, JsonlSink(output))
+
+    assert [summary.total for summary in summaries] == [2]
+    assert len(output.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_keyboard_interrupt_waits_for_running_worker_and_finishes_all_writes(
+    tmp_path, monkeypatch
+):
+    release_worker = threading.Event()
+    worker_started = threading.Event()
+    first_persisted = threading.Event()
+    returned = threading.Event()
+    original_as_completed = runner_module.as_completed
+    interrupted = False
     result = {}
 
     def worker(level, index):
         if index == 1:
-            release_worker.wait(timeout=5)
+            worker_started.set()
+            release_worker.wait(timeout=2)
         return record(level, index)
 
+    class RecordingSink(JsonlSink):
+        def append(self, row):
+            super().append(row)
+            if row.request_index == 0:
+                first_persisted.set()
+
+    def interrupt_once(futures):
+        nonlocal interrupted
+        if interrupted:
+            yield from original_as_completed(futures)
+            return
+        interrupted = True
+        yield futures[0]
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner_module, "as_completed", interrupt_once)
+
     def execute():
-        result["summaries"] = run_staircase(worker, [1, 2], 2, sink)
+        result["summaries"] = run_staircase(
+            worker, [1], 2, RecordingSink(tmp_path / "raw.jsonl")
+        )
+        returned.set()
 
     thread = threading.Thread(target=execute)
     thread.start()
-    assert sink.persisted.wait(timeout=1)
-    thread.join(timeout=0.5)
+    assert first_persisted.wait(timeout=1)
+    assert worker_started.wait(timeout=1)
     try:
-        assert not thread.is_alive()
-        assert [summary.total for summary in result["summaries"]] == [1]
-        assert len(output.read_text(encoding="utf-8").splitlines()) == 1
+        assert not returned.wait(timeout=0.1)
+        release_worker.set()
+        assert returned.wait(timeout=1)
+        thread.join(timeout=1)
+        output = tmp_path / "raw.jsonl"
+        lines_at_return = output.read_text(encoding="utf-8").splitlines()
+        time.sleep(0.05)
+        assert output.read_text(encoding="utf-8").splitlines() == lines_at_return
+        assert [summary.total for summary in result["summaries"]] == [2]
+        assert len(lines_at_return) == 2
     finally:
         release_worker.set()
         thread.join(timeout=2)
+
+
+def test_keyboard_interrupt_during_submission_cancels_already_submitted_future(
+    tmp_path, monkeypatch
+):
+    submitted = Future()
+
+    class Pool:
+        def __init__(self, *_args, **_kwargs):
+            self.submit_calls = 0
+            self.shutdown_calls = []
+
+        def submit(self, *_args):
+            self.submit_calls += 1
+            if self.submit_calls == 1:
+                return submitted
+            raise KeyboardInterrupt
+
+        def shutdown(self, *, wait, cancel_futures=False):
+            self.shutdown_calls.append((wait, cancel_futures))
+
+    pool = Pool()
+    monkeypatch.setattr(
+        runner_module, "ThreadPoolExecutor", lambda *_args, **_kwargs: pool
+    )
+
+    summaries = run_staircase(
+        lambda level, index: record(level, index),
+        [1],
+        2,
+        JsonlSink(tmp_path / "raw.jsonl"),
+    )
+
+    assert summaries == []
+    assert submitted.cancelled()
+    assert pool.shutdown_calls == [(True, True)]
 
 
 @pytest.mark.parametrize("levels", [[], [0], [33]])
 def test_staircase_rejects_levels_outside_supported_range(tmp_path, levels):
     with pytest.raises(ValueError, match="levels must be between 1 and 32"):
         run_staircase(lambda level, index: record(level, index), levels, 1, JsonlSink(tmp_path / "raw.jsonl"))
+
+
+@pytest.mark.parametrize("requests_per_level", [0, -1])
+def test_staircase_rejects_non_positive_request_counts(tmp_path, requests_per_level):
+    with pytest.raises(ValueError, match="requests_per_level must be positive"):
+        run_staircase(
+            lambda level, index: record(level, index),
+            [1],
+            requests_per_level,
+            JsonlSink(tmp_path / "raw.jsonl"),
+        )
+
+
+def test_staircase_uses_default_levels_and_request_count(tmp_path):
+    seen = []
+
+    def worker(level, index):
+        seen.append((level, index))
+        return record(level, index)
+
+    summaries = run_staircase(worker, sink=JsonlSink(tmp_path / "raw.jsonl"))
+
+    assert [summary.level for summary in summaries] == [1, 2, 4, 8, 16, 24, 32]
+    assert len(seen) == 7 * 20
+
+
+def test_runner_exposes_request_timeout_for_target_adapters():
+    assert runner_module.REQUEST_TIMEOUT_SECONDS == 120
