@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import posixpath
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -8,7 +9,7 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 import requests
 
@@ -18,6 +19,7 @@ from .runner import REQUEST_TIMEOUT_SECONDS
 
 SHORT_PROMPT = "请给我一个算法思路提示，不要直接给出完整答案。"
 LONG_PROMPT = "请检查我的算法解释，并追问一个能暴露理解漏洞的问题。"
+MAX_LOGIN_REDIRECTS = 5
 
 
 class PlatformLoginError(RuntimeError):
@@ -95,7 +97,8 @@ class PlatformTarget:
             raise ValueError("request_kind must be short or long")
         if not isinstance(assignment_id, int) or isinstance(assignment_id, bool) or assignment_id < 1:
             raise ValueError("assignment_id must be a positive integer")
-        self._origin = _validate_base_url(base_url)
+        self._base_url = _validate_base_url(base_url)
+        self._base_path = urlsplit(self._base_url).path.rstrip("/")
         raw_users = load_users(credentials, 1) if isinstance(credentials, (str, Path)) else list(credentials)
         self._users = validate_users(raw_users, 1)
         self.assignment_id = assignment_id
@@ -184,7 +187,11 @@ class PlatformTarget:
     def _login(self, session: requests.Session | Any, credential: dict[str, str]) -> None:
         login_url = self._url("/login")
         try:
-            page = session.get(login_url, timeout=REQUEST_TIMEOUT_SECONDS)
+            page = session.get(
+                login_url,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+                allow_redirects=False,
+            )
             if not 200 <= int(page.status_code) < 300:
                 raise PlatformLoginError("platform login page was unavailable")
             parser = _HiddenInputParser()
@@ -197,13 +204,69 @@ class PlatformTarget:
                     "submit": "登录",
                 }
             )
-            response = session.post(login_url, data=form, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = session.post(
+                login_url,
+                data=form,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+                allow_redirects=False,
+            )
         except requests.RequestException as exc:
             raise PlatformLoginError("platform login request failed") from exc
 
-        final_path = urlsplit(str(getattr(response, "url", login_url))).path.rstrip("/")
-        if not 200 <= int(response.status_code) < 400 or final_path == "/login":
-            raise PlatformLoginError("platform login was rejected")
+        self._follow_login_redirects(session, login_url, response)
+
+    def _follow_login_redirects(
+        self, session: requests.Session | Any, current_url: str, response: Any
+    ) -> None:
+        for _ in range(MAX_LOGIN_REDIRECTS):
+            status = int(response.status_code)
+            if status in {307, 308}:
+                raise PlatformLoginError("platform login used an unsafe redirect status")
+            if status not in {302, 303}:
+                raise PlatformLoginError("platform login was rejected")
+            location = response.headers.get("Location") if hasattr(response, "headers") else None
+            next_url = self._safe_redirect_url(current_url, location)
+            try:
+                response = session.get(
+                    next_url,
+                    timeout=REQUEST_TIMEOUT_SECONDS,
+                    allow_redirects=False,
+                )
+            except requests.RequestException as exc:
+                raise PlatformLoginError("platform login redirect failed") from exc
+            current_url = next_url
+            status = int(response.status_code)
+            if 200 <= status < 300:
+                if _normalized_path(urlsplit(current_url).path) == _normalized_path(
+                    urlsplit(self._url("/login")).path
+                ):
+                    raise PlatformLoginError("platform login returned to the login page")
+                return
+            if status not in {302, 303}:
+                if status in {307, 308}:
+                    raise PlatformLoginError("platform login used an unsafe redirect status")
+                raise PlatformLoginError("platform login redirect failed")
+        raise PlatformLoginError("platform login exceeded the redirect limit")
+
+    def _safe_redirect_url(self, current_url: str, location: object) -> str:
+        if not isinstance(location, str) or not location or location.startswith("//"):
+            raise PlatformLoginError("platform login returned an unsafe redirect")
+        candidate = urljoin(current_url, location)
+        parsed = urlsplit(candidate)
+        if parsed.username is not None or parsed.password is not None:
+            raise PlatformLoginError("platform login returned an unsafe redirect")
+        if _has_unsafe_path_segment(parsed.path):
+            raise PlatformLoginError("platform login returned an unsafe redirect path")
+        try:
+            same_origin = _origin_key(parsed) == _origin_key(urlsplit(self._base_url))
+        except ValueError as exc:
+            raise PlatformLoginError("platform login returned an invalid redirect URL") from exc
+        if not same_origin:
+            raise PlatformLoginError("platform login redirect changed origin")
+        path = _normalized_path(parsed.path)
+        if not _path_is_within(path, self._base_path):
+            raise PlatformLoginError("platform login redirect escaped the base path")
+        return candidate
 
     def _post_json(
         self, session: requests.Session | Any, path: str, payload: dict[str, object]
@@ -254,10 +317,12 @@ class PlatformTarget:
         }
 
     def _url(self, path: str) -> str:
-        candidate = urljoin(self._origin + "/", path.lstrip("/"))
+        candidate = urljoin(self._base_url.rstrip("/") + "/", path.lstrip("/"))
         parsed = urlsplit(candidate)
-        origin = urlsplit(self._origin)
-        if (parsed.scheme, parsed.netloc) != (origin.scheme, origin.netloc):
+        base = urlsplit(self._base_url)
+        if _origin_key(parsed) != _origin_key(base) or not _path_is_within(
+            _normalized_path(parsed.path), self._base_path
+        ):
             raise ValueError("platform URL must stay on the configured base URL")
         return candidate
 
@@ -273,11 +338,42 @@ def _validate_base_url(value: str) -> str:
         or parsed.fragment
     ):
         raise ValueError("base URL must be an HTTP(S) origin without credentials, query, or fragment")
-    port = f":{parsed.port}" if parsed.port is not None else ""
+    try:
+        parsed_port = parsed.port
+    except ValueError as exc:
+        raise ValueError("base URL contains an invalid port") from exc
+    port = f":{parsed_port}" if parsed_port is not None else ""
     host = parsed.hostname or ""
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"
-    return urlunsplit((parsed.scheme, f"{host}{port}", "", "", ""))
+    path = _normalized_path(parsed.path)
+    if _has_unsafe_path_segment(parsed.path):
+        raise ValueError("base URL contains an unsafe path")
+    normalized_path = "" if path == "/" else path.rstrip("/")
+    return urlunsplit((parsed.scheme.lower(), f"{host.lower()}{port}", normalized_path, "", ""))
+
+
+def _origin_key(parsed: Any) -> tuple[str, str, int | None]:
+    scheme = parsed.scheme.lower()
+    port = parsed.port
+    if port is None:
+        port = 443 if scheme == "https" else 80 if scheme == "http" else None
+    return scheme, (parsed.hostname or "").lower(), port
+
+
+def _normalized_path(path: str) -> str:
+    normalized = posixpath.normpath("/" + path.lstrip("/"))
+    return normalized if normalized.startswith("/") else f"/{normalized}"
+
+
+def _has_unsafe_path_segment(path: str) -> bool:
+    decoded = unquote(path)
+    return any(segment in {".", ".."} for segment in decoded.split("/"))
+
+
+def _path_is_within(path: str, base_path: str) -> bool:
+    base = base_path.rstrip("/")
+    return not base or path == base or path.startswith(base + "/")
 
 
 def _decode_response(response: Any) -> tuple[dict[str, Any], str]:
