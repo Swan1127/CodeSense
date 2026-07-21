@@ -132,6 +132,20 @@ def test_core_manuscript_distinguishes_eduplanner_from_live_guidance():
         assert required in text
 
 
+def test_practice_manuscript_explains_teacher_reusable_adaptation():
+    text = (ROOT / "manuscript_practice_zh.md").read_text(encoding="utf-8")
+    for required in (
+        "学生状态",
+        "提示强度",
+        "验证失败",
+        "讲解质量",
+        "会话内",
+    ):
+        assert required in text
+    assert "系统创新" not in text
+    assert "学习方法" in text
+
+
 def _cited_reference_numbers(text: str) -> list[int]:
     numbers = []
     for group in re.findall(r"\[((?:\d+)(?:[-,]\d+)*)\]", text):
@@ -160,3 +174,15 @@ def test_core_manuscript_bibliography_matches_body_citations():
         for number in re.findall(r"^\[(\d+)\] ", bibliography, flags=re.MULTILINE)
     }
     assert listed == cited == set(range(1, len(listed) + 1))
+
+
+def test_practice_manuscript_references_are_ordered_and_used():
+    text = (ROOT / "manuscript_practice_zh.md").read_text(encoding="utf-8")
+    body, bibliography = text.split("## 参考文献", 1)
+    first_seen = list(dict.fromkeys(_cited_reference_numbers(body)))
+    listed = {
+        int(number)
+        for number in re.findall(r"^\[(\d+)\] ", bibliography, flags=re.MULTILINE)
+    }
+    assert first_seen == list(range(1, len(first_seen) + 1))
+    assert listed == set(first_seen)
