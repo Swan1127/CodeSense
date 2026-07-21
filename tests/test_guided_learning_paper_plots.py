@@ -154,8 +154,7 @@ def test_activity_chain_figure_has_revised_landscape_canvas(tmp_path):
 
     with Image.open(figures / "activity_chain_evidence.png") as image:
         assert image.width > image.height
-        assert image.width >= 3000
-        assert image.height >= 1700
+        assert image.size == (3200, 1800)
 
 
 def test_activity_chain_source_labels_cover_required_state_and_shared_support():

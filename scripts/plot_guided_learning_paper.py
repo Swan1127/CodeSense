@@ -63,6 +63,25 @@ def _save(fig: plt.Figure, path: Path) -> Path:
 
 
 def _plot_activity_chain_evidence(output_dir: Path) -> Path:
+    repository_root = Path(__file__).resolve().parents[1]
+    ai_asset = (
+        repository_root
+        / "research"
+        / "guided_learning_paper"
+        / "figures"
+        / "assets"
+        / "ai_three_role_scene.png"
+    )
+    if ai_asset.exists():
+        try:
+            from scripts.compose_guided_learning_illustration import compose_figure
+        except ModuleNotFoundError:
+            from compose_guided_learning_illustration import compose_figure
+
+        output = output_dir / "activity_chain_evidence.png"
+        compose_figure(ai_asset, output)
+        return output
+
     fig, ax = plt.subplots(figsize=(13.4, 8.0))
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
