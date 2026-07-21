@@ -101,6 +101,77 @@ def test_jsonl_sink_redacts_sensitive_values_in_free_text(tmp_path):
     assert "[REDACTED]" in payload
 
 
+def test_jsonl_sink_normalizes_url_credentials_query_and_error_body(tmp_path):
+    sensitive = record(1, 0)
+    sensitive = sensitive.__class__(
+        **{
+            **sensitive.to_dict(),
+            "target": (
+                "https://url-user:url-password@api.example.invalid/evaluate"
+                "?access_token=access-token-123&client_secret=client-secret-456"
+            ),
+            "error_code": (
+                "upstream body: Authorization: Bearer bearer-token-789; "
+                "password=error-password-012; Cookie: session=error-cookie-345"
+            ),
+        }
+    )
+    output = tmp_path / "raw.jsonl"
+    JsonlSink(output).append(sensitive)
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    serialized = json.dumps(payload, ensure_ascii=False)
+
+    for secret in (
+        "url-user",
+        "url-password",
+        "access-token-123",
+        "client-secret-456",
+        "bearer-token-789",
+        "error-password-012",
+        "error-cookie-345",
+    ):
+        assert secret not in serialized
+    assert payload["target"] == "https://api.example.invalid/evaluate"
+    assert "?" not in payload["target"]
+    assert payload["error_code"] == "redacted_error"
+
+
+def test_jsonl_sink_skips_duplicate_request_key_after_reopen(tmp_path):
+    output = tmp_path / "raw.jsonl"
+    row = record(1, 0)
+
+    sink = JsonlSink(output)
+    sink.append(row)
+    sink.append(row)
+    JsonlSink(output).append(row)
+
+    assert len(output.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_interrupt_after_sink_write_reuses_record_without_duplicate_jsonl(tmp_path):
+    class InterruptAfterFirstWriteSink(JsonlSink):
+        def __init__(self, path):
+            super().__init__(path)
+            self.interrupted = False
+
+        def append(self, row):
+            super().append(row)
+            if not self.interrupted:
+                self.interrupted = True
+                raise KeyboardInterrupt
+
+    output = tmp_path / "raw.jsonl"
+    sink = InterruptAfterFirstWriteSink(output)
+
+    summaries = run_staircase(
+        lambda level, index: record(level, index), [1], 1, sink
+    )
+
+    assert [summary.total for summary in summaries] == [1]
+    assert len(output.read_text(encoding="utf-8").splitlines()) == 1
+
+
 def test_keyboard_interrupt_drains_completed_future_not_yet_yielded(tmp_path, monkeypatch):
     second_completed = threading.Event()
     original_as_completed = runner_module.as_completed
