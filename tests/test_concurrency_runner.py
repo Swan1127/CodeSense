@@ -565,6 +565,30 @@ def test_runner_stops_on_resource_monitor_error_and_writes_prior_samples(tmp_pat
         ]
 
 
+def test_runner_skips_workers_after_initial_resource_error_and_writes_csv_header(tmp_path):
+    worker_calls = []
+
+    def broken_reader():
+        raise ValueError("initial monitor failed")
+
+    summaries = run_staircase(
+        lambda level, index: worker_calls.append((level, index)) or record(level, index),
+        [1, 2],
+        1,
+        JsonlSink(tmp_path / "raw.jsonl"),
+        resource_reader=broken_reader,
+    )
+
+    assert worker_calls == []
+    assert len(summaries) == 1
+    assert summaries[0].level == 1
+    assert summaries[0].total == 0
+    assert summaries[0].stop_reasons == ("resource_monitor_error",)
+    assert (tmp_path / "resource_samples.csv").read_text(encoding="utf-8") == (
+        "second,cpu_percent,memory_percent\n"
+    )
+
+
 def test_real_sampler_combines_metric_and_resource_saturation_and_writes_csv(tmp_path):
     class ThirtySampleClock:
         def __init__(self):

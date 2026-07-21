@@ -104,3 +104,25 @@ py -m pytest tests/test_concurrency_resources.py tests/test_concurrency_runner.p
 ```
 
 最终结果：41 passed，0 failed，0 warnings，耗时 0.63s。
+
+## 复审整改：初始监控失败不得提交 worker
+
+日期：2026-07-21
+
+新增测试 `test_runner_skips_workers_after_initial_resource_error_and_writes_csv_header` 使用首次 reader 调用立即抛出的 `ValueError`。RED 命令：
+
+```powershell
+py -m pytest tests/test_concurrency_runner.py::test_runner_skips_workers_after_initial_resource_error_and_writes_csv_header -v
+```
+
+首次运行失败：`worker_calls` 为 `[(1, 0)]`，证明 runner 在读取初始 `sampler.error` 前已经提交了 worker。
+
+runner 现在在 `sampler.start()` 后、首次 `pool.submit` 前检查 `sampler.error`。若初始监控失败，它会停止 sampler、写入 `resource_samples.csv`，并返回一个 level summary：该档位的 `total` 为 0，所有数值指标为 0，`stop_reasons` 为 `("resource_monitor_error",)`。这保留了既有 `list[LevelSummary]` 返回接口，也让未发出请求的失败可审计。
+
+GREEN 后，回归测试验证 worker 调用数为 0，CSV 仍包含表头 `second,cpu_percent,memory_percent`。完整验证命令：
+
+```powershell
+py -m pytest tests/test_concurrency_resources.py tests/test_concurrency_runner.py tests/test_concurrency_metrics.py -v
+```
+
+最终结果：42 passed，0 failed，耗时 0.73s。

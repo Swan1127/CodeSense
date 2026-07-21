@@ -45,6 +45,28 @@ def run_staircase(
 
         futures = []
         sampler.start()
+        if sampler.error is not None:
+            samples = sampler.stop()
+            append_resource_samples(sink.path.with_name("resource_samples.csv"), samples)
+            summaries.append(
+                LevelSummary(
+                    level=level,
+                    total=0,
+                    successful=0,
+                    success_rate=0.0,
+                    error_rate=0.0,
+                    rate_limit_rate=0.0,
+                    throughput_per_second=0.0,
+                    mean_seconds=0.0,
+                    p50_seconds=0.0,
+                    p95_seconds=0.0,
+                    p99_seconds=0.0,
+                    retry_rate=0.0,
+                    gateway_errors=0,
+                    stop_reasons=("resource_monitor_error",),
+                )
+            )
+            break
         try:
             for index in range(requests_per_level):
                 futures.append(pool.submit(worker, level, index))
