@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 import pytest
 import requests
 
+import research_eval.concurrency.platform as platform_module
 from research_eval.concurrency.platform import (
     PlatformLoginError,
     PlatformTarget,
@@ -260,6 +261,59 @@ def test_start_session_failure_is_classified_and_skips_endpoint():
     assert len(session.post_calls) == 2
 
 
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+@pytest.mark.parametrize("location", ["/thinking/next", "https://evil.test/steal"])
+def test_start_session_redirect_is_not_followed_or_exposed(status, location):
+    users = credentials(1)
+    session = FakeSession(
+        users[0]["username"],
+        start=FakeResponse(
+            status,
+            {"secret_response_body": "must-not-escape"},
+            headers={"Location": location},
+        ),
+    )
+    target, _ = make_target(users, sessions=[session])
+    row = target.call(1, 0)
+    business_posts = [
+        (url, kwargs) for url, kwargs in session.post_calls if "/thinking/api/" in url
+    ]
+    assert row.success is False
+    assert row.error_code == "unexpected_redirect"
+    assert row.status_code == status
+    assert len(business_posts) == 1
+    assert business_posts[0][1]["allow_redirects"] is False
+    assert location not in str(row.to_dict())
+    assert "must-not-escape" not in str(row.to_dict())
+
+
+@pytest.mark.parametrize("kind", ["short", "long"])
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+@pytest.mark.parametrize("location", ["/thinking/next", "https://evil.test/steal"])
+def test_stage_business_redirect_is_not_followed_or_exposed(kind, status, location):
+    users = credentials(1)
+    session = FakeSession(
+        users[0]["username"],
+        endpoint=FakeResponse(
+            status,
+            {"secret_response_body": "must-not-escape"},
+            headers={"Location": location},
+        ),
+    )
+    target, _ = make_target(users, kind=kind, sessions=[session])
+    row = target.call(1, 0)
+    business_posts = [
+        (url, kwargs) for url, kwargs in session.post_calls if "/thinking/api/" in url
+    ]
+    assert row.success is False
+    assert row.error_code == "unexpected_redirect"
+    assert row.status_code == status
+    assert len(business_posts) == 2
+    assert all(kwargs["allow_redirects"] is False for _, kwargs in business_posts)
+    assert location not in str(row.to_dict())
+    assert "must-not-escape" not in str(row.to_dict())
+
+
 def test_rejects_invalid_base_urls_and_never_joins_to_another_origin():
     for url in [
         "example.test",
@@ -281,6 +335,10 @@ def test_rejects_invalid_base_urls_and_never_joins_to_another_origin():
         "https://example.test:bad/app/home",
         "/outside-prefix/home",
         "/app/%2e%2e/outside-prefix/home",
+        "/app/%252e%252e/outside-prefix/home",
+        "/app/safe%252foutside-prefix/home",
+        "/app/safe%255coutside-prefix/home",
+        "/app/%2525252525252e%2525252525252e/outside-prefix/home",
     ],
 )
 def test_login_rejects_unsafe_redirects_without_following_them(location):
@@ -335,6 +393,48 @@ def test_login_accepts_explicit_default_port_as_same_origin():
         credentials(1), sessions=[session], base_url="https://example.test/app"
     )
     assert target.authenticated_user_count == 1
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "/app/%E4%B8%AD%E6%96%87/home",
+        "/app/100%25/home",
+        "/app/100%2525/home",
+    ],
+)
+def test_login_allows_normal_unicode_and_literal_percent_paths(location):
+    session = FakeSession(
+        "research_load_00",
+        login=FakeResponse(302, {}, headers={"Location": location}),
+    )
+    target, _ = make_target(
+        credentials(1), sessions=[session], base_url="https://example.test/app"
+    )
+    assert target.authenticated_user_count == 1
+
+
+def test_redirect_path_decoding_is_bounded_against_deep_encoding_and_long_input(
+    monkeypatch,
+):
+    calls = 0
+    real_unquote = platform_module.unquote
+
+    def counting_unquote(value):
+        nonlocal calls
+        calls += 1
+        return real_unquote(value)
+
+    monkeypatch.setattr(platform_module, "unquote", counting_unquote)
+
+    assert platform_module._has_unsafe_path_segment(
+        "/app/%2525252525252e%2525252525252e/home"
+    )
+    assert calls == platform_module.MAX_PATH_DECODE_ROUNDS
+    assert platform_module._has_unsafe_path_segment(
+        "/app/" + "a" * platform_module.MAX_REDIRECT_PATH_CHARS
+    )
+    assert calls == platform_module.MAX_PATH_DECODE_ROUNDS
 
 
 @pytest.mark.parametrize(

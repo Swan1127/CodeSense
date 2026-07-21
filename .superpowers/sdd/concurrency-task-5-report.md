@@ -8,7 +8,9 @@ Files in scope:
 
 - `scripts/provision_research_load_users.py`
 - `research_eval/concurrency/platform.py`
+- `research_eval/concurrency/output.py`
 - `tests/test_concurrency_platform.py`
+- `tests/test_concurrency_runner.py`
 
 ## Route and model evidence checked
 
@@ -30,18 +32,20 @@ ImportError: cannot import name 'CredentialPublishError'
 
 After adding the new interfaces, the first run collected 55 tests. Four failures came from an incorrect test assertion; the production checks had rejected the bad accounts as intended. The assertion was corrected before continuing. Two later targeted RED runs reproduced encoded redirect traversal, unexpected credential truncation, and the unsafe post-replace chmod.
 
+The redirect follow-up review added a third RED cycle. Its focused run produced 34 expected failures: business redirects were still classified as `http_error`, and double-encoded traversal remained accepted. After the fixes, the same focused selection reported `44 passed`. A final serialization check then failed because `unexpected_redirect` was reduced to `redacted_error`; adding only that fixed code to the output allowlist made the focused test pass without admitting arbitrary error text.
+
 Final Task 5 verification:
 
 ```text
 py -m pytest tests/test_concurrency_platform.py -v
-61 passed in 0.61s
+99 passed in 0.76s
 ```
 
 Final Task 1-5 regression:
 
 ```text
 py -m pytest tests/test_concurrency_metrics.py tests/test_concurrency_runner.py tests/test_concurrency_resources.py tests/test_concurrency_upstream.py tests/test_concurrency_platform.py -v
-119 passed in 1.18s
+158 passed in 1.36s
 ```
 
 ## Implemented safeguards
@@ -57,6 +61,9 @@ py -m pytest tests/test_concurrency_metrics.py tests/test_concurrency_runner.py 
 - Request index and credential index have a deterministic mapping. An account-level lock prevents concurrent use of the same Session, and server session IDs cannot move between credentials or change silently.
 - Login and API requests use a 120-second timeout. Gateway errors, timeouts, request failures, non-JSON responses, HTTP failures, and cross-user session IDs are represented by allowlisted error codes; response bodies and credentials do not enter `RequestRecord`.
 - Login POST disables automatic redirects. Only manually followed 302/303 redirects on the same effective scheme, host, and port are accepted; 307/308, scheme-relative, userinfo, cross-origin, cross-port, malformed-port, encoded traversal, and base-path escapes are rejected. Redirect GETs are also bounded and use `allow_redirects=False`.
+- Every thinking API POST, including session creation, stage 1 hints, and stage 3 chat, sets `allow_redirects=False`. Any 3xx response is returned as `unexpected_redirect` before JSON parsing; neither `Location` nor the response body enters the request record.
+- The JSONL sanitizer explicitly preserves `unexpected_redirect`, while unknown or secret-bearing error text still becomes `redacted_error`.
+- Redirect paths are unquoted for at most four rounds and capped at 4096 characters. Every round rejects encoded or literal slash/backslash and `.`/`..` segments. Residual percent-encoded bytes after the fourth round are rejected, while ordinary encoded Chinese text and literal percent signs remain valid.
 - A normalized base URL keeps its path prefix for login and thinking endpoints. Root paths, trailing slashes, subpaths, and IPv6 authorities are covered by offline tests; query, fragment, and userinfo are rejected.
 
 ## Remaining risks

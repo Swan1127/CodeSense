@@ -12,7 +12,17 @@ from .models import RequestRecord
 _SAFE_TARGETS = frozenset({"upstream", "platform", "fake"})
 _SAFE_REQUEST_KINDS = frozenset({"short", "long", "mixed"})
 _SAFE_ERROR_CODES = frozenset(
-    {"", "429", "1305", "worker_timeout", "timeout", "http_error", "transport_error", "redacted_error"}
+    {
+        "",
+        "429",
+        "1305",
+        "worker_timeout",
+        "timeout",
+        "http_error",
+        "transport_error",
+        "unexpected_redirect",
+        "redacted_error",
+    }
 )
 _SENSITIVE_VALUE_PATTERNS = (
     re.compile(r"\bauthorization\s*[:=]\s*[^\s,;]+", re.IGNORECASE),

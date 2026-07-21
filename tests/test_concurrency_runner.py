@@ -83,6 +83,19 @@ def test_jsonl_sink_flushes_each_record_before_return(tmp_path, monkeypatch):
     assert handle.flushes == 1
 
 
+def test_jsonl_sink_preserves_unexpected_redirect_error_code(tmp_path):
+    redirected = record(1, 0, ok=False, status=302)
+    redirected = redirected.__class__(
+        **{**redirected.to_dict(), "error_code": "unexpected_redirect"}
+    )
+    output = tmp_path / "raw.jsonl"
+
+    JsonlSink(output).append(redirected)
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["error_code"] == "unexpected_redirect"
+
+
 def test_jsonl_sink_redacts_sensitive_values_in_free_text(tmp_path):
     sensitive = record(1, 0)
     sensitive = sensitive.__class__(

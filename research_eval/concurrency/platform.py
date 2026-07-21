@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import posixpath
+import re
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -20,6 +21,10 @@ from .runner import REQUEST_TIMEOUT_SECONDS
 SHORT_PROMPT = "请给我一个算法思路提示，不要直接给出完整答案。"
 LONG_PROMPT = "请检查我的算法解释，并追问一个能暴露理解漏洞的问题。"
 MAX_LOGIN_REDIRECTS = 5
+MAX_PATH_DECODE_ROUNDS = 4
+MAX_REDIRECT_PATH_CHARS = 4096
+_ENCODED_BYTE = re.compile(r"%[0-9a-fA-F]{2}")
+_ENCODED_SEPARATOR = re.compile(r"%(?:2f|5c)", re.IGNORECASE)
 
 
 class PlatformLoginError(RuntimeError):
@@ -273,13 +278,18 @@ class PlatformTarget:
     ) -> tuple[Any | None, tuple[str, int] | None]:
         try:
             response = session.post(
-                self._url(path), json=payload, timeout=REQUEST_TIMEOUT_SECONDS
+                self._url(path),
+                json=payload,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+                allow_redirects=False,
             )
         except requests.Timeout:
             return None, ("timeout", 0)
         except requests.RequestException:
             return None, ("request_error", 0)
         status = int(response.status_code)
+        if 300 <= status < 400:
+            return response, ("unexpected_redirect", status)
         if status in {502, 504}:
             return response, ("gateway_error", status)
         if not 200 <= status < 300:
@@ -367,8 +377,25 @@ def _normalized_path(path: str) -> str:
 
 
 def _has_unsafe_path_segment(path: str) -> bool:
-    decoded = unquote(path)
-    return any(segment in {".", ".."} for segment in decoded.split("/"))
+    if len(path) > MAX_REDIRECT_PATH_CHARS:
+        return True
+    current = path
+    for _ in range(MAX_PATH_DECODE_ROUNDS):
+        if _unsafe_path_round(current):
+            return True
+        decoded = unquote(current)
+        if decoded == current:
+            return False
+        current = decoded
+    if _unsafe_path_round(current):
+        return True
+    return _ENCODED_BYTE.search(current) is not None
+
+
+def _unsafe_path_round(path: str) -> bool:
+    if "\\" in path or _ENCODED_SEPARATOR.search(path):
+        return True
+    return any(segment in {".", ".."} for segment in path.split("/"))
 
 
 def _path_is_within(path: str, base_path: str) -> bool:
