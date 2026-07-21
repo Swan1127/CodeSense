@@ -37,26 +37,18 @@ class ZhipuTarget:
         api_key: str,
         run_id: str,
         request_kind: str,
-        session: requests.Session | Any | None = None,
         *,
-        session_factory: Callable[[], requests.Session | Any] | None = None,
+        session_factory: Callable[[], requests.Session | Any] = requests.Session,
         model: str = DEFAULT_MODEL,
     ) -> None:
         if request_kind not in PROMPTS:
             raise ValueError("request_kind must be short or long")
         if not api_key:
             raise ValueError("api_key must not be empty")
-        if session is not None and session_factory is not None:
-            raise ValueError("provide session or session_factory, not both")
         self._api_key = api_key
         self.run_id = run_id
         self.request_kind = request_kind
-        if session_factory is not None:
-            self._session_factory = session_factory
-        elif session is not None:
-            self._session_factory = lambda: session
-        else:
-            self._session_factory = requests.Session
+        self._session_factory = session_factory
         self._sessions = threading.local()
         self.model = model
         self.prompt = PROMPTS[request_kind]

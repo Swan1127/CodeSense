@@ -10,7 +10,7 @@
 
 `error_code` 采用严格允许列表：成功时为空，1305 限流保留为 `1305`，其余失败统一记为 `upstream_error`。HTTP 状态码单独保留。记录不包含请求头、响应正文、异常原文或 API key。
 
-默认模式和 `session_factory` 模式通过 `threading.local` 为每个工作线程保存独立 Session，不使用包围 `post()` 的全局锁。原有单 Session 构造方式只作为串行测试兼容入口保留。
+构造器只接受 `session_factory`，默认工厂为 `requests.Session`。实例通过 `threading.local` 为每个工作线程保存独立 Session，不使用包围 `post()` 的全局锁。公开的单 Session 注入入口已经移除。
 
 本轮只使用 fake Session 和测试密钥，没有发出网络请求，也没有读取环境变量中的真实密钥。
 
@@ -84,3 +84,17 @@ py -m pytest $tests -v
 ```
 
 结果为 `57 passed`。测试仍全部使用 fake Session，没有网络调用。
+
+## 二次复审修复记录
+
+二次复审发现，构造器虽然支持线程本地工厂，但仍保留 `session=` 参数。这个入口可以让多个线程取得同一个 Session，绕过线程隔离约束。
+
+本轮先将所有离线测试改为 `session_factory` 注入，并新增 `test_rejects_removed_single_session_keyword`。RED 命令：
+
+```powershell
+py -m pytest tests/test_concurrency_upstream.py -v
+```
+
+结果为 `1 failed, 15 passed`。唯一失败是 `session=` 没有触发 `TypeError`，与复审问题一致。
+
+随后从 `ZhipuTarget.__init__` 删除 `session` 参数和兼容闭包。GREEN 结果为 `16 passed`。双线程屏障测试继续通过，说明每个执行线程取得不同的 Session，并且两个请求可以同时进入 `post()`。最终并发全套结果为 `58 passed`。

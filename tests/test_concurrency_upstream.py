@@ -61,7 +61,9 @@ def test_retries_429_and_records_retry_without_leaking_key(monkeypatch):
         ]
     )
 
-    row = ZhipuTarget("secret-api-key", "run-1", "short", session).call(2, 0)
+    row = ZhipuTarget(
+        "secret-api-key", "run-1", "short", session_factory=lambda: session
+    ).call(2, 0)
 
     assert row.success is True
     assert row.status_code == 200
@@ -83,7 +85,9 @@ def test_retries_json_error_code_1305_even_when_http_status_is_200(monkeypatch):
         ]
     )
 
-    row = ZhipuTarget("test-key", "run-2", "long", session).call(4, 3)
+    row = ZhipuTarget(
+        "test-key", "run-2", "long", session_factory=lambda: session
+    ).call(4, 3)
 
     assert row.success is True
     assert row.retries == 1
@@ -98,7 +102,9 @@ def test_stops_after_five_attempts_with_exponential_backoff(monkeypatch):
         [FakeResponse(429, {"error": {"code": "1305"}}) for _ in range(5)]
     )
 
-    row = ZhipuTarget("test-key", "run-3", "short", session).call(8, 5)
+    row = ZhipuTarget(
+        "test-key", "run-3", "short", session_factory=lambda: session
+    ).call(8, 5)
 
     assert row.success is False
     assert row.status_code == 429
@@ -121,7 +127,9 @@ def test_transport_failure_is_not_retried_or_slept(monkeypatch, failure):
     monkeypatch.setattr("research_eval.concurrency.upstream.time.sleep", sleeps.append)
     session = FakeSession([failure, failure, failure, failure, failure])
 
-    row = ZhipuTarget("secret-api-key", "run-4", "short", session).call(1, 0)
+    row = ZhipuTarget(
+        "secret-api-key", "run-4", "short", session_factory=lambda: session
+    ).call(1, 0)
 
     assert row.success is False
     assert row.status_code == 0
@@ -139,7 +147,9 @@ def test_non_json_response_returns_sanitized_failure_without_raising(monkeypatch
         [FakeResponse(502, json_error=ValueError("HTML body with secret-api-key"))]
     )
 
-    row = ZhipuTarget("secret-api-key", "run-5", "long", session).call(1, 0)
+    row = ZhipuTarget(
+        "secret-api-key", "run-5", "long", session_factory=lambda: session
+    ).call(1, 0)
 
     assert row.success is False
     assert row.status_code == 502
@@ -160,7 +170,9 @@ def test_non_json_response_returns_sanitized_failure_without_raising(monkeypatch
 def test_arbitrary_server_error_codes_and_bodies_are_mapped_to_allowlisted_value(body):
     session = FakeSession([FakeResponse(400, body)])
 
-    row = ZhipuTarget("test-key", "run-secret", "short", session).call(1, 0)
+    row = ZhipuTarget(
+        "test-key", "run-secret", "short", session_factory=lambda: session
+    ).call(1, 0)
 
     assert row.success is False
     assert row.status_code == 400
@@ -175,7 +187,9 @@ def test_final_1305_response_preserves_only_allowlisted_code(monkeypatch):
         [FakeResponse(200, {"error": {"code": "1305", "message": "secret"}}) for _ in range(5)]
     )
 
-    row = ZhipuTarget("test-key", "run-1305", "short", session).call(1, 0)
+    row = ZhipuTarget(
+        "test-key", "run-1305", "short", session_factory=lambda: session
+    ).call(1, 0)
 
     assert row.success is False
     assert row.error_code == "1305"
@@ -186,7 +200,9 @@ def test_final_1305_response_preserves_only_allowlisted_code(monkeypatch):
 @pytest.mark.parametrize(("request_kind", "max_tokens"), [("short", 300), ("long", 800)])
 def test_posts_expected_payload_headers_and_timeout(request_kind, max_tokens):
     session = FakeSession([success_response("answer")])
-    target = ZhipuTarget("test-key", "run-6", request_kind, session)
+    target = ZhipuTarget(
+        "test-key", "run-6", request_kind, session_factory=lambda: session
+    )
 
     row = target.call(3, 7)
 
@@ -214,9 +230,18 @@ def test_rejects_unknown_request_kind_without_making_a_request():
     session = FakeSession([success_response()])
 
     with pytest.raises(ValueError, match="short or long"):
-        ZhipuTarget("test-key", "run-7", "mixed", session)
+        ZhipuTarget(
+            "test-key", "run-7", "mixed", session_factory=lambda: session
+        )
 
     assert session.calls == []
+
+
+def test_rejects_removed_single_session_keyword():
+    session = FakeSession([success_response()])
+
+    with pytest.raises(TypeError, match="session"):
+        ZhipuTarget("test-key", "run-legacy", "short", session=session)
 
 
 def test_session_factory_creates_thread_local_sessions_and_calls_overlap():
