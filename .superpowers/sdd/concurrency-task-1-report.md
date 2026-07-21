@@ -60,3 +60,38 @@ collected 9 items
 - `git diff --check` 未发现空白错误。
 - 工作树中原有的 `.tmp/`、`static/uploads/` 和 `research/guided_learning_paper/~$per_core_zh.docx` 保持未跟踪且未触碰。
 - 本任务只运行了聚焦的离线测试，未运行全仓库测试，以避免引入应用启动、模型加载或外部服务副作用；后续任务接入时仍应补充跨模块集成验证。
+
+## 审查修复：level 一致性校验
+
+### 问题与修复
+
+审查发现 `summarize_level()` 原先直接使用 `records[0].level`，未验证同一汇总中的其他请求记录是否属于同一 level。新增混合 level 回归测试，并在汇总前检查 level 集合；发现多个 level 时抛出 `ValueError("records must have the same level; got levels: ...")`。其他接口和汇总规则未改动。
+
+### TDD RED
+
+命令：
+
+```powershell
+py -m pytest tests/test_concurrency_metrics.py -v
+```
+
+关键输出：
+
+```text
+collected 10 items
+FAILED tests/test_concurrency_metrics.py::test_summary_rejects_mixed_levels
+Failed: DID NOT RAISE <class 'ValueError'>
+========================= 1 failed, 9 passed in 0.14s =========================
+```
+
+### TDD GREEN
+
+同一命令重新运行，关键输出：
+
+```text
+collected 10 items
+tests/test_concurrency_metrics.py::test_summary_rejects_mixed_levels PASSED [100%]
+============================= 10 passed in 0.07s ==============================
+```
+
+本次修复只涉及 `research_eval/concurrency/metrics.py`、`tests/test_concurrency_metrics.py` 和本报告；未触碰原有 `.tmp/`、`static/uploads/` 或 Word 锁文件。

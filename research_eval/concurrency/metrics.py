@@ -19,6 +19,9 @@ def _percentile(values: list[float], q: float) -> float:
 def summarize_level(records: list[RequestRecord]) -> LevelSummary:
     if not records:
         raise ValueError("records must not be empty")
+    levels = {row.level for row in records}
+    if len(levels) > 1:
+        raise ValueError(f"records must have the same level; got levels: {sorted(levels)}")
 
     total = len(records)
     elapsed = [row.elapsed_seconds for row in records]

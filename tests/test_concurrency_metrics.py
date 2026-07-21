@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
@@ -102,3 +102,10 @@ def test_summary_reports_retry_rate_and_throughput():
 def test_empty_records_are_rejected():
     with pytest.raises(ValueError, match="records must not be empty"):
         summarize_level([])
+
+
+def test_summary_rejects_mixed_levels():
+    rows = [record(0, 1), replace(record(1, 1), level=5)]
+
+    with pytest.raises(ValueError, match="same level"):
+        summarize_level(rows)
