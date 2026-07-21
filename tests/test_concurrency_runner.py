@@ -426,3 +426,38 @@ def test_staircase_uses_default_levels_and_request_count(tmp_path):
 
 def test_runner_exposes_request_timeout_for_target_adapters():
     assert runner_module.REQUEST_TIMEOUT_SECONDS == 120
+
+
+def test_runner_stops_sampler_after_all_futures_and_records_resource_saturation(
+    tmp_path, monkeypatch
+):
+    events = []
+
+    class Sampler:
+        samples = ()
+
+        def __init__(self, **_kwargs):
+            events.append("created")
+
+        def start(self):
+            events.append("started")
+
+        def stop(self):
+            events.append("stopped")
+            return self.samples
+
+    monkeypatch.setattr(runner_module, "ResourceSampler", Sampler)
+    monkeypatch.setattr(runner_module, "sustained_saturation", lambda _samples: True)
+
+    summaries = run_staircase(
+        lambda level, index: events.append(f"worker-{index}") or record(level, index),
+        [1, 2],
+        2,
+        JsonlSink(tmp_path / "raw.jsonl"),
+    )
+
+    assert [summary.level for summary in summaries] == [1]
+    assert summaries[0].stop_reasons == ("resource_saturation",)
+    assert events.index("started") < events.index("worker-0")
+    assert events.index("stopped") > events.index("worker-1")
+    assert (tmp_path / "resource_samples.csv").exists()

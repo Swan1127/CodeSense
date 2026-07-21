@@ -1,0 +1,69 @@
+# Task 3 并发评估恢复报告
+
+日期：2026-07-21
+
+## 接管背景
+
+前一代理在控制器等待期间中断。接管时，工作树位于分支 `codex/guided-learning-paper-revision`，基线提交为 `2f0996d`；以下 Task 3 改动均未提交：
+
+- 已修改：`research_eval/concurrency/models.py`、`research_eval/concurrency/runner.py`、`tests/test_concurrency_runner.py`
+- 未跟踪：`research_eval/concurrency/resources.py`、`tests/test_concurrency_resources.py`
+
+指定报告原先不存在。工作树中另有 `.tmp/` 与 `static/uploads/`，它们不属于 Task 3，也没有纳入本次提交。
+
+接管前运行：
+
+```powershell
+py -m pytest tests/test_concurrency_resources.py tests/test_concurrency_runner.py tests/test_concurrency_metrics.py -v
+```
+
+结果为 33 passed。该结果只能证明遗留实现与遗留测试相符；目录中没有 RED 命令输出或旧报告，不能视为已验证的 RED 证据。
+
+## 补建的 RED 到 GREEN 证据
+
+接管检查发现 `sustained_saturation` 只累计高值样本数，不检查样本秒数是否连续。采样若中断，30 条高值记录仍会被误判为持续 30 秒饱和。
+
+新增回归测试 `test_saturation_requires_consecutive_one_second_samples`：前 29 个样本的秒数为 0 至 28，第 30 个样本跳到 31；所有 CPU 值均为 95%。
+
+RED 命令：
+
+```powershell
+py -m pytest tests/test_concurrency_resources.py::test_saturation_requires_consecutive_one_second_samples -v
+```
+
+首次运行按预期失败：`sustained_saturation(..., seconds=30)` 返回 `True`，测试要求 `False`。
+
+随后在 `sustained_saturation` 中记录前一秒，仅在当前秒等于前一秒加一时延续计数；时间跳跃或安全样本都会重新开始计数。相同命令在修正后通过。
+
+## 实现核查
+
+| 需求 | 实现与测试证据 |
+| --- | --- |
+| 可注入 reader 和时钟 | `ResourceSampler(reader, clock)`；`run_staircase` 透传 `resource_reader`、`resource_clock`；资源测试使用自定义 reader 和推进式时钟。 |
+| 严格大于 90% | `cpu_percent > threshold or memory_percent > threshold`；恰好 90 的 30 条样本不触发。 |
+| 连续 30 个一秒样本 | 饱和样本连续计数；新增时间跳跃回归测试防止误判。 |
+| 不等待真实 30 秒 | 注入时钟的测试只推进逻辑秒数；未执行真实 30 秒等待。 |
+| 每档启动、停止与保存 | runner 在提交该档 future 前启动，在 executor 完成或中断清理后于 `finally` 停止；样本追加到与 JSONL 同目录的 `resource_samples.csv`。 |
+| 将资源饱和写入停止原因 | `LevelSummary.stop_reasons` 保留原指标原因；资源饱和时追加 `resource_saturation`，并阻止后续并发档。 |
+| 离线运行 | 测试只使用本地 fake worker、临时路径和注入 reader/clock。 |
+
+生产 reader 优先使用 `psutil`；不可用时使用 Linux `/proc`。在不具备这两种来源的平台上，fallback 返回 0，不会伪造饱和结果。
+
+## 自审
+
+- `git diff --check` 没有空白错误。
+- `research_eval/concurrency/output.py` 未改动；Task 1/2 的中断 future 清理和 JSONL 事务化、安全序列化保留在原实现中。
+- 已有 runner 与 metrics 断言连同新增资源断言全部通过。
+- 本次仅提交 Task 3 的五个代码/测试文件和本报告；不包含 `.tmp/`、`static/uploads/`。
+
+## 最终验证
+
+```powershell
+py -m pytest tests/test_concurrency_resources.py tests/test_concurrency_runner.py tests/test_concurrency_metrics.py -v
+```
+
+结果：34 passed，0 failed，耗时 0.36s。
+
+## 顾虑
+
+遗留改动的原始 RED 输出已随前一代理中断而缺失，无法倒推或伪造。报告保留了这一事实，并用新增的时间连续性测试补建了可重复的 RED/GREEN 证据。短时并发档可能自然收集不到 30 条一秒样本；这种情况下资源停止条件不会触发，符合“连续 30 个样本”这一门槛。

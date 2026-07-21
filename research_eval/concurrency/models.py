@@ -22,6 +22,13 @@ class RequestRecord:
 
 
 @dataclass(frozen=True)
+class ResourceSample:
+    second: int
+    cpu_percent: float
+    memory_percent: float
+
+
+@dataclass(frozen=True)
 class LevelSummary:
     level: int
     total: int
@@ -36,6 +43,7 @@ class LevelSummary:
     p99_seconds: float
     retry_rate: float
     gateway_errors: int
+    stop_reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
