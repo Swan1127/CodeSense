@@ -114,8 +114,22 @@ def test_core_manuscript_uses_bounded_adaptive_agent_claims():
         "长期学习者画像",
         "显著提升算法思维",
         "证明了学习效果",
+        "SAU-EDU-2026-017",
+        "认知准备度指数",
+        "GPT-4-turbo",
+        "Qwen-72B",
     ):
         assert forbidden not in text
+
+
+def test_core_manuscript_distinguishes_eduplanner_from_live_guidance():
+    text = (ROOT / "manuscript_core_zh.md").read_text(encoding="utf-8")
+    for required in (
+        "EduPlanner",
+        "教学设计生成",
+        "真正完成表达、判断和修改的仍是学生",
+    ):
+        assert required in text
 
 
 def _cited_reference_numbers(text: str) -> list[int]:

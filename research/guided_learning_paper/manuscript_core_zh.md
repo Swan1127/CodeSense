@@ -208,6 +208,8 @@ Yᵢⱼ = β₁Incompleteᵢⱼ + β₂Completedᵢⱼ + αᵢ + γⱼ + εᵢ�
 
 Agent4Edu和Classroom Simulacra保存画像、历史或反思状态，用于生成学习者响应并评价模拟质量[4-5]。本文不模拟学生。教师型Agent和虚拟学生面对真实学生，只读取单次会话内的状态，用来推进三阶段活动；跨作业使用仅表示同一学生在多项作业中建立过会话，不表示智能体具有跨作业记忆。
 
+EduPlanner把评价、优化和题目分析交给不同Agent，并逐一说明各角色的输入、职责和输出[20]。这种写法有助于澄清多角色系统的分工，但其研究对象是教学设计生成，而不是课堂中的实时引导。本文借鉴角色职责的表达方式，不沿用其学习群体建模和教学设计评价指标；教师型Agent负责提供受约束的提示，虚拟学生负责追问与呈现待修正代码，真正完成表达、判断和修改的仍是学生。
+
 这一边界也限定了“自适应”的含义。本文讨论的是状态驱动的微观调节，不是个性化学习系统中的长期学生模型。下一轮若扩展纵向状态，应先取得学生明确同意，规定可保存字段、用途和期限，再单独验证模型是否准确、公平。未经同意的历史数据不能直接转成纵向学生模型。
 
 ### 5.3 真实课堂中的推进、回退与退出
@@ -279,6 +281,8 @@ Wang等的程序设计课程研究采用AI-CL组与CSCL组的准实验比较，�
 [18] JAEGER A J, et al. The interrelationship between concepts about agency and students’ use of teachable-agent learning technology[J]. Cognitive Research: Principles and Implications, 2019, 4: 47. DOI:10.1186/s41235-019-0163-6.
 
 [19] 冷静, 王章涵, 李思源, 等. 从单线回应到协商共建：基于IRF理论的人机与师生对话分析[J]. 中国电化教育, 2026(6): 46-54.
+
+[20] ZHANG X, ZHANG C, SUN J, et al. EduPlanner: LLM-Based Multi-Agent Systems for Customized and Intelligent Instructional Design[EB/OL]. arXiv:2504.05370, 2025.
 
 ## 附录
 
