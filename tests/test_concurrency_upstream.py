@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 import pytest
 import requests
@@ -107,16 +109,14 @@ def test_stops_after_five_attempts_with_exponential_backoff(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("failure", "expected_error"),
+    "failure",
     [
-        (requests.Timeout("timed out with secret-api-key"), "timeout"),
-        (requests.ConnectionError("failed with secret-api-key"), "connection_error"),
-        (requests.RequestException("request contains secret-api-key"), "request_error"),
+        requests.Timeout("timed out with secret-api-key"),
+        requests.ConnectionError("failed with secret-api-key"),
+        requests.RequestException("request contains secret-api-key"),
     ],
 )
-def test_retries_transport_failures_and_sanitizes_exception_text(
-    monkeypatch, failure, expected_error
-):
+def test_transport_failure_is_not_retried_or_slept(monkeypatch, failure):
     sleeps = []
     monkeypatch.setattr("research_eval.concurrency.upstream.time.sleep", sleeps.append)
     session = FakeSession([failure, failure, failure, failure, failure])
@@ -125,9 +125,10 @@ def test_retries_transport_failures_and_sanitizes_exception_text(
 
     assert row.success is False
     assert row.status_code == 0
-    assert row.error_code == expected_error
-    assert row.retries == 4
-    assert sleeps == [2, 4, 8, 16]
+    assert row.error_code == "upstream_error"
+    assert row.retries == 0
+    assert len(session.calls) == 1
+    assert sleeps == []
     assert "secret-api-key" not in str(row.to_dict())
 
 
@@ -142,10 +143,44 @@ def test_non_json_response_returns_sanitized_failure_without_raising(monkeypatch
 
     assert row.success is False
     assert row.status_code == 502
-    assert row.error_code == "non_json_response"
+    assert row.error_code == "upstream_error"
     assert row.retries == 0
     assert sleeps == []
     assert "secret-api-key" not in str(row.to_dict())
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"error": {"code": "response-secret-material", "message": "private detail"}},
+        {"code": "response-secret-material", "message": "private detail"},
+        {"error": "response-secret-material"},
+    ],
+)
+def test_arbitrary_server_error_codes_and_bodies_are_mapped_to_allowlisted_value(body):
+    session = FakeSession([FakeResponse(400, body)])
+
+    row = ZhipuTarget("test-key", "run-secret", "short", session).call(1, 0)
+
+    assert row.success is False
+    assert row.status_code == 400
+    assert row.error_code == "upstream_error"
+    assert "response-secret-material" not in str(row.to_dict())
+    assert "private detail" not in str(row.to_dict())
+
+
+def test_final_1305_response_preserves_only_allowlisted_code(monkeypatch):
+    monkeypatch.setattr("research_eval.concurrency.upstream.time.sleep", lambda _: None)
+    session = FakeSession(
+        [FakeResponse(200, {"error": {"code": "1305", "message": "secret"}}) for _ in range(5)]
+    )
+
+    row = ZhipuTarget("test-key", "run-1305", "short", session).call(1, 0)
+
+    assert row.success is False
+    assert row.error_code == "1305"
+    assert row.retries == 4
+    assert "secret" not in str(row.to_dict())
 
 
 @pytest.mark.parametrize(("request_kind", "max_tokens"), [("short", 300), ("long", 800)])
@@ -182,3 +217,34 @@ def test_rejects_unknown_request_kind_without_making_a_request():
         ZhipuTarget("test-key", "run-7", "mixed", session)
 
     assert session.calls == []
+
+
+def test_session_factory_creates_thread_local_sessions_and_calls_overlap():
+    rendezvous = threading.Barrier(2)
+    created_sessions = []
+    created_lock = threading.Lock()
+
+    class ConcurrentSession:
+        def post(self, url, **kwargs):
+            rendezvous.wait(timeout=2)
+            return success_response("parallel")
+
+    def session_factory():
+        session = ConcurrentSession()
+        with created_lock:
+            created_sessions.append(session)
+        return session
+
+    target = ZhipuTarget(
+        "test-key",
+        "run-parallel",
+        "short",
+        session_factory=session_factory,
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        rows = list(pool.map(lambda index: target.call(2, index), range(2)))
+
+    assert all(row.success for row in rows)
+    assert len(created_sessions) == 2
+    assert created_sessions[0] is not created_sessions[1]

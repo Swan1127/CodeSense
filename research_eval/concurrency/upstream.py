@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -35,18 +37,27 @@ class ZhipuTarget:
         api_key: str,
         run_id: str,
         request_kind: str,
-        session: requests.Session | Any,
+        session: requests.Session | Any | None = None,
         *,
+        session_factory: Callable[[], requests.Session | Any] | None = None,
         model: str = DEFAULT_MODEL,
     ) -> None:
         if request_kind not in PROMPTS:
             raise ValueError("request_kind must be short or long")
         if not api_key:
             raise ValueError("api_key must not be empty")
+        if session is not None and session_factory is not None:
+            raise ValueError("provide session or session_factory, not both")
         self._api_key = api_key
         self.run_id = run_id
         self.request_kind = request_kind
-        self.session = session
+        if session_factory is not None:
+            self._session_factory = session_factory
+        elif session is not None:
+            self._session_factory = lambda: session
+        else:
+            self._session_factory = requests.Session
+        self._sessions = threading.local()
         self.model = model
         self.prompt = PROMPTS[request_kind]
 
@@ -54,14 +65,14 @@ class ZhipuTarget:
         started_at = datetime.now(timezone.utc).isoformat()
         started = time.perf_counter()
         status_code = 0
-        error_code = "request_error"
+        error_code = "upstream_error"
         output = ""
         attempts = 0
 
         for attempt in range(MAX_ATTEMPTS):
             attempts = attempt + 1
             try:
-                response = self.session.post(
+                response = self._session().post(
                     ZHIPU_CHAT_COMPLETIONS_URL,
                     headers={
                         "Authorization": f"Bearer {self._api_key}",
@@ -72,38 +83,35 @@ class ZhipuTarget:
                 )
             except requests.Timeout:
                 status_code = 0
-                error_code = "timeout"
-                if self._retry(attempt):
-                    continue
+                error_code = "upstream_error"
                 break
             except requests.ConnectionError:
                 status_code = 0
-                error_code = "connection_error"
-                if self._retry(attempt):
-                    continue
+                error_code = "upstream_error"
                 break
             except requests.RequestException:
                 status_code = 0
-                error_code = "request_error"
-                if self._retry(attempt):
-                    continue
+                error_code = "upstream_error"
                 break
 
             status_code = int(response.status_code)
             try:
                 body = response.json()
             except (TypeError, ValueError):
-                error_code = "429" if status_code == 429 else "non_json_response"
+                error_code = "upstream_error"
                 if status_code == 429 and self._retry(attempt):
                     continue
                 break
 
-            error_code = _extract_error_code(body)
-            if status_code == 429 or error_code == "1305":
-                if not error_code:
-                    error_code = "429"
+            server_error_code = _extract_server_error_code(body)
+            if status_code == 429 or server_error_code == "1305":
+                error_code = "1305" if server_error_code == "1305" else "upstream_error"
                 if self._retry(attempt):
                     continue
+                break
+
+            if server_error_code:
+                error_code = "upstream_error"
                 break
 
             output = _extract_content(body)
@@ -111,10 +119,7 @@ class ZhipuTarget:
                 error_code = ""
                 break
 
-            if not error_code:
-                error_code = (
-                    "invalid_response" if 200 <= status_code < 300 else f"http_{status_code}"
-                )
+            error_code = "upstream_error"
             break
 
         success = 200 <= status_code < 300 and bool(output) and not error_code
@@ -143,6 +148,13 @@ class ZhipuTarget:
             "max_tokens": 800 if self.request_kind == "long" else 300,
         }
 
+    def _session(self) -> requests.Session | Any:
+        session = getattr(self._sessions, "value", None)
+        if session is None:
+            session = self._session_factory()
+            self._sessions.value = session
+        return session
+
     @staticmethod
     def _retry(attempt: int) -> bool:
         if attempt >= MAX_ATTEMPTS - 1:
@@ -151,9 +163,9 @@ class ZhipuTarget:
         return True
 
 
-def _extract_error_code(body: object) -> str:
+def _extract_server_error_code(body: object) -> str:
     if not isinstance(body, dict):
-        return "invalid_response"
+        return ""
     error = body.get("error")
     if isinstance(error, dict) and error.get("code") is not None:
         return str(error["code"])
