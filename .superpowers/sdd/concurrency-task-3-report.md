@@ -67,3 +67,40 @@ py -m pytest tests/test_concurrency_resources.py tests/test_concurrency_runner.p
 ## 顾虑
 
 遗留改动的原始 RED 输出已随前一代理中断而缺失，无法倒推或伪造。报告保留了这一事实，并用新增的时间连续性测试补建了可重复的 RED/GREEN 证据。短时并发档可能自然收集不到 30 条一秒样本；这种情况下资源停止条件不会触发，符合“连续 30 个样本”这一门槛。
+
+## 审查整改：采样时序与监控错误
+
+日期：2026-07-21
+
+### RED
+
+先新增以下测试，再运行：
+
+```powershell
+py -m pytest \
+  tests/test_concurrency_resources.py::test_start_waits_for_initial_sample_and_stop_prevents_new_samples \
+  tests/test_concurrency_resources.py::test_sampler_preserves_background_reader_error \
+  tests/test_concurrency_resources.py::test_sampler_preserves_proc_parse_value_error \
+  tests/test_concurrency_runner.py::test_short_worker_starts_after_real_sampler_initial_sample \
+  tests/test_concurrency_runner.py::test_runner_stops_on_resource_monitor_error_and_writes_prior_samples \
+  tests/test_concurrency_runner.py::test_real_sampler_combines_metric_and_resource_saturation_and_writes_csv -v
+```
+
+初次结果为 6 failed。失败点分别是：`start()` 在线程启动后立即返回；`ResourceSampler` 没有 `error` 状态；`/proc` 解析的 `ValueError` 在线程中未处理；极短 worker 可先于首样本开始；监控失败后 runner 仍进入下一档。原实现还产生了 `PytestUnhandledThreadExceptionWarning`。集成测试随后修正了其 30 个样本的时钟门槛，避免在第 30 个样本写入前提前停止。
+
+### GREEN
+
+- `start()` 在创建后台线程前同步写入首样本。极短 worker 测试用阻塞 reader 证明 worker 不会先开始。
+- `stop()` 与记录操作使用同一把采样锁。停止事件设置后，即使 `wait()` 随后返回，循环也不会再写入样本。
+- `ResourceSampler.error` 保留首个 `Exception`；首样本、reader、时钟等待和 `/proc` 解析的异常都会落入该状态并停止采样循环。
+- runner 仍将已有样本写入 CSV；若 `error` 非空，会把 `resource_monitor_error` 加入 `stop_reasons`，并停止后续并发档。
+- 真实 sampler 集成测试注入 reader 与时钟，在不等待真实 30 秒的情况下生成秒数 0 至 29 的 30 条高负载样本，验证 CSV、`resource_saturation`，以及与 `error_rate` 并存的停止原因。
+- 删除未使用的 `os` 导入。
+
+完整回归命令：
+
+```powershell
+py -m pytest tests/test_concurrency_resources.py tests/test_concurrency_runner.py tests/test_concurrency_metrics.py -v
+```
+
+最终结果：41 passed，0 failed，0 warnings，耗时 0.63s。

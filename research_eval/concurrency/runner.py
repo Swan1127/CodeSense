@@ -64,10 +64,11 @@ def run_staircase(
             pool.shutdown(wait=True)
         finally:
             samples = sampler.stop()
+            monitor_error = sampler.error
             append_resource_samples(sink.path.with_name("resource_samples.csv"), samples)
 
         if not records:
-            if interrupted:
+            if interrupted or monitor_error is not None:
                 break
             continue
 
@@ -77,6 +78,8 @@ def run_staircase(
         reasons = metric_decision.reasons
         if resource_saturated:
             reasons += ("resource_saturation",)
+        if monitor_error is not None:
+            reasons += ("resource_monitor_error",)
         summary = replace(summary, stop_reasons=reasons)
         summaries.append(summary)
         if interrupted or reasons:

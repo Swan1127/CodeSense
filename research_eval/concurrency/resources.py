@@ -1,5 +1,4 @@
 import csv
-import os
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -88,32 +87,62 @@ class ResourceSampler:
         self._clock = clock or _SystemClock()
         self._samples: list[ResourceSample] = []
         self._samples_lock = threading.Lock()
+        self._error: Exception | None = None
+        self._error_lock = threading.Lock()
+        self._sampling_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._started_at: float | None = None
+        self._started = False
 
     @property
     def samples(self) -> tuple[ResourceSample, ...]:
         with self._samples_lock:
             return tuple(self._samples)
 
+    @property
+    def error(self) -> Exception | None:
+        with self._error_lock:
+            return self._error
+
     def start(self) -> None:
-        if self._thread is not None:
+        if self._started:
             raise RuntimeError("ResourceSampler instances can only be started once")
-        self._started_at = self._clock.monotonic()
+        self._started = True
+        try:
+            self._started_at = self._clock.monotonic()
+            with self._sampling_lock:
+                if self._stop_event.is_set():
+                    return
+                self._record_sample()
+        except Exception as error:
+            self._set_error(error)
+            return
         self._thread = threading.Thread(target=self._sample_until_stopped, daemon=True)
         self._thread.start()
 
     def stop(self) -> tuple[ResourceSample, ...]:
-        self._stop_event.set()
+        with self._sampling_lock:
+            self._stop_event.set()
         if self._thread is not None:
             self._thread.join()
         return self.samples
 
     def _sample_until_stopped(self) -> None:
-        self._record_sample()
-        while not self._clock.wait(self._stop_event, SAMPLE_INTERVAL_SECONDS):
-            self._record_sample()
+        try:
+            while not self._clock.wait(self._stop_event, SAMPLE_INTERVAL_SECONDS):
+                with self._sampling_lock:
+                    if self._stop_event.is_set():
+                        return
+                    self._record_sample()
+        except Exception as error:
+            self._set_error(error)
+
+    def _set_error(self, error: Exception) -> None:
+        with self._error_lock:
+            if self._error is None:
+                self._error = error
+        self._stop_event.set()
 
     def _record_sample(self) -> None:
         cpu_percent, memory_percent = self._reader()

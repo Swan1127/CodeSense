@@ -1,5 +1,6 @@
-import json
 import hashlib
+import csv
+import json
 import threading
 import time
 from concurrent.futures import Future
@@ -435,6 +436,7 @@ def test_runner_stops_sampler_after_all_futures_and_records_resource_saturation(
 
     class Sampler:
         samples = ()
+        error = None
 
         def __init__(self, **_kwargs):
             events.append("created")
@@ -461,3 +463,151 @@ def test_runner_stops_sampler_after_all_futures_and_records_resource_saturation(
     assert events.index("started") < events.index("worker-0")
     assert events.index("stopped") > events.index("worker-1")
     assert (tmp_path / "resource_samples.csv").exists()
+
+
+def test_short_worker_starts_after_real_sampler_initial_sample(tmp_path):
+    reader_entered = threading.Event()
+    release_reader = threading.Event()
+    worker_started = threading.Event()
+    returned = threading.Event()
+    events = []
+    result = {}
+
+    class Clock:
+        def monotonic(self):
+            return 0.0
+
+        def wait(self, stop_event, seconds):
+            return stop_event.wait()
+
+    def reader():
+        reader_entered.set()
+        release_reader.wait()
+        events.append("sample")
+        return 10.0, 20.0
+
+    def worker(level, index):
+        events.append("worker")
+        worker_started.set()
+        return record(level, index)
+
+    def execute():
+        result["summaries"] = run_staircase(
+            worker,
+            [1],
+            1,
+            JsonlSink(tmp_path / "raw.jsonl"),
+            resource_reader=reader,
+            resource_clock=Clock(),
+        )
+        returned.set()
+
+    thread = threading.Thread(target=execute)
+    thread.start()
+    try:
+        assert reader_entered.wait(timeout=1)
+        assert not worker_started.wait(timeout=0.1)
+    finally:
+        release_reader.set()
+        assert returned.wait(timeout=1)
+        thread.join(timeout=1)
+
+    assert events.index("sample") < events.index("worker")
+    assert result["summaries"][0].level == 1
+
+
+def test_runner_stops_on_resource_monitor_error_and_writes_prior_samples(tmp_path):
+    monitor_failed = threading.Event()
+
+    class Clock:
+        def __init__(self):
+            self.current = 0.0
+            self.waits = 0
+
+        def monotonic(self):
+            return self.current
+
+        def wait(self, stop_event, seconds):
+            self.current += seconds
+            self.waits += 1
+            if self.waits == 1:
+                return False
+            return stop_event.wait()
+
+    calls = 0
+
+    def reader():
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            monitor_failed.set()
+            raise ValueError("monitor failed")
+        return 10.0, 20.0
+
+    def worker(level, index):
+        assert monitor_failed.wait(timeout=1)
+        return record(level, index)
+
+    summaries = run_staircase(
+        worker,
+        [1, 2],
+        1,
+        JsonlSink(tmp_path / "raw.jsonl"),
+        resource_reader=reader,
+        resource_clock=Clock(),
+    )
+
+    assert [summary.level for summary in summaries] == [1]
+    assert summaries[0].stop_reasons == ("resource_monitor_error",)
+    with (tmp_path / "resource_samples.csv").open(newline="", encoding="utf-8") as handle:
+        assert list(csv.DictReader(handle)) == [
+            {"second": "0", "cpu_percent": "10.0", "memory_percent": "20.0"}
+        ]
+
+
+def test_real_sampler_combines_metric_and_resource_saturation_and_writes_csv(tmp_path):
+    class ThirtySampleClock:
+        def __init__(self):
+            self.current = 0.0
+            self.waits = 0
+            self.thirty_samples_ready = threading.Event()
+
+        def monotonic(self):
+            return self.current
+
+        def wait(self, stop_event, seconds):
+            self.current += seconds
+            self.waits += 1
+            if self.waits == 30:
+                return stop_event.wait()
+            return False
+
+    clock = ThirtySampleClock()
+    samples_read = 0
+
+    def reader():
+        nonlocal samples_read
+        samples_read += 1
+        if samples_read == 30:
+            clock.thirty_samples_ready.set()
+        return 95.0, 10.0
+
+    def worker(level, index):
+        assert clock.thirty_samples_ready.wait(timeout=1)
+        return record(level, index, ok=False, status=500)
+
+    summaries = run_staircase(
+        worker,
+        [1, 2],
+        1,
+        JsonlSink(tmp_path / "raw.jsonl"),
+        resource_reader=reader,
+        resource_clock=clock,
+    )
+
+    assert [summary.level for summary in summaries] == [1]
+    assert summaries[0].stop_reasons == ("error_rate", "resource_saturation")
+    with (tmp_path / "resource_samples.csv").open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert [row["second"] for row in rows] == [str(index) for index in range(30)]
+    assert {row["cpu_percent"] for row in rows} == {"95.0"}
