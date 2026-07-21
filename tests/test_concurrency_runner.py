@@ -1,4 +1,5 @@
 import json
+import hashlib
 import threading
 import time
 from concurrent.futures import Future
@@ -63,12 +64,21 @@ def test_jsonl_sink_flushes_each_record_before_return(tmp_path, monkeypatch):
         def flush(self):
             self.flushes += 1
 
+        def tell(self):
+            return 0
+
+        def truncate(self, _offset):
+            return 0
+
     handle = Handle()
     monkeypatch.setattr(Path, "open", lambda *_args, **_kwargs: handle)
 
     JsonlSink(tmp_path / "raw.jsonl").append(record(1, 0))
 
-    assert handle.lines == [json.dumps(record(1, 0).to_dict(), ensure_ascii=False) + "\n"]
+    payload = json.loads(handle.lines[0])
+    assert payload["run_id"] == "sha256:" + hashlib.sha256(b"run-1").hexdigest()[:16]
+    assert payload["target"] == "fake"
+    assert payload["request_kind"] == "short"
     assert handle.flushes == 1
 
 
@@ -98,7 +108,8 @@ def test_jsonl_sink_redacts_sensitive_values_in_free_text(tmp_path):
         "header-key-654",
     ):
         assert secret not in payload
-    assert "[REDACTED]" in payload
+    assert '"target": "redacted_target"' in payload
+    assert '"error_code": "redacted_error"' in payload
 
 
 def test_jsonl_sink_normalizes_url_credentials_query_and_error_body(tmp_path):
@@ -132,9 +143,95 @@ def test_jsonl_sink_normalizes_url_credentials_query_and_error_body(tmp_path):
         "error-cookie-345",
     ):
         assert secret not in serialized
-    assert payload["target"] == "https://api.example.invalid/evaluate"
-    assert "?" not in payload["target"]
+    assert payload["target"] == "redacted_target"
     assert payload["error_code"] == "redacted_error"
+
+
+def test_jsonl_sink_uses_safe_fields_for_arbitrary_free_strings(tmp_path):
+    secrets = (
+        "run-entropy-5d5c8a6f",
+        "ftp-user-9c1d",
+        "ftp-password-2e4a",
+        "ssh-user-7b3f",
+        "ssh-password-8a6c",
+        "timestamp-secret-4f2b",
+        "error-secret-1a9e",
+    )
+    row = record(1, 0)
+    row = row.__class__(
+        **{
+            **row.to_dict(),
+            "run_id": secrets[0],
+            "target": f"ftp://{secrets[1]}:{secrets[2]}@host.invalid/path",
+            "request_kind": f"ssh://{secrets[3]}:{secrets[4]}@host.invalid",
+            "started_at": secrets[5],
+            "error_code": secrets[6],
+        }
+    )
+    output = tmp_path / "raw.jsonl"
+    JsonlSink(output).append(row)
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    serialized = json.dumps(payload, ensure_ascii=False)
+
+    for secret in secrets:
+        assert secret not in serialized
+    assert payload["run_id"] == "sha256:" + hashlib.sha256(secrets[0].encode()).hexdigest()[:16]
+    assert payload["target"] == "redacted_target"
+    assert payload["request_kind"] == "redacted_kind"
+    assert payload["started_at"] == "redacted_timestamp"
+    assert payload["error_code"] == "redacted_error"
+
+
+def test_interrupted_jsonl_write_rolls_back_before_runner_retries(tmp_path, monkeypatch):
+    output = tmp_path / "raw.jsonl"
+    original_open = Path.open
+    interrupted = False
+
+    class HalfWriteHandle:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return self.handle.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self.handle, name)
+
+        def write(self, line):
+            self.handle.write(line[: max(1, len(line) // 2)])
+            self.handle.flush()
+            raise KeyboardInterrupt
+
+    def interrupting_open(path, *args, **kwargs):
+        nonlocal interrupted
+        handle = original_open(path, *args, **kwargs)
+        if path == output and args and args[0] == "a" and not interrupted:
+            interrupted = True
+            return HalfWriteHandle(handle)
+        return handle
+
+    class ObservingSink(JsonlSink):
+        def append(self, row):
+            try:
+                super().append(row)
+            except KeyboardInterrupt:
+                assert output.read_bytes() == b""
+                assert self._request_keys == set()
+                raise
+
+    monkeypatch.setattr(Path, "open", interrupting_open)
+    summaries = run_staircase(
+        lambda level, index: record(level, index), [1], 1, ObservingSink(output)
+    )
+
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert [summary.total for summary in summaries] == [1]
+    assert len(lines) == 1
+    assert json.loads(lines[0])["request_index"] == 0
 
 
 def test_jsonl_sink_skips_duplicate_request_key_after_reopen(tmp_path):
