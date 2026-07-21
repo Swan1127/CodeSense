@@ -186,3 +186,23 @@ def test_practice_manuscript_references_are_ordered_and_used():
     }
     assert first_seen == list(range(1, len(first_seen) + 1))
     assert listed == set(first_seen)
+
+
+def test_revision_docs_record_agent_boundaries_and_next_ablation():
+    audit = (ROOT / "peer_review_audit_v2.md").read_text(encoding="utf-8")
+    protocol = (ROOT / "next_study_protocol.md").read_text(encoding="utf-8")
+    for required in (
+        "智能体定义能否由系统实现核验",
+        "会话内自适应是否被误写为长期个性化",
+        "外部论文是否被不当外推",
+    ):
+        assert required in audit
+    for required in (
+        "固定提示组",
+        "状态驱动提示组",
+        "提示强度",
+        "错误类型",
+        "讲解质量",
+        "退出机制",
+    ):
+        assert required in protocol
