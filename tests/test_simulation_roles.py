@@ -1,8 +1,10 @@
 from pathlib import Path
+import json
 
 import pytest
+import requests
 
-from research_eval.simulation.zhipu_roles import RoleClient
+from research_eval.simulation.zhipu_roles import BACKOFF_SECONDS, MAX_ATTEMPTS, RoleClient
 
 
 class FakeResponse:
@@ -77,3 +79,74 @@ def test_prompt_files_define_strict_role_boundaries():
     assert "不得凭空掌握" in learner
     assert "条件编号" in judge
     assert "证据" in judge
+
+
+class SequencedTransport:
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = 0
+
+    def post(self, url, *, headers, json, timeout):
+        self.calls += 1
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+class StatusResponse:
+    def __init__(self, status_code, body):
+        self.status_code = status_code
+        self.body = body
+
+    def json(self):
+        return self.body
+
+
+def test_transient_503_is_retried_before_success():
+    transport = SequencedTransport(
+        [
+            StatusResponse(503, {"error": {"code": "service_unavailable"}}),
+            StatusResponse(200, {"choices": [{"message": {"content": "ok"}}]}),
+        ]
+    )
+    sleeps = []
+    client = RoleClient("secret", transport=transport, sleep_fn=sleeps.append)
+
+    response = client.complete(
+        "learner", "prompt", [{"role": "user", "content": "task"}], 0.6, 400
+    )
+
+    assert response.success is True
+    assert response.retries == 1
+    assert transport.calls == 2
+    assert sleeps == [2]
+
+
+def test_connection_error_is_retried_before_success():
+    transport = SequencedTransport(
+        [
+            requests.ConnectionError("temporary"),
+            StatusResponse(200, {"choices": [{"message": {"content": "ok"}}]}),
+        ]
+    )
+    client = RoleClient("secret", transport=transport, sleep_fn=lambda _: None)
+
+    response = client.complete(
+        "learner", "prompt", [{"role": "user", "content": "task"}], 0.6, 400
+    )
+
+    assert response.success is True
+    assert response.retries == 1
+    assert transport.calls == 2
+
+
+def test_retry_policy_is_recorded_in_freeze_manifest():
+    path = Path("research/guided_learning_paper/experiments/simulation/config/freeze_manifest.json")
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    policy = manifest["role_parameters"]["retry_policy"]
+
+    assert policy["max_attempts"] == MAX_ATTEMPTS
+    assert tuple(policy["backoff_seconds"]) == BACKOFF_SECONDS
+    assert policy["retry_on_connection_error"] is True
+    assert policy["retry_on_empty_success"] is True

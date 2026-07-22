@@ -15,6 +15,7 @@ DEFAULT_MODEL = "glm-4.5-flash"
 REQUEST_TIMEOUT_SECONDS = 120
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = (2, 4)
+_TRANSIENT_STATUS_CODES = {408, 425, 500, 502, 503, 504}
 _ALLOWED_ROLES = {"learner", "system", "judge"}
 _CONDITION_LABEL = re.compile(r"(?<![A-Za-z0-9_])(?:C[0-2]|A[1-3])(?![A-Za-z0-9_])")
 
@@ -102,6 +103,10 @@ class RoleClient:
                     timeout=REQUEST_TIMEOUT_SECONDS,
                 )
             except requests.RequestException:
+                error_code = "upstream_error"
+                if attempt < MAX_ATTEMPTS - 1:
+                    self._sleep(BACKOFF_SECONDS[attempt])
+                    continue
                 break
 
             status_code = int(response.status_code)
@@ -117,6 +122,12 @@ class RoleClient:
                     self._sleep(BACKOFF_SECONDS[attempt])
                     continue
                 break
+            if status_code in _TRANSIENT_STATUS_CODES:
+                error_code = "upstream_error"
+                if attempt < MAX_ATTEMPTS - 1:
+                    self._sleep(BACKOFF_SECONDS[attempt])
+                    continue
+                break
             if server_code:
                 error_code = "upstream_error"
                 break
@@ -126,6 +137,10 @@ class RoleClient:
                 error_code = ""
                 break
             error_code = "upstream_error"
+            if 200 <= status_code < 300 and attempt < MAX_ATTEMPTS - 1:
+                self._sleep(BACKOFF_SECONDS[attempt])
+                continue
+
             break
 
         return RoleResponse(
