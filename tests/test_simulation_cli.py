@@ -101,3 +101,27 @@ def test_script_entrypoint_can_load_repository_modules():
 
     assert result.returncode == 0, result.stderr
     assert "--mode" in result.stdout
+
+
+def test_cli_reconfigures_gbk_streams_to_utf8():
+    import os
+
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "gbk"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from scripts.run_guided_learning_simulation import "
+                "configure_utf8_stdio; "
+                "configure_utf8_stdio(); print(\"✅ 编码检查\")"
+            ),
+        ],
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr.decode("gbk", errors="replace")
+    assert "编码检查" in result.stdout.decode("utf-8")

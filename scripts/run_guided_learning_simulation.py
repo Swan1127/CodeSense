@@ -34,6 +34,14 @@ CONFIG_ROOT = PROJECT_ROOT / "research/guided_learning_paper/experiments/simulat
 PROMPT_ROOT = PROJECT_ROOT / "research/guided_learning_paper/experiments/simulation/prompts"
 
 
+def configure_utf8_stdio() -> None:
+    """Make redirected Windows logs safe for Unicode model/client messages."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def configuration_paths(config_root: Path, prompt_root: Path) -> dict[str, Path]:
     return {
         "tasks": config_root / "tasks.json",
@@ -148,6 +156,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    configure_utf8_stdio()
     args = parse_args(argv)
     if args.env_file:
         load_dotenv(args.env_file, override=False)
