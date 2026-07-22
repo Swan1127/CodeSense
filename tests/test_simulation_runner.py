@@ -166,5 +166,13 @@ def test_second_malformed_response_marks_trajectory_invalid(tmp_path):
         JsonlSink(tmp_path / "trajectories.jsonl"),
     )
 
+    invalid_rows = [
+        json.loads(line)
+        for line in (tmp_path / "turns.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row["actor"] for row in invalid_rows] == ["learner_invalid", "learner_invalid"]
+    assert [row["content"] for row in invalid_rows] == ["not-json", "still-not-json"]
+    assert trajectory.elapsed_seconds >= 0
+
     assert trajectory.completed is False
     assert trajectory.invalid_reason == "learner_format_invalid"

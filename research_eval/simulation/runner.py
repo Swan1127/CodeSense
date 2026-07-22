@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-from typing import Any
+import time
+from typing import Any, Callable
 
 from .conditions import MAX_SYSTEM_TURNS, SimulationState
 from .matrix import TrajectorySpec
@@ -38,6 +40,8 @@ def run_trajectory(
     if spec.task_id != task.task_id or spec.persona_id != persona.persona_id:
         raise ValueError("trajectory spec does not match task/persona")
 
+    started = time.perf_counter()
+    started_at = datetime.now(timezone.utc).isoformat()
     trajectory = Trajectory(
         trajectory_id=_trajectory_id(spec),
         task_id=task.task_id,
@@ -46,6 +50,7 @@ def run_trajectory(
         repeat=spec.repeat,
         prompt_hashes=dict(prompt_hashes),
         freeze_hash=spec.freeze_hash,
+        started_at_utc=started_at,
     )
     state = SimulationState(task=task, persona=persona, condition=_condition(spec.condition))
 
@@ -57,6 +62,17 @@ def run_trajectory(
                 task,
                 persona,
                 state,
+                lambda content, attempt: turn_sink.append(
+                    {
+                        "trajectory_id": trajectory.trajectory_id,
+                        "turn_index": len(trajectory.turns),
+                        "actor": "learner_invalid",
+                        "content": content,
+                        "stage": state.stage,
+                        "technical_status": "format_invalid",
+                        "attempt_index": attempt,
+                    }
+                ),
             )
             if learner_step is None:
                 trajectory.invalid_reason = "learner_format_invalid"
@@ -118,6 +134,8 @@ def run_trajectory(
         if not trajectory.completed and not trajectory.invalid_reason:
             trajectory.invalid_reason = "turn_limit"
     finally:
+        trajectory.finished_at_utc = datetime.now(timezone.utc).isoformat()
+        trajectory.elapsed_seconds = time.perf_counter() - started
         trajectory_sink.append(trajectory.to_dict())
     return trajectory
 
@@ -150,6 +168,7 @@ def _generate_learner_step(
     task: TaskCase,
     persona: Persona,
     state: SimulationState,
+    invalid_callback: Callable[[str, int], None],
 ) -> LearnerStep | str | None:
     context = {
         "task": {
@@ -181,6 +200,7 @@ def _generate_learner_step(
     if parsed is not None:
         return parsed
 
+    invalid_callback(response.content, 1)
     retry_messages = [
         *messages,
         {"role": "assistant", "content": response.content},
@@ -201,7 +221,10 @@ def _generate_learner_step(
     )
     if not retry.success:
         return f"learner_api_failure:{retry.error_code or retry.status_code}"
-    return _parse_learner_step(retry.content, persona)
+    parsed_retry = _parse_learner_step(retry.content, persona)
+    if parsed_retry is None:
+        invalid_callback(retry.content, 2)
+    return parsed_retry
 
 
 def _parse_learner_step(content: str, persona: Persona) -> LearnerStep | None:

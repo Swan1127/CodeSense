@@ -66,6 +66,9 @@ class Trajectory:
     repeat: int
     prompt_hashes: dict[str, str]
     freeze_hash: str = ""
+    started_at_utc: str = ""
+    finished_at_utc: str = ""
+    elapsed_seconds: float = 0.0
     turns: list[Turn] = field(default_factory=list)
     completed: bool = False
     invalid_reason: str = ""
