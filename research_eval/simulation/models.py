@@ -65,6 +65,7 @@ class Trajectory:
     condition: str
     repeat: int
     prompt_hashes: dict[str, str]
+    freeze_hash: str = ""
     turns: list[Turn] = field(default_factory=list)
     completed: bool = False
     invalid_reason: str = ""
