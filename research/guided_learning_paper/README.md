@@ -11,6 +11,7 @@
 - `peer_review_audit_v2.md`：第二轮模拟外审；
 - `revision_log.md`：第一版问题、改动、证据和剩余限制；
 - `next_study_protocol.md`：下一轮阶梯楔形研究方案；
+- `concurrency_evaluation_protocol.md`：并发评测的执行闸门、停止条件和核验顺序；
 - `data_provenance.md`：数据快照、版本边界和隐私说明；
 - `results/`：分析脚本生成的冻结结果；
 - `figures/`：正文与附录图片。
