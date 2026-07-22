@@ -89,13 +89,24 @@ def test_repository_manifest_and_hashes_are_frozen():
     tasks_path = root / "tasks.json"
     personas_path = root / "personas.json"
     freeze_path = root / "freeze_manifest.json"
+    prompt_root = root.parent / "prompts"
 
     tasks = load_task_manifest(tasks_path)
     frozen = json.loads(freeze_path.read_text(encoding="utf-8"))
-    actual_hashes = freeze_files({"tasks": tasks_path, "personas": personas_path})
+    actual_hashes = freeze_files(
+        {
+            "tasks": tasks_path,
+            "personas": personas_path,
+            "prompt_learner": prompt_root / "learner.txt",
+            "prompt_direct_answer": prompt_root / "direct_answer.txt",
+            "prompt_fixed_three_stage": prompt_root / "fixed_three_stage.txt",
+            "prompt_judge": prompt_root / "judge.txt",
+        }
+    )
 
     assert len(tasks) == 14
     assert frozen["frozen_files"] == actual_hashes
+    assert all(len(value) == 64 for value in frozen["frozen_files"].values())
     assert frozen["formal_task_ids"] == [f"F{index:02d}" for index in range(1, 13)]
     assert len(frozen["ablation_task_ids"]) == 6
     assert len(frozen["ablation_persona_ids"]) == 4

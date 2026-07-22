@@ -2,6 +2,10 @@
   "schema_version": 1,
   "frozen_files": {
     "personas": "4e553f61b16d96c25d804784185ee16309dc18a4c179fc851b6ed304f780b9c7",
+    "prompt_direct_answer": "fc6566bccd4b8c240e029ab0fe1079aab14bd5e5c92fe0f90ddb8f35b1bf2cbc",
+    "prompt_fixed_three_stage": "d37b55fc936858c194e0263eb30c05ec285e887e53ce967e3e35e6921eb0a756",
+    "prompt_judge": "83fff465c52fde21081df79aeae2501d0ad01046bf04a11096f6ad2d7a366510",
+    "prompt_learner": "c923943a6d993ac59151c3e619024077db8b23e6a068e18e7f3244d0d7ecc3df",
     "tasks": "6cd88f0a7f1666c14a8f69bf393e38e067b024b32ca33258e0c4cf23580d76ae"
   },
   "formal_task_ids": [
@@ -36,5 +40,17 @@
     "P3_BOUNDARY_OMISSION",
     "P5_ANSWER_SEEKING"
   ],
-  "difficulty_policy": "研究者依据认知步骤分层；source_difficulty_level仅作来源记录。"
+  "difficulty_policy": "研究者依据认知步骤分层；source_difficulty_level仅作来源记录。",
+  "model": "glm-4.5-flash",
+  "role_parameters": {
+    "learner": {
+      "temperature": 0.6,
+      "max_tokens": 400
+    },
+    "judge": {
+      "temperature": 0.0,
+      "max_tokens": 800
+    },
+    "request_timeout_seconds": 120
+  }
 }
