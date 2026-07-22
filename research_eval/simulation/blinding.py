@@ -10,6 +10,49 @@ from .judging import FLAG_FIELDS, RATING_DIMENSIONS
 SAMPLE_QUOTAS = {"C0": 24, "C1": 24, "C2": 24, "A1": 8, "A2": 8, "A3": 8}
 
 
+def build_review_candidates(
+    trajectories: Sequence[Mapping[str, Any]],
+    turns: Sequence[Mapping[str, Any]],
+    tasks: Mapping[str, Mapping[str, Any]],
+    personas: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build internally identified candidates for later blinded sampling."""
+    turns_by_trajectory: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for turn in turns:
+        if str(turn.get("actor", "")) in {"learner", "system"}:
+            turns_by_trajectory[str(turn["trajectory_id"])].append(turn)
+    rows: list[dict[str, Any]] = []
+    for trajectory in trajectories:
+        invalid_reason = str(trajectory.get("invalid_reason", ""))
+        if invalid_reason not in {"", "turn_limit"}:
+            continue
+        trajectory_id = str(trajectory["trajectory_id"])
+        dialogue = sorted(
+            turns_by_trajectory.get(trajectory_id, []),
+            key=lambda row: int(row.get("turn_index", 0)),
+        )
+        if not dialogue:
+            continue
+        task_id = str(trajectory["task_id"])
+        persona_id = str(trajectory["persona_id"])
+        task = tasks[task_id]
+        persona = personas[persona_id]
+        transcript = "\n".join(
+            f"{'学习者' if row['actor'] == 'learner' else '系统'}：{row.get('content', '')}"
+            for row in dialogue
+        )
+        rows.append({
+            "trajectory_id": trajectory_id,
+            "condition": str(trajectory["condition"]),
+            "task_id": task_id,
+            "persona_id": persona_id,
+            "difficulty": str(task["difficulty"]),
+            "task_text": f"{task['title']}\n{task['description']}",
+            "persona_visible": str(persona["observable_behavior"]),
+            "transcript": transcript,
+        })
+    return rows
+
 def stratified_blind_sample(
     candidates: Sequence[Mapping[str, Any]],
     *,

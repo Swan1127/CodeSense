@@ -5,6 +5,7 @@ import pytest
 
 from research_eval.simulation.blinding import (
     SAMPLE_QUOTAS,
+    build_review_candidates,
     stratified_blind_sample,
     validate_teacher_ratings,
 )
@@ -90,3 +91,22 @@ def test_teacher_rating_import_requires_two_complete_raters():
 
     with pytest.raises(ValueError, match="two ratings"):
         validate_teacher_ratings(rows[:-1], packet_ids)
+
+
+def test_review_candidates_exclude_technical_invalid_rows():
+    trajectories = [
+        {"trajectory_id": "good", "task_id": "T1", "persona_id": "P1", "condition": "C2", "invalid_reason": ""},
+        {"trajectory_id": "bad", "task_id": "T1", "persona_id": "P1", "condition": "C2", "invalid_reason": "learner_format_invalid"},
+    ]
+    turns = [
+        {"trajectory_id": "good", "turn_index": 0, "actor": "learner", "content": "我的想法"},
+        {"trajectory_id": "good", "turn_index": 1, "actor": "system", "content": "请解释边界"},
+    ]
+    tasks = {"T1": {"title": "题目", "description": "描述", "difficulty": "easy"}}
+    personas = {"P1": {"observable_behavior": "会遗漏边界"}}
+
+    rows = build_review_candidates(trajectories, turns, tasks, personas)
+
+    assert [row["trajectory_id"] for row in rows] == ["good"]
+    assert "学习者：我的想法" in rows[0]["transcript"]
+    assert "系统：请解释边界" in rows[0]["transcript"]
