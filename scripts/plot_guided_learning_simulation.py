@@ -90,6 +90,33 @@ def plot_comparison_forest(path: Path, output: Path, title: str) -> Path | None:
     return _save(fig, output)
 
 
+def plot_teacher_ratings(results_dir: Path, output_dir: Path) -> Path | None:
+    path = results_dir / "teacher_condition_summary.csv"
+    if not path.exists():
+        return None
+    frame = pd.read_csv(path)
+    excluded = {"condition", "n_review_items", "possible_complete_code_leakage", "possible_full_step_leakage"}
+    dimensions = [name for name in frame.columns if name not in excluded]
+    if frame.empty or not dimensions:
+        return None
+    x = np.arange(len(dimensions))
+    conditions = frame["condition"].astype(str).tolist()
+    width = min(0.22, 0.8 / max(1, len(conditions)))
+    fig, ax = plt.subplots(figsize=(11, 5.8))
+    center = (len(conditions) - 1) / 2
+    for index, row in frame.iterrows():
+        values = [float(row[name]) for name in dimensions]
+        offset = (index - center) * width
+        ax.bar(x + offset, values, width=width, label=f"{row['condition']} (n={int(row['n_review_items'])})", color=COLORS.get(str(row["condition"]), "#4C78A8"))
+    ax.set_xticks(x, [name.replace("_", " " ) for name in dimensions], rotation=20, ha="right")
+    ax.set_ylim(1, 5)
+    ax.set_ylabel("Mean teacher rating (1–5)")
+    ax.set_title("Blinded teacher ratings by condition")
+    ax.legend(ncol=min(3, len(conditions)), frameon=False)
+    ax.grid(axis="y", alpha=0.2)
+    fig.tight_layout()
+    return _save(fig, output_dir / "teacher_ratings_by_condition.png")
+
 def plot_failure_slices(results_dir: Path, output_dir: Path) -> Path | None:
     path = results_dir / "failure_slices.csv"
     if not path.exists():
@@ -122,6 +149,7 @@ def create_figures(results_dir: Path, output_dir: Path) -> list[Path]:
         plot_mechanism_metrics(results_dir, output_dir),
         plot_comparison_forest(results_dir / "core_comparisons.csv", output_dir / "core_comparisons.png", "Core condition comparisons"),
         plot_comparison_forest(results_dir / "ablation_comparisons.csv", output_dir / "ablation_comparisons.png", "Ablation comparisons against C2"),
+        plot_teacher_ratings(results_dir, output_dir),
         plot_failure_slices(results_dir, output_dir),
     ]
     return [path for path in candidates if path is not None]

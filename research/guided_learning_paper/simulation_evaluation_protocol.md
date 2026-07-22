@@ -42,7 +42,7 @@
 
 从正式轨迹中按条件、难度和画像分层抽取 96 条：C0、C1、C2 各 24 条，A1、A2、A3 各 8 条。盲审表只显示匿名编号、题目、可观察画像描述和对话，不显示条件、轨迹编号或研究者预期。
 
-两位教师独立完成全部 96 条评分。六个序数维度采用 1—5 分，两个泄漏判断采用 0/1。序数维度报告二次加权 Cohen κ，二元判断报告普通 Cohen κ。自动评审与两位教师均值之间报告 Spearman 相关和平均绝对误差；若一致性未达到协议阈值，自动评审结果只能标记为补充证据。
+两位教师独立完成全部 96 条评分。六个序数维度采用 1—5 分，两个泄漏判断采用 0/1。序数维度报告二次加权 Cohen κ，二元判断报告普通 Cohen κ。自动评审与两位教师均值之间报告 Spearman 相关和平均绝对误差。序数维度要求 Spearman 相关不低于0.60且平均绝对误差不高于1.0；二元判断要求相关不低于0.60且平均绝对误差不高于0.25。任一门槛未达到时，相应自动评审结果只能标记为补充证据。
 
 ## 6. 上游测试说明
 
@@ -59,8 +59,8 @@ py scripts/run_guided_learning_simulation.py --mode formal --matrix all --output
 py scripts/score_guided_learning_simulation.py --input research_exports/simulation/formal-288 --output-dir research_exports/simulation/scored
 py scripts/judge_guided_learning_simulation.py --input research_exports/simulation/formal-288 --output research_exports/simulation/scored/automatic_ratings.jsonl --resume
 py scripts/build_simulation_teacher_packet.py --input research_exports/simulation/formal-288 --output-dir research_exports/simulation/review
-py scripts/import_simulation_teacher_ratings.py --packet research_exports/simulation/review/teacher_packet.xlsx --key research_exports/simulation/review/blinding_key.csv --output research_exports/simulation/scored/teacher_ratings.csv
-py scripts/analyze_guided_learning_simulation.py --metrics research_exports/simulation/scored/trajectory_metrics.csv --teacher-ratings research_exports/simulation/scored/teacher_ratings.csv --automatic-ratings research_exports/simulation/scored/automatic_ratings.jsonl --output-dir research_exports/simulation/analysis
+py scripts/import_simulation_teacher_ratings.py --packet research_exports/simulation/review/teacher_1.xlsx --packet research_exports/simulation/review/teacher_2.xlsx --key research_exports/simulation/review/blinding_key.csv --output research_exports/simulation/scored/teacher_ratings.csv
+py scripts/analyze_guided_learning_simulation.py --metrics research_exports/simulation/scored/trajectory_metrics.csv --teacher-ratings research_exports/simulation/scored/teacher_ratings.csv --automatic-ratings research_exports/simulation/scored/automatic_ratings.jsonl --blinding-key research_exports/simulation/review/blinding_key.csv --output-dir research_exports/simulation/analysis
 py scripts/plot_guided_learning_simulation.py --results-dir research_exports/simulation/analysis --output-dir research_exports/simulation/figures
 ~~~
 

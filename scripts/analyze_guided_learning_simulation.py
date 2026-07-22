@@ -125,13 +125,34 @@ def build_rater_agreement(teacher: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def build_teacher_condition_summary(
+    teacher: pd.DataFrame,
+    blinding_key: pd.DataFrame,
+    *,
+    fields: Sequence[str] = (*RATING_DIMENSIONS, *FLAG_FIELDS),
+) -> pd.DataFrame:
+    if teacher.empty or blinding_key.empty:
+        return pd.DataFrame(columns=["condition", "n_review_items", *fields])
+    selected = [field for field in fields if field in teacher.columns]
+    teacher_mean = teacher.groupby("review_id", as_index=False)[selected].mean()
+    mapping = blinding_key[["review_id", "condition"]].drop_duplicates()
+    if mapping["review_id"].duplicated().any():
+        raise ValueError("blinding key contains duplicate review IDs")
+    merged = teacher_mean.merge(mapping, on="review_id", how="inner", validate="one_to_one")
+    means = merged.groupby("condition", as_index=False)[selected].mean()
+    counts = merged.groupby("condition").size().rename("n_review_items")
+    return means.merge(counts, on="condition", how="left")
+
 def read_automatic_ratings(path: Path) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         source = json.loads(line)
-        row = {"review_id": source.get("review_id", "")}
+        row = {
+            "review_id": source.get("review_id", ""),
+            "trajectory_id": source.get("trajectory_id", ""),
+        }
         row.update(source.get("ratings", {}))
         row.update({name: int(value) for name, value in source.get("flags", {}).items()})
         row["technical_failure"] = source.get("technical_failure", "")
@@ -139,18 +160,35 @@ def read_automatic_ratings(path: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build_judge_calibration(automatic: pd.DataFrame, teacher: pd.DataFrame) -> pd.DataFrame:
+def build_judge_calibration(
+    automatic: pd.DataFrame,
+    teacher: pd.DataFrame,
+    *,
+    fields: Sequence[str] = (*RATING_DIMENSIONS, *FLAG_FIELDS),
+) -> pd.DataFrame:
     if automatic.empty or teacher.empty:
-        return pd.DataFrame(columns=["field", "field_type", "n", "spearman", "mae"])
-    teacher_mean = teacher.groupby("review_id", as_index=False)[list(RATING_DIMENSIONS) + list(FLAG_FIELDS)].mean()
+        return pd.DataFrame(columns=["field", "field_type", "n", "spearman", "mae", "supplementary_only"])
+    selected = [field for field in fields if field in automatic.columns and field in teacher.columns]
+    teacher_mean = teacher.groupby("review_id", as_index=False)[selected].mean()
     merged = automatic.merge(teacher_mean, on="review_id", suffixes=("_automatic", "_teacher"))
     rows: list[dict[str, object]] = []
-    for field in (*RATING_DIMENSIONS, *FLAG_FIELDS):
+    for field in selected:
         valid = merged[[f"{field}_automatic", f"{field}_teacher"]].dropna()
         if len(valid) < 2:
             continue
         summary = calibration_summary(valid.iloc[:, 0], valid.iloc[:, 1])
-        rows.append({"field": field, "field_type": "ordinal" if field in RATING_DIMENSIONS else "binary", **summary})
+        ordinal = field in RATING_DIMENSIONS
+        mae_limit = 1.0 if ordinal else 0.25
+        correlation = float(summary["spearman"])
+        supplementary = int(pd.isna(correlation) or correlation < 0.60 or float(summary["mae"]) > mae_limit)
+        rows.append({
+            "field": field,
+            "field_type": "ordinal" if ordinal else "binary",
+            **summary,
+            "spearman_threshold": 0.60,
+            "mae_threshold": mae_limit,
+            "supplementary_only": supplementary,
+        })
     return pd.DataFrame(rows)
 
 
@@ -160,6 +198,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--teacher-ratings", type=Path)
     parser.add_argument("--automatic-ratings", type=Path)
+    parser.add_argument("--blinding-key", type=Path)
     parser.add_argument("--seed", type=int, default=20260721)
     parser.add_argument("--n-resamples", type=int, default=10000)
     return parser.parse_args(argv)
@@ -176,13 +215,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     failures = build_failure_slices(metrics_frame)
     teacher = pd.read_csv(args.teacher_ratings) if args.teacher_ratings and args.teacher_ratings.exists() else pd.DataFrame()
     agreement = build_rater_agreement(teacher)
+    blinding_key = pd.read_csv(args.blinding_key) if args.blinding_key and args.blinding_key.exists() else pd.DataFrame()
+    teacher_summary = build_teacher_condition_summary(teacher, blinding_key)
     automatic = read_automatic_ratings(args.automatic_ratings) if args.automatic_ratings and args.automatic_ratings.exists() else pd.DataFrame()
+    if not automatic.empty and not blinding_key.empty:
+        automatic = automatic.drop(columns=["review_id"], errors="ignore").merge(
+            blinding_key[["review_id", "trajectory_id"]], on="trajectory_id", how="inner"
+        )
     calibration = build_judge_calibration(automatic, teacher)
     outputs = {
         "core_comparisons.csv": core,
         "ablation_comparisons.csv": ablation,
         "condition_summary.csv": summary,
         "rater_agreement.csv": agreement,
+        "teacher_condition_summary.csv": teacher_summary,
         "judge_calibration.csv": calibration,
         "failure_slices.csv": failures,
     }
