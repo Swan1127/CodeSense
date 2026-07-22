@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from dataclasses import replace
 
 from .metrics import evaluate_stop, summarize_level
@@ -19,6 +20,7 @@ def run_staircase(
     sink: JsonlSink | None = None,
     resource_reader: ResourceReader | None = None,
     resource_clock: object | None = None,
+    resource_path_factory: Callable[[int], Path] | None = None,
 ) -> list[LevelSummary]:
     if not levels or min(levels) < 1 or max(levels) > 32:
         raise ValueError("levels must be between 1 and 32")
@@ -29,6 +31,11 @@ def run_staircase(
 
     summaries = []
     for level in levels:
+        resource_path = (
+            Path(resource_path_factory(level))
+            if resource_path_factory is not None
+            else sink.path.with_name("resource_samples.csv")
+        )
         records = []
         pool = ThreadPoolExecutor(max_workers=level)
         handled_futures = set()
@@ -47,7 +54,7 @@ def run_staircase(
         sampler.start()
         if sampler.error is not None:
             samples = sampler.stop()
-            append_resource_samples(sink.path.with_name("resource_samples.csv"), samples)
+            append_resource_samples(resource_path, samples)
             summaries.append(
                 LevelSummary(
                     level=level,
@@ -87,7 +94,7 @@ def run_staircase(
         finally:
             samples = sampler.stop()
             monitor_error = sampler.error
-            append_resource_samples(sink.path.with_name("resource_samples.csv"), samples)
+            append_resource_samples(resource_path, samples)
 
         if not records:
             if interrupted or monitor_error is not None:
@@ -98,6 +105,8 @@ def run_staircase(
         metric_decision = evaluate_stop(summary)
         resource_saturated = sustained_saturation(samples)
         reasons = metric_decision.reasons
+        if interrupted:
+            reasons += ("operator_interrupt",)
         if resource_saturated:
             reasons += ("resource_saturation",)
         if monitor_error is not None:

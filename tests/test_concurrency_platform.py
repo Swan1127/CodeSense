@@ -1005,3 +1005,24 @@ def test_cli_rejects_non32_count_before_importing_app(tmp_path, monkeypatch):
             ]
         )
     assert imported == []
+
+def test_call_kind_reuses_authenticated_slot_without_mutating_default_kind():
+    target = object.__new__(PlatformTarget)
+    target.request_kind = "short"
+    target._users = [{"username": "research_load_01", "password": "x"}]
+    target._session_locks = [threading.Lock()]
+    seen = []
+
+    def fake_call(level, index, credential_index, request_kind):
+        seen.append((level, index, credential_index, request_kind))
+        return SimpleNamespace(request_kind=request_kind)
+
+    target._call_with_session = fake_call
+
+    row = target.call_kind(1, 0, "long")
+
+    assert row.request_kind == "long"
+    assert target.request_kind == "short"
+    assert seen == [(1, 0, 0, "long")]
+    with pytest.raises(ValueError, match="short or long"):
+        target.call_kind(1, 0, "mixed")

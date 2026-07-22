@@ -124,17 +124,24 @@ class PlatformTarget:
         return len(self._sessions)
 
     def call(self, level: int, index: int) -> RequestRecord:
+        return self.call_kind(level, index, self.request_kind)
+
+    def call_kind(self, level: int, index: int, request_kind: str) -> RequestRecord:
+        if request_kind not in {"short", "long"}:
+            raise ValueError("request_kind must be short or long")
         validate_users(self._users, level)
         if not isinstance(index, int) or isinstance(index, bool) or index < 0:
             raise ValueError("request index must be a non-negative integer")
         credential_index = index % level
         with self._session_locks[credential_index]:
-            return self._call_with_session(level, index, credential_index)
+            return self._call_with_session(level, index, credential_index, request_kind)
 
-    def _call_with_session(self, level: int, index: int, credential_index: int) -> RequestRecord:
+    def _call_with_session(
+        self, level: int, index: int, credential_index: int, request_kind: str
+    ) -> RequestRecord:
         started_at = datetime.now(timezone.utc).isoformat()
         started = time.perf_counter()
-        input_text = SHORT_PROMPT if self.request_kind == "short" else LONG_PROMPT
+        input_text = SHORT_PROMPT if request_kind == "short" else LONG_PROMPT
         status_code = 0
         error_code = "platform_error"
         output = ""
@@ -153,9 +160,9 @@ class PlatformTarget:
                 session_id = start_body.get("session_id")
                 error_code = self._claim_session_id(credential_index, session_id)
                 if not error_code:
-                    payload = self._endpoint_payload(session_id)
+                    payload = self._endpoint_payload(session_id, request_kind)
                     endpoint_response, request_error = self._post_json(
-                        self._sessions[credential_index], self._endpoint_path(), payload
+                        self._sessions[credential_index], self._endpoint_path(request_kind), payload
                     )
                     if request_error:
                         error_code, status_code = request_error
@@ -163,7 +170,7 @@ class PlatformTarget:
                         status_code = int(endpoint_response.status_code)
                         endpoint_body, error_code = _decode_response(endpoint_response)
                         if not error_code and 200 <= status_code < 300:
-                            field = "hint" if self.request_kind == "short" else "response"
+                            field = "hint" if request_kind == "short" else "response"
                             value = endpoint_body.get(field)
                             if endpoint_body.get("success") is True and isinstance(value, str):
                                 output = value
@@ -178,7 +185,7 @@ class PlatformTarget:
             level=level,
             request_index=index,
             target="platform",
-            request_kind=self.request_kind,
+            request_kind=request_kind,
             started_at=started_at,
             elapsed_seconds=time.perf_counter() - started,
             success=200 <= status_code < 300 and bool(output) and not error_code,
@@ -310,15 +317,15 @@ class PlatformTarget:
             self._session_id_owners[session_id] = credential_index
         return ""
 
-    def _endpoint_path(self) -> str:
+    def _endpoint_path(self, request_kind: str) -> str:
         return (
             "/thinking/api/stage1/hint"
-            if self.request_kind == "short"
+            if request_kind == "short"
             else "/thinking/api/stage3/chat"
         )
 
-    def _endpoint_payload(self, session_id: object) -> dict[str, object]:
-        if self.request_kind == "short":
+    def _endpoint_payload(self, session_id: object, request_kind: str) -> dict[str, object]:
+        if request_kind == "short":
             return {"session_id": session_id, "description": SHORT_PROMPT}
         return {
             "session_id": session_id,
