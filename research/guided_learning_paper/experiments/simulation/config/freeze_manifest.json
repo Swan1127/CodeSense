@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "frozen_files": {
+    "personas": "4e553f61b16d96c25d804784185ee16309dc18a4c179fc851b6ed304f780b9c7",
+    "tasks": "6cd88f0a7f1666c14a8f69bf393e38e067b024b32ca33258e0c4cf23580d76ae"
+  },
+  "formal_task_ids": [
+    "F01",
+    "F02",
+    "F03",
+    "F04",
+    "F05",
+    "F06",
+    "F07",
+    "F08",
+    "F09",
+    "F10",
+    "F11",
+    "F12"
+  ],
+  "development_task_ids": [
+    "DEV01",
+    "DEV02"
+  ],
+  "ablation_task_ids": [
+    "F01",
+    "F03",
+    "F05",
+    "F07",
+    "F10",
+    "F11"
+  ],
+  "ablation_persona_ids": [
+    "P1_NO_PLAN",
+    "P2_CONCEPT_MISCONCEPTION",
+    "P3_BOUNDARY_OMISSION",
+    "P5_ANSWER_SEEKING"
+  ],
+  "difficulty_policy": "研究者依据认知步骤分层；source_difficulty_level仅作来源记录。"
+}
