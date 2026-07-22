@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -85,3 +87,16 @@ def test_limited_run_is_explicitly_partial():
     selected, status = plan_run(specs, 6)
 
     assert len(selected) == 6
+
+
+def test_script_entrypoint_can_load_repository_modules():
+    result = subprocess.run(
+        [sys.executable, "scripts/run_guided_learning_simulation.py", "--help"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--mode" in result.stdout
