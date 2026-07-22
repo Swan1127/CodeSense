@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a reproducible simulation harness for 648 core and 216 ablation trajectories, with isolated Zhipu roles, deterministic metrics, stratified double-teacher review, and paired statistical analysis.
+**Goal:** Build a reproducible simulation harness for 216 core and 72 ablation trajectories, with isolated Zhipu roles, deterministic metrics, stratified double-teacher review, and paired statistical analysis.
 
 **Architecture:** Add a research-only simulation package that loads frozen task/persona manifests, invokes isolated learner/system/judge clients, adapts the existing `utils.thinking_ai` functions for the full condition, and appends every turn to resumable JSONL. Separate modules compute rule metrics, construct blinded teacher packets, calibrate automatic judging, and generate paired bootstrap tables and figures.
 
@@ -12,8 +12,8 @@
 
 - Use 14 tasks: 2 development tasks and 12 frozen formal tasks; formal tasks are 4 easy, 4 medium, and 4 hard.
 - Use exactly six frozen personas from the approved design.
-- Core matrix is `12 × 6 × 3 × 3 = 648` trajectories for C0, C1, C2.
-- Ablation matrix is `6 × 4 × 3 × 3 = 216` trajectories for A1, A2, A3.
+- Core matrix is `12 × 6 × 3 × 1 = 216` trajectories for C0, C1, C2.
+- Ablation matrix is `6 × 4 × 3 × 1 = 72` trajectories for A1, A2, A3.
 - Each trajectory allows at most 8 system responses.
 - Zhipu is the only model provider; learner, tested system, and judge use separate API contexts and separate prompt files.
 - Formal prompts, task manifest, persona manifest, model, temperature, token limit, retry rule, and scoring rubric are hash-frozen before formal execution.
@@ -353,8 +353,8 @@ git commit -m "feat: implement simulation comparison conditions"
 
 ```python
 def test_matrix_sizes(formal_tasks, personas):
-    assert len(build_core_matrix(formal_tasks, personas)) == 648
-    assert len(build_ablation_matrix(formal_tasks[:6], personas[:4])) == 216
+    assert len(build_core_matrix(formal_tasks, personas)) == 216
+    assert len(build_ablation_matrix(formal_tasks[:6], personas[:4])) == 72
 
 
 def test_resume_skips_only_matching_freeze_hash(tmp_path):
@@ -365,7 +365,7 @@ def test_resume_skips_only_matching_freeze_hash(tmp_path):
 
 - [ ] **Step 2: Implement deterministic matrix construction**
 
-Sort tasks and personas by ID, conditions in C0/C1/C2 or A1/A2/A3 order, and repeats `1,2,3`. Select the six ablation tasks and four personas from IDs frozen in `freeze_manifest.json`; do not take the first rows implicitly.
+Sort tasks and personas by ID, conditions in C0/C1/C2 or A1/A2/A3 order, and formal repeat `1`. Keep repeats `1,2,3` only as an optional extension. Select the six ablation tasks and four personas from IDs frozen in `freeze_manifest.json`; do not take the first rows implicitly.
 
 - [ ] **Step 3: Implement the turn loop**
 
@@ -480,7 +480,7 @@ Test that bootstrap resamples the `(task_id, persona_id)` cluster rather than in
 
 - [ ] **Step 2: Implement paired clustered bootstrap**
 
-Use a fixed recorded NumPy seed and 10,000 resamples. Average three repeats within each task-persona-condition cell, pivot conditions within the same cell, then resample task-persona cells. Report differences, percentile 95% confidence intervals, standardized paired effects, risk differences, and risk ratios as appropriate.
+Use a fixed recorded NumPy seed and 10,000 resamples. Average repeats within each task-persona-condition cell when the optional extension is run; the formal main experiment has one trajectory per cell. Pivot conditions within the same cell, then resample task-persona cells. Report differences, percentile 95% confidence intervals, standardized paired effects, risk differences, and risk ratios as appropriate.
 
 - [ ] **Step 3: Implement agreement and judge calibration**
 
@@ -513,7 +513,7 @@ git commit -m "feat: analyze simulation comparisons and agreement"
 
 - [ ] **Step 1: Write protocol-content tests**
 
-Assert that the protocol contains `虚拟学生不是现实学生`, `同一基础模型`, `两位教师`, `96`, `648`, `216`, `不得调参后保留旧结果`, and all commands below.
+Assert that the protocol contains `虚拟学生不是现实学生`, `同一基础模型`, `两位教师`, `96`, `216`, `72`, `288`, `不得调参后保留旧结果`, and all commands below.
 
 - [ ] **Step 2: Write the exact staged commands**
 
@@ -563,7 +563,7 @@ git commit -m "docs: freeze simulation evaluation protocol"
 
 - [ ] **Step 1: Add failing content tests for RQ5-RQ7 and evidence boundaries**
 
-Require the manuscript to name the 648/216 design, 96-item double-teacher review, same-model limitation, paired analysis unit, and explicit statement that simulation does not establish real learning gains.
+Require the manuscript to name the 216/72 design, 96-item double-teacher review, same-model limitation, paired analysis unit, and explicit statement that simulation does not establish real learning gains.
 
 - [ ] **Step 2: Add methods and results only after final artifacts exist**
 

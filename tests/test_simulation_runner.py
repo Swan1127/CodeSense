@@ -78,8 +78,9 @@ def test_matrix_sizes_and_order_are_exact():
         frozen["ablation_persona_ids"],
     )
 
-    assert len(core) == 648
-    assert len(ablation) == 216
+    assert len(core) == 216
+    assert len(ablation) == 72
+    assert {row.repeat for row in core + ablation} == {1}
     assert core == sorted(
         core,
         key=lambda row: (row.task_id, row.persona_id, row.condition, row.repeat),

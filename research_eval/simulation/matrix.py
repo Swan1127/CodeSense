@@ -6,6 +6,10 @@ from typing import Iterable, Sequence
 from .models import Condition, Persona, TaskCase
 
 
+DEFAULT_FORMAL_REPEATS = (1,)
+EXTENDED_REPEATS = (1, 2, 3)
+
+
 @dataclass(frozen=True, order=True)
 class TrajectorySpec:
     task_id: str
@@ -29,7 +33,9 @@ def build_core_matrix(
     tasks: Sequence[TaskCase],
     personas: Sequence[Persona],
     freeze_hash: str,
+    repeats: Sequence[int] = DEFAULT_FORMAL_REPEATS,
 ) -> list[TrajectorySpec]:
+    repeat_ids = _validated_repeats(repeats)
     formal_tasks = sorted(
         (task for task in tasks if task.split == "formal"),
         key=lambda row: row.task_id,
@@ -46,7 +52,7 @@ def build_core_matrix(
         for task in formal_tasks
         for persona in ordered_personas
         for condition in (Condition.C0, Condition.C1, Condition.C2)
-        for repeat in (1, 2, 3)
+        for repeat in repeat_ids
     ]
 
 
@@ -56,7 +62,9 @@ def build_ablation_matrix(
     freeze_hash: str,
     task_ids: Sequence[str],
     persona_ids: Sequence[str],
+    repeats: Sequence[int] = DEFAULT_FORMAL_REPEATS,
 ) -> list[TrajectorySpec]:
+    repeat_ids = _validated_repeats(repeats)
     if len(task_ids) != 6 or len(set(task_ids)) != 6:
         raise ValueError("ablation matrix requires six explicitly selected task IDs")
     if len(persona_ids) != 4 or len(set(persona_ids)) != 4:
@@ -82,8 +90,15 @@ def build_ablation_matrix(
         for task in ordered_tasks
         for persona in ordered_personas
         for condition in (Condition.A1, Condition.A2, Condition.A3)
-        for repeat in (1, 2, 3)
+        for repeat in repeat_ids
     ]
+
+
+def _validated_repeats(repeats: Sequence[int]) -> tuple[int, ...]:
+    values = tuple(int(value) for value in repeats)
+    if not values or len(set(values)) != len(values) or any(value <= 0 for value in values):
+        raise ValueError("repeats must contain unique positive integers")
+    return values
 
 
 def filter_completed(

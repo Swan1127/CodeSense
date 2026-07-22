@@ -61,9 +61,10 @@ def test_formal_specs_have_exact_core_and_ablation_cardinality():
         "formal", "all", tasks, personas, manifest, "freeze-a"
     )
 
-    assert len(core) == 648
-    assert len(ablation) == 216
-    assert len(all_specs) == 864
+    assert len(core) == 216
+    assert len(ablation) == 72
+    assert len(all_specs) == 288
+    assert {row.repeat for row in all_specs} == {1}
 
 
 def test_development_specs_exclude_formal_tasks_and_use_one_repeat():

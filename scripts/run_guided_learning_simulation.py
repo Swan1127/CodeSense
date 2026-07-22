@@ -106,13 +106,15 @@ def build_experiment_specs(
 
     if mode != "formal":
         raise ValueError(f"unsupported mode: {mode}")
-    core = build_core_matrix(tasks, personas, freeze_hash)
+    formal_repeats = tuple(int(item) for item in manifest.get("formal_repeats", [1]))
+    core = build_core_matrix(tasks, personas, freeze_hash, formal_repeats)
     ablation = build_ablation_matrix(
         tasks,
         personas,
         freeze_hash,
         [str(item) for item in manifest["ablation_task_ids"]],
         [str(item) for item in manifest["ablation_persona_ids"]],
+        formal_repeats,
     )
     if matrix == "core":
         return core
@@ -195,6 +197,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "matrix": args.matrix,
         "freeze_hash": freeze_hash,
         "matrix_size": len(all_specs),
+        "repeat_ids": sorted({spec.repeat for spec in all_specs}),
         "already_finalized": len(all_specs) - len(pending),
         "planned_this_invocation": len(selected),
         "planned_scope": planned_scope,
@@ -260,6 +263,8 @@ def _freeze_hash(manifest: Mapping[str, object]) -> str:
         "frozen_files": manifest.get("frozen_files"),
         "model": manifest.get("model"),
         "role_parameters": manifest.get("role_parameters"),
+        "formal_repeats": manifest.get("formal_repeats"),
+        "extension_repeats": manifest.get("extension_repeats"),
         "ablation_task_ids": manifest.get("ablation_task_ids"),
         "ablation_persona_ids": manifest.get("ablation_persona_ids"),
     }

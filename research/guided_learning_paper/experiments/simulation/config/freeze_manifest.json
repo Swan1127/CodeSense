@@ -48,17 +48,44 @@
       "max_tokens": 400
     },
     "judge": {
-      "temperature": 0.0,
+      "temperature": 0,
       "max_tokens": 800
     },
     "request_timeout_seconds": 120,
     "retry_policy": {
       "max_attempts": 3,
-      "backoff_seconds": [2, 4],
-      "retryable_http_statuses": [408, 425, 429, 500, 502, 503, 504],
-      "retryable_server_codes": ["1305"],
+      "backoff_seconds": [
+        2,
+        4
+      ],
+      "retryable_http_statuses": [
+        408,
+        425,
+        429,
+        500,
+        502,
+        503,
+        504
+      ],
+      "retryable_server_codes": [
+        "1305"
+      ],
       "retry_on_connection_error": true,
       "retry_on_empty_success": true
     }
-  }
+  },
+  "formal_repeats": [
+    1
+  ],
+  "extension_repeats": [
+    1,
+    2,
+    3
+  ],
+  "formal_matrix_size": {
+    "core": 216,
+    "ablation": 72,
+    "total": 288
+  },
+  "repeat_policy_note": "正式主实验每个题目×画像×条件运行1次；3次重复方案仅作为资源允许时的扩展实验。"
 }
