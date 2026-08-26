@@ -136,7 +136,7 @@ def build_feynman_tool_registry(
                 "evidence": _string_schema(MAX_EVIDENCE_CHARS),
             },
             required=["concept", "evidence"],
-        ), teacher_only, _record_learning_evidence, side_effect=True,
+        ), both_roles, _record_learning_evidence, side_effect=True,
     ))
     registry.register(ToolDefinition(
         "generate_buggy_attempt", "Generate a student code attempt for review.",

@@ -211,6 +211,28 @@ def test_learning_evidence_and_completion_are_server_validated():
     assert completion.state_patch == {"status": "complete"}
 
 
+def test_student_agent_can_record_valid_learning_evidence():
+    registry = build_feynman_tool_registry()
+    context = fake_tool_context(AgentRole.STUDENT_AGENT)
+
+    result = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("student-evidence", "record_learning_evidence", {
+            "concept": "循环边界", "evidence": "我能解释为什么循环条件使用 i < n。",
+        }),
+        context,
+    )
+
+    assert result.ok is True
+    assert result.state_patch["learning_evidence"] == [{
+        "concept": "循环边界", "evidence": "我能解释为什么循环条件使用 i < n。",
+    }]
+    assert result.memory_events == [{
+        "event_type": "learning_evidence",
+        "metadata": {"evidence": result.state_patch["learning_evidence"][0]},
+    }]
+
+
 def test_unknown_concept_cannot_create_evidence_or_enable_completion():
     registry = build_feynman_tool_registry()
     state = FeynmanState(session_id=12, phase="code_review", code_review_status="passed")
