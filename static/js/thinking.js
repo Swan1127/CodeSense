@@ -1044,6 +1044,13 @@
         }
     }
 
+    function newAgentRequestId(prefix) {
+        if (window.crypto && window.crypto.randomUUID) {
+            return `${prefix}-${window.crypto.randomUUID()}`;
+        }
+        return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
     function sendTeacherChat() {
         const input = document.getElementById('teacher-chat-input');
         const message = input ? input.value.trim() : '';
@@ -1061,8 +1068,8 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                messages: state.teacherMessages,
-                student_state: collectStudentState()
+                message: message,
+                request_id: newAgentRequestId('teacher')
             })
         }).then(data => {
             hideTypingIndicator('teacher');
@@ -1091,8 +1098,8 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                messages: state.studentMessages,
-                student_state: collectStudentState()
+                message: message,
+                request_id: newAgentRequestId('student')
             })
         }).then(data => {
             hideTypingIndicator('student');
@@ -1101,7 +1108,7 @@
                 state.studentMessages.push({ role: 'assistant', content: data.response });
 
                 // Check if ready for code writing phase
-                if (data.ready_for_code && state.feynmanPhase === 'chat') {
+                if ((data.ui_action === 'show_code_review' || data.ready_for_code) && state.feynmanPhase === 'chat') {
                     setTimeout(() => triggerCodeWritingPhase(), 2000);
                 }
             }
@@ -1120,7 +1127,7 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                messages: state.studentMessages
+                request_id: newAgentRequestId('write')
             })
         }).then(data => {
             hideTypingIndicator('student');
@@ -1197,8 +1204,8 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                buggy_code: state.buggyCode,
-                fixed_code: fixedCode
+                fixed_code: fixedCode,
+                request_id: newAgentRequestId('fix')
             })
         }).then(data => {
             if (data.success) {
