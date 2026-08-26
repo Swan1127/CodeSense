@@ -217,14 +217,19 @@ class AgentLoop:
         if any(name not in _PATCHABLE_STATE_FIELDS for name in clean):
             return None
         for name, value in clean.items():
-            if name == "phase" and value not in _VALID_PHASES:
+            if name == "phase" and (
+                not isinstance(value, str) or value not in _VALID_PHASES
+            ):
                 return None
             if name == "learning_evidence" and not _valid_entries(value, {"concept", "evidence"}):
                 return None
-            if name == "code_review_status" and value not in _VALID_CODE_REVIEW_STATUSES:
+            if name == "code_review_status" and (
+                not isinstance(value, str) or value not in _VALID_CODE_REVIEW_STATUSES
+            ):
                 return None
             if name == "status" and (
-                call.name != "complete_goal"
+                not isinstance(value, str)
+                or call.name != "complete_goal"
                 or self.role is not AgentRole.TEACHER_AGENT
                 or value != "complete"
             ):

@@ -296,6 +296,23 @@ def test_agent_loop_rejects_status_patch_outside_complete_goal():
     assert (result.success, result.error_code, result.state) == (False, "INVALID_STATE_PATCH", {})
 
 
+def test_agent_loop_rejects_unhashable_scalar_state_patch_values_without_persisting_state():
+    for field, expected_state in {
+        "phase": "student_dialogue",
+        "code_review_status": "pending",
+    }.items():
+        memory = FakeMemory()
+        result = make_loop(
+            model=FakeDecisionModel([AgentDecision(tool_calls=[ToolCall("c1", "inspect_learning_state", {})])]),
+            tools=FakeRegistry({"inspect_learning_state": ToolResult(ok=True, state_patch={field: []})}),
+            memory=memory,
+        ).handle_turn("继续", request_id=f"invalid-{field}")
+
+        assert (result.success, result.error_code, result.state) == (False, "INVALID_STATE_PATCH", {})
+        assert getattr(memory.snapshot.state, field) == expected_state
+        assert not any(event[0] == "state_snapshot" for event in memory.events)
+
+
 def test_agent_loop_uses_request_local_patched_state_for_next_model_decision():
     memory = MemoryStore(FakeEventStore())
     model = ContextCheckingModel([
