@@ -1,0 +1,160 @@
+"""Provider-neutral structured decision adapter for Stage 3 agents."""
+
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass
+from typing import Any, Dict, List, Mapping, Optional, Protocol
+
+from .contracts import AgentDecision
+
+
+MAX_MODEL_RESPONSE_CHARS = 12_000
+_FENCED_JSON = re.compile(r"\A```json\s*\n(?P<payload>.*?)\n?```\s*\Z", re.DOTALL)
+
+
+@dataclass(frozen=True)
+class ModelError(Exception):
+    """Sanitized model error suitable for event logging and public error codes."""
+
+    code: str
+
+    def __str__(self) -> str:
+        return self.code
+
+
+class DecisionModel(Protocol):
+    def decide(
+        self,
+        *,
+        system_prompt: str,
+        context: str,
+        tool_specs: List[Dict[str, Any]],
+        tool_results: Optional[List[Dict[str, Any]]] = None,
+    ) -> AgentDecision:
+        raise NotImplementedError
+
+
+def parse_json_decision(response: Any) -> AgentDecision:
+    """Parse one complete JSON decision, optionally in a single JSON fence."""
+    if not isinstance(response, str) or not response.strip():
+        raise ModelError("EMPTY_RESPONSE")
+    if len(response) > MAX_MODEL_RESPONSE_CHARS:
+        raise ModelError("RESPONSE_TOO_LONG")
+
+    text = response.strip()
+    fenced = _FENCED_JSON.fullmatch(text)
+    if fenced:
+        text = fenced.group("payload").strip()
+    elif text.startswith("```") or "```" in text:
+        raise ModelError("INVALID_JSON")
+
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ModelError("INVALID_JSON") from exc
+    if not isinstance(payload, Mapping):
+        raise ModelError("INVALID_DECISION")
+    try:
+        return AgentDecision.from_payload(payload)
+    except (TypeError, ValueError) as exc:
+        raise ModelError("INVALID_DECISION") from exc
+
+
+class StructuredDecisionModel:
+    """Ask the shared client for a JSON decision, with one bounded repair attempt."""
+
+    def __init__(
+        self,
+        client: Any = None,
+        *,
+        fallback_decision: Optional[AgentDecision] = None,
+        fallback_message: str = "请继续说明你的思路。",
+        temperature: float = 0.2,
+        max_tokens: int = 1200,
+    ) -> None:
+        if client is None:
+            from services.llm_client import llm_client
+
+            client = llm_client
+        self.client = client
+        self.fallback_decision = fallback_decision or AgentDecision(message=fallback_message)
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.last_error: Optional[ModelError] = None
+
+    def decide(
+        self,
+        *,
+        system_prompt: str,
+        context: str,
+        tool_specs: List[Dict[str, Any]],
+        tool_results: Optional[List[Dict[str, Any]]] = None,
+    ) -> AgentDecision:
+        self.last_error = None
+        if not self._is_available():
+            return self._fallback("CLIENT_UNAVAILABLE")
+
+        messages = self._decision_messages(system_prompt, context, tool_specs, tool_results)
+        try:
+            response = self.client.chat(
+                messages,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+            return parse_json_decision(response)
+        except ModelError:
+            return self._repair_once(messages)
+        except Exception:
+            return self._fallback("CLIENT_ERROR")
+
+    def _repair_once(self, messages: List[Dict[str, str]]) -> AgentDecision:
+        repair_messages = list(messages)
+        repair_messages.append({
+            "role": "user",
+            "content": "上一次输出无效。只输出符合 schema 的 JSON。",
+        })
+        try:
+            response = self.client.chat(
+                repair_messages,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+            return parse_json_decision(response)
+        except ModelError:
+            return self._fallback("INVALID_DECISION")
+        except Exception:
+            return self._fallback("CLIENT_ERROR")
+
+    def _is_available(self) -> bool:
+        try:
+            return bool(self.client.is_available())
+        except Exception:
+            return False
+
+    def _fallback(self, code: str) -> AgentDecision:
+        self.last_error = ModelError(code)
+        return self.fallback_decision
+
+    @staticmethod
+    def _decision_messages(
+        system_prompt: str,
+        context: str,
+        tool_specs: List[Dict[str, Any]],
+        tool_results: Optional[List[Dict[str, Any]]],
+    ) -> List[Dict[str, str]]:
+        prompt_sections = [
+            "[ROLE_RULES_AND_GOAL]\n" + str(system_prompt),
+            "[ROLE_MEMORY]\n" + str(context),
+            "[TOOL_SCHEMA]\n" + json.dumps(tool_specs, ensure_ascii=False),
+            "Return exactly one JSON object matching the decision schema.",
+        ]
+        for result in tool_results or []:
+            prompt_sections.append(
+                "[TOOL_RESULT]\n" + json.dumps(result, ensure_ascii=False)
+            )
+        return [
+            {"role": "system", "content": "You return structured agent decisions."},
+            {"role": "user", "content": "\n\n".join(prompt_sections)},
+        ]
