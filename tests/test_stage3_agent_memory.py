@@ -174,6 +174,58 @@ def test_student_memory_view_removes_solution_artifact_key_variants():
     assert "比较循环条件和数组长度" in prompt
 
 
+def test_student_memory_view_projects_only_explicitly_safe_artifact_fields():
+    store = MemoryStore(FakeEventStore([
+        event("tool_result", metadata={
+            "artifact": {
+                "public_hint": "从循环条件开始检查。",
+                "internal_notes": "标准答案使用 <=。",
+                "expected_output": "42",
+                "arbitrary_payload": {"correct_code": "return 42;"},
+            }
+        })
+    ]))
+
+    prompt = json.dumps(
+        store.view_for(store.load(12), AgentRole.STUDENT_AGENT).to_prompt_dict(),
+        ensure_ascii=False,
+    )
+
+    assert "从循环条件开始检查。" in prompt
+    assert "internal_notes" not in prompt
+    assert "标准答案使用" not in prompt
+    assert "expected_output" not in prompt
+    assert "42" not in prompt
+    assert "arbitrary_payload" not in prompt
+
+
+def test_failed_tool_result_deduplication_clears_learning_advancement():
+    store = MemoryStore(FakeEventStore([
+        event(
+            "tool_result",
+            role="student_agent",
+            content="工具调用失败。",
+            metadata={
+                "request_id": "request-tool-failure",
+                "ok": False,
+                "error_code": "tool_timeout",
+                "ready_for_code": True,
+                "ui_action": "show_code_review",
+                "state": {"phase": "code_review"},
+            },
+        )
+    ]))
+
+    result = store.find_request_result(12, "request-tool-failure")
+
+    assert result is not None
+    assert result.success is False
+    assert result.error_code == "tool_timeout"
+    assert result.ready_for_code is False
+    assert result.ui_action.value == "continue_chat"
+    assert result.state == {}
+
+
 def test_empty_corrupt_and_legacy_events_degrade_safely():
     store = MemoryStore(FakeEventStore([
         event("state_snapshot", metadata={"state": "not-an-object"}),

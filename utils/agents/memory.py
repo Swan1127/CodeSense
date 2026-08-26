@@ -22,24 +22,15 @@ _COMPLETED_RESULT_EVENTS = {
     "agent_result_snapshot",
     "state_snapshot",
 }
-_STUDENT_HIDDEN_ARTIFACT_KEYS = {
-    "answer",
-    "answers",
-    "bug",
-    "bugs",
-    "buggy_code",
-    "correct_answer",
-    "correct_fix",
-    "corrected_code",
-    "fix",
-    "fix_code",
-    "fixed_code",
-    "hidden_bugs",
-    "reference_answer",
-    "reference_code",
-    "solution",
-    "standard_answer",
-}
+_STUDENT_SAFE_ARTIFACT_FIELDS = frozenset({"public_hint"})
+_ADVANCEMENT_RESULT_FIELDS = frozenset({
+    "success",
+    "agent",
+    "ui_action",
+    "ready_for_code",
+    "state",
+    "error_code",
+})
 
 
 @dataclass
@@ -291,30 +282,30 @@ def _message(record: EventRecord) -> Dict[str, str]:
 
 
 def _student_safe_artifact(item: Dict[str, Any]) -> Dict[str, Any]:
-    return _strip_student_hidden_fields(item)
-
-
-def _strip_student_hidden_fields(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {
-            str(key): _strip_student_hidden_fields(item)
-            for key, item in value.items()
-            if not _is_student_hidden_artifact_key(str(key))
-        }
-    if isinstance(value, list):
-        return [_strip_student_hidden_fields(item) for item in value]
-    return value
-
-
-def _is_student_hidden_artifact_key(key: str) -> bool:
-    normalized = key.lower()
-    if normalized in _STUDENT_HIDDEN_ARTIFACT_KEYS:
-        return True
-    return any(token in normalized for token in ("answer", "solution", "bug", "fix", "reference"))
+    artifact = item.get("artifact")
+    if not isinstance(artifact, Mapping):
+        return {}
+    return {
+        key: artifact[key]
+        for key in _STUDENT_SAFE_ARTIFACT_FIELDS
+        if key in artifact
+    }
 
 
 def _result_from_event(record: EventRecord) -> Optional[AgentResult]:
     payload = record.metadata.get("agent_result") or record.metadata.get("result")
+    if record.event_type == "tool_result" and _tool_result_failed(record):
+        payload_map = payload if isinstance(payload, Mapping) else {}
+        role = _agent_role(payload_map.get("agent") or record.metadata.get("agent") or record.role)
+        if role is None:
+            return None
+        public_content = payload_map.get("public_content", record.metadata.get("public_content", {}))
+        return _failed_result(
+            role=role,
+            response=str(payload_map.get("response", record.content)),
+            public_content=public_content,
+            error_code=payload_map.get("error_code") or record.metadata.get("error_code"),
+        )
     if isinstance(payload, Mapping):
         return _agent_result_from_payload(payload, record)
 
@@ -324,12 +315,11 @@ def _result_from_event(record: EventRecord) -> Optional[AgentResult]:
     public_content = record.metadata.get("public_content", {})
     if not isinstance(public_content, Mapping):
         public_content = {}
-    ui_action = _ui_action(record.metadata.get("ui_action"))
     return AgentResult(
         success=True,
         agent=role,
         response=record.content or str(public_content.get("response", "")),
-        ui_action=ui_action,
+        ui_action=_ui_action(record.metadata.get("ui_action")),
         ready_for_code=bool(record.metadata.get("ready_for_code", False)),
         state=dict(record.metadata.get("state", {})) if isinstance(record.metadata.get("state"), Mapping) else {},
         public_content=dict(public_content),
@@ -344,8 +334,16 @@ def _agent_result_from_payload(payload: Mapping[str, Any], record: EventRecord) 
     public_content = payload.get("public_content", {})
     if not isinstance(public_content, Mapping):
         public_content = {}
+    success = bool(payload.get("success", True))
+    if not success:
+        return _failed_result(
+            role=role,
+            response=str(payload.get("response", record.content)),
+            public_content=public_content,
+            error_code=payload.get("error_code") or record.metadata.get("error_code"),
+        )
     return AgentResult(
-        success=bool(payload.get("success", True)),
+        success=True,
         agent=role,
         response=str(payload.get("response", record.content)),
         ui_action=_ui_action(payload.get("ui_action")),
@@ -353,6 +351,42 @@ def _agent_result_from_payload(payload: Mapping[str, Any], record: EventRecord) 
         state=dict(payload.get("state", {})) if isinstance(payload.get("state"), Mapping) else {},
         public_content=dict(public_content),
         error_code=payload.get("error_code"),
+    )
+
+
+def _tool_result_failed(record: EventRecord) -> bool:
+    metadata = record.metadata
+    return (
+        metadata.get("ok") is False
+        or metadata.get("success") is False
+        or bool(metadata.get("error_code"))
+    )
+
+
+def _failed_result(
+    role: AgentRole,
+    response: str,
+    public_content: Any,
+    error_code: Any,
+) -> AgentResult:
+    safe_public_content = (
+        {
+            str(key): value
+            for key, value in public_content.items()
+            if str(key) not in _ADVANCEMENT_RESULT_FIELDS
+        }
+        if isinstance(public_content, Mapping)
+        else {}
+    )
+    return AgentResult(
+        success=False,
+        agent=role,
+        response=response,
+        ui_action=UIAction.CONTINUE_CHAT,
+        ready_for_code=False,
+        state={},
+        public_content=safe_public_content,
+        error_code=str(error_code) if error_code else None,
     )
 
 
