@@ -7,11 +7,39 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Protocol
 
-from .contracts import AgentDecision
+from .contracts import AgentDecision, GoalStatus, UIAction
 
 
 MAX_MODEL_RESPONSE_CHARS = 12_000
 _FENCED_JSON = re.compile(r"\A```json\s*\n(?P<payload>.*?)\n?```\s*\Z", re.DOTALL)
+_REPAIRABLE_ERRORS = frozenset({"INVALID_JSON", "INVALID_DECISION"})
+_DECISION_SCHEMA = {
+    "message": {"type": "string", "default": ""},
+    "tool_calls": {
+        "type": "array",
+        "default": [],
+        "items": {
+            "type": "object",
+            "required": ["id", "name", "arguments"],
+            "properties": {
+                "id": {"type": "string"},
+                "name": {"type": "string"},
+                "arguments": {"type": "object"},
+            },
+        },
+    },
+    "goal_status": {
+        "type": "string",
+        "enum": [status.value for status in GoalStatus],
+        "default": GoalStatus.IN_PROGRESS.value,
+    },
+    "ui_action": {
+        "type": "string",
+        "enum": [action.value for action in UIAction],
+        "default": UIAction.CONTINUE_CHAT.value,
+    },
+}
+_DECISION_SCHEMA_TEXT = json.dumps(_DECISION_SCHEMA, ensure_ascii=False)
 
 
 @dataclass(frozen=True)
@@ -104,7 +132,9 @@ class StructuredDecisionModel:
                 max_tokens=self.max_tokens,
             )
             return parse_json_decision(response)
-        except ModelError:
+        except ModelError as error:
+            if error.code not in _REPAIRABLE_ERRORS:
+                return self._fallback(error.code)
             return self._repair_once(messages)
         except Exception:
             return self._fallback("CLIENT_ERROR")
@@ -113,7 +143,10 @@ class StructuredDecisionModel:
         repair_messages = list(messages)
         repair_messages.append({
             "role": "user",
-            "content": "上一次输出无效。只输出符合 schema 的 JSON。",
+            "content": (
+                "上一次输出无效。只输出符合 schema 的 JSON。\n\n"
+                "[DECISION_SCHEMA]\n" + _DECISION_SCHEMA_TEXT
+            ),
         })
         try:
             response = self.client.chat(
@@ -148,7 +181,8 @@ class StructuredDecisionModel:
             "[ROLE_RULES_AND_GOAL]\n" + str(system_prompt),
             "[ROLE_MEMORY]\n" + str(context),
             "[TOOL_SCHEMA]\n" + json.dumps(tool_specs, ensure_ascii=False),
-            "Return exactly one JSON object matching the decision schema.",
+            "[DECISION_SCHEMA]\n" + _DECISION_SCHEMA_TEXT,
+            "Return exactly one JSON object matching [DECISION_SCHEMA].",
         ]
         for result in tool_results or []:
             prompt_sections.append(

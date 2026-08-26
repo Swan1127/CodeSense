@@ -157,6 +157,18 @@ def test_structured_model_repairs_invalid_json_once():
     assert "只输出符合 schema 的 JSON" in client.calls[1][-1]["content"]
 
 
+@pytest.mark.parametrize("response", [None, ""])
+def test_structured_model_empty_response_falls_back_without_repair(response):
+    client = FakeClient([response, '{"message":"must not be requested"}'])
+    model = StructuredDecisionModel(client, fallback_message="请先描述你卡住的地方。")
+
+    decision = model.decide(system_prompt="system", context="context", tool_specs=[])
+
+    assert decision.message == "请先描述你卡住的地方。"
+    assert model.last_error == ModelError("EMPTY_RESPONSE")
+    assert len(client.calls) == 1
+
+
 def test_structured_model_unavailable_client_returns_safe_fallback():
     model = StructuredDecisionModel(
         FakeClient([], available=False), fallback_message="请换一种方式说明你的想法。"
@@ -168,7 +180,7 @@ def test_structured_model_unavailable_client_returns_safe_fallback():
     assert model.last_error == ModelError("CLIENT_UNAVAILABLE")
 
 
-@pytest.mark.parametrize("response", [None, "", '{"ui_action":"unknown"}', '{"tool_calls":[{"id":"c1","name":"inspect","arguments":[]}]}'])
+@pytest.mark.parametrize("response", ['{"ui_action":"unknown"}', '{"tool_calls":[{"id":"c1","name":"inspect","arguments":[]}]}'])
 def test_structured_model_invalid_responses_fall_back_with_sanitized_error(response):
     secret = "raw-model-output-must-not-leak"
     model = StructuredDecisionModel(FakeClient([response, secret]))
@@ -179,6 +191,24 @@ def test_structured_model_invalid_responses_fall_back_with_sanitized_error(respo
     assert model.last_error is not None
     assert model.last_error.code == "INVALID_DECISION"
     assert secret not in str(model.last_error)
+
+
+def test_structured_model_prompts_include_authoritative_decision_schema():
+    client = FakeClient(["not json", '{"message":"修复后"}'])
+    model = StructuredDecisionModel(client)
+
+    model.decide(system_prompt="system", context="context", tool_specs=[])
+
+    for prompt in (client.calls[0][-1]["content"], client.calls[1][-1]["content"]):
+        assert "[DECISION_SCHEMA]" in prompt
+        assert '"in_progress"' in prompt
+        assert '"complete"' in prompt
+        assert '"blocked"' in prompt
+        assert '"continue_chat"' in prompt
+        assert '"show_code_review"' in prompt
+        assert '"tool_calls"' in prompt
+        assert '"arguments"' in prompt
+        assert '"default": []' in prompt
 
 
 def test_parse_json_decision_rejects_mixed_text_and_oversized_response():
