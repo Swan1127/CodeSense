@@ -18,6 +18,7 @@ from .memory import EventRecord, EventStore, MemorySnapshot, MemoryStore, SqlAlc
 from .model import DecisionModel, StructuredDecisionModel
 from .tools import (
     BuggyCodeGenerator,
+    FixEvaluator,
     ToolRegistry,
     build_feynman_tool_registry,
 )
@@ -148,14 +149,15 @@ class DualFeynmanRuntime:
         if not isinstance(buggy_code, str):
             return AgentResult(success=False, agent=AgentRole.STUDENT_AGENT, error_code="BUGGY_ATTEMPT_FAILED")
         content = self._tool_public_content(request_id, "generate_buggy_attempt")
+        message = str(content.get("message", "我写了一版代码，请帮我检查。"))
         return AgentResult(
             success=True,
             agent=AgentRole.STUDENT_AGENT,
-            response=str(content.get("message", "我写了一版代码，请帮我检查。")),
+            response=message,
             ui_action=UIAction.SHOW_CODE_REVIEW,
             ready_for_code=True,
             state=result.state,
-            public_content={"buggy_code": buggy_code},
+            public_content={"buggy_code": buggy_code, "message": message},
         )
 
     def evaluate_fix(self, fixed_code: str, *, request_id: str) -> AgentResult:
@@ -228,7 +230,6 @@ class DualFeynmanRuntime:
                 "description": str(getattr(self.assignment, "description", "") or ""),
             },
             "key_concepts": self._key_concepts(),
-            "algorithm_summary": self._algorithm_summary(),
             "user_explanations": list(snapshot.student_messages),
             "role_memory": {"agent_state": asdict(view.agent_state), "messages": list(view.messages)},
         }
@@ -237,11 +238,6 @@ class DualFeynmanRuntime:
         getter = getattr(self.preset, "get_key_steps", None)
         raw = getter() if callable(getter) else getattr(self.preset, "key_steps", [])
         return [item.strip() for item in raw if isinstance(item, str) and item.strip()] if isinstance(raw, list) else []
-
-    def _algorithm_summary(self) -> str:
-        getter = getattr(self.preset, "get_algorithm_summary", None)
-        value = getter() if callable(getter) else getattr(self.preset, "algorithm_summary", "")
-        return str(value or "")
 
     def _artifact_for(self, request_id: str) -> Optional[Mapping[str, Any]]:
         for event in reversed(self._events()):

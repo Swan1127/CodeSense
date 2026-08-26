@@ -82,7 +82,7 @@ class FakeAssignment:
 class FakePreset:
     reference_code: str = "标准答案：return 0;"
     key_steps: list = field(default_factory=lambda: ["输入范围", "循环边界"])
-    algorithm_summary: str = "先确定循环的不变量。"
+    algorithm_summary: str = "标准答案派生摘要：循环从 i=0 开始。"
 
     def get_key_steps(self):
         return list(self.key_steps)
@@ -395,7 +395,7 @@ def test_agent_loop_durably_persists_valid_patch_before_later_model_failure():
     assert memory.load(12).state.phase == "code_review"
 
 
-def test_student_runtime_exposes_student_goal_but_not_reference_code():
+def test_feynman_student_runtime_exposes_student_goal_but_not_reference_code():
     runtime = make_feynman_runtime(fake_model=FakeDecisionModel([
         AgentDecision(message="你能解释一下输入范围吗？")
     ]))
@@ -409,6 +409,7 @@ def test_student_runtime_exposes_student_goal_but_not_reference_code():
     context = runtime.model.calls[0]["context"]
     assert "teach_and_repair" in context
     assert "标准答案" not in context
+    assert "标准答案派生摘要" not in context
 
 
 def test_feynman_runtime_keeps_hidden_bugs_out_of_student_context_and_public_code_result():
@@ -426,16 +427,18 @@ def test_feynman_runtime_keeps_hidden_bugs_out_of_student_context_and_public_cod
 
     code_result = runtime.generate_buggy_attempt(request_id="r-code-1")
     context = runtime.model.calls[0]["context"]
-    exposed = str(code_result.to_public_dict())
+    data = code_result.to_public_dict()
+    exposed = str(data)
     assert "隐藏 Bug" not in context
     assert "正确修复" not in context
     assert "隐藏 Bug" not in exposed
     assert "正确修复" not in exposed
+    assert data["message"] == "我写了一版代码，请帮我检查。"
     artifact_event = next(event for event in runtime.event_store.events if event.event_type == "buggy_attempt")
     assert artifact_event.metadata["artifact"]["bugs"][0]["fix"] == "正确修复：i < n"
 
 
-def test_failed_fix_does_not_complete_session():
+def test_feynman_failed_fix_does_not_complete_session():
     runtime = make_feynman_runtime(
         buggy_code_generator=lambda context: {
             "buggy_code": "while (i <= n) { ++i; }", "bugs": [], "message": "检查一下。",
@@ -452,7 +455,7 @@ def test_failed_fix_does_not_complete_session():
     assert not any(event.event_type == "stage_pass" for event in runtime.event_store.events)
 
 
-def test_successful_fix_marks_session_completed_only_after_evaluation():
+def test_feynman_successful_fix_marks_session_completed_only_after_evaluation():
     runtime = make_feynman_runtime(
         buggy_code_generator=lambda context: {
             "buggy_code": "while (i <= n) { ++i; }", "bugs": [], "message": "检查一下。",
