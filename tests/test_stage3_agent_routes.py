@@ -3,6 +3,7 @@ import json
 import pytest
 
 from app import create_app
+from config import TestingConfig as _TestingConfig
 from models import (
     Assignment,
     AssignmentThinkingPreset,
@@ -12,7 +13,7 @@ from models import (
     db,
 )
 from routes import thinking as thinking_routes
-from utils.agents.contracts import AgentResult, AgentRole, UIAction
+from utils.agents.contracts import AgentDecision, AgentResult, AgentRole, UIAction
 from utils.agents.feynman import FeynmanCallbacks, build_feynman_runtime
 
 
@@ -32,14 +33,23 @@ class FakeRuntime:
         return self.fix_result
 
 
+class RecordingModel:
+    def __init__(self, message="我想知道循环何时结束。"):
+        self.message = message
+        self.calls = 0
+
+    def decide(self, **kwargs):
+        self.calls += 1
+        return AgentDecision(message=self.message)
+
+
 @pytest.fixture
-def stage3_context(tmp_path):
+def stage3_context(tmp_path, monkeypatch):
+    database_path = tmp_path / "stage3.db"
+    monkeypatch.setattr(_TestingConfig, "SQLALCHEMY_DATABASE_URI", f"sqlite:///{database_path}")
     app = create_app("testing")
-    app.config.update(
-        TESTING=True,
-        SQLALCHEMY_DATABASE_URI=f"sqlite:///{tmp_path / 'stage3.db'}",
-    )
     with app.app_context():
+        assert db.engine.url.database == str(database_path)
         db.create_all()
         student = User(student_id="student-1", username="student-1", usertype="学生")
         student.password = "password"
@@ -159,6 +169,72 @@ def test_write_code_persists_hidden_bugs_and_deduplicates_request(stage3_context
         events = ThinkingStageLog.query.filter_by(session_id=session_id, stage=3).all()
         artifacts = [event.get_metadata()["artifact"] for event in events if event.event_type == "buggy_attempt"]
     assert artifacts == [{"buggy_code": "while (i <= n) { ++i; }", "bugs": [{"description": "隐藏 Bug", "fix": "正确修复"}]}]
+
+
+def test_stage3_teach_retries_completed_request_before_repetition_guard(stage3_context, monkeypatch):
+    _, client, session_id = stage3_context
+    model = RecordingModel()
+
+    def runtime_factory(session, assignment, preset):
+        return build_feynman_runtime(session, assignment, preset, model=model)
+
+    monkeypatch.setattr(thinking_routes, "build_feynman_runtime", runtime_factory)
+    payload = {"session_id": session_id, "message": "循环结束条件需要判断。", "request_id": "teach-retry-1"}
+    first = client.post("/thinking/api/stage3/teach", json=payload)
+    second = client.post("/thinking/api/stage3/teach", json=payload)
+
+    assert first.status_code == second.status_code == 200
+    assert first.json == second.json
+    assert model.calls == 1
+
+
+def test_start_session_uses_public_tool_result_without_internal_buggy_attempt(stage3_context, monkeypatch):
+    _, client, session_id = stage3_context
+
+    def runtime_factory(session, assignment, preset):
+        return build_feynman_runtime(
+            session,
+            assignment,
+            preset,
+            callbacks=FeynmanCallbacks(buggy_code_generator=lambda context: {
+                "buggy_code": "while (i <= n) { ++i; }",
+                "bugs": [{"description": "隐藏 Bug", "fix": "正确修复"}],
+                "message": "内部生成说明，不应显示。",
+            }),
+        )
+
+    monkeypatch.setattr(thinking_routes, "build_feynman_runtime", runtime_factory)
+    client.post("/thinking/api/stage3/write_code", json={"session_id": session_id, "request_id": "restore-code-1"})
+    response = client.post("/thinking/api/start_session", json={"assignment_id": 1})
+
+    assert response.status_code == 200
+    assert response.json["buggy_code_info"]["buggy_code"] == "while (i <= n) { ++i; }"
+    student_contents = [item["content"] for item in response.json["student_history"]]
+    assert student_contents.count("我写了一版代码，请帮我检查。") == 1
+    assert "内部生成说明，不应显示。" not in student_contents
+
+
+def test_runtime_user_events_are_attributed_to_their_terminal_agent(stage3_context, monkeypatch):
+    app, client, session_id = stage3_context
+    with app.app_context():
+        db.session.add_all([
+            ThinkingStageLog(session_id=session_id, stage=3, event_type="agent_user_message", role="student", content="老师面板提问", metadata_json=json.dumps({"request_id": "teacher-r", "input_kind": "chat"})),
+            ThinkingStageLog(session_id=session_id, stage=3, event_type="agent_message", role="teacher_agent", content="老师回答", metadata_json=json.dumps({"request_id": "teacher-r"})),
+            ThinkingStageLog(session_id=session_id, stage=3, event_type="agent_user_message", role="student", content="学生面板提问", metadata_json=json.dumps({"request_id": "student-r", "input_kind": "chat"})),
+            ThinkingStageLog(session_id=session_id, stage=3, event_type="agent_message", role="student_agent", content="学生回答", metadata_json=json.dumps({"request_id": "student-r"})),
+        ])
+        db.session.commit()
+
+    restored = client.post("/thinking/api/start_session", json={"assignment_id": 1})
+    assert [item["content"] for item in restored.json["teacher_history"]] == ["老师面板提问", "老师回答"]
+    assert [item["content"] for item in restored.json["student_history"]] == ["学生面板提问", "学生回答"]
+
+    fake_runtime = FakeRuntime(chat_result=AgentResult(success=True, agent=AgentRole.STUDENT_AGENT, response="继续解释。"))
+    monkeypatch.setattr(thinking_routes, "build_feynman_runtime", lambda *args, **kwargs: fake_runtime)
+    response = client.post("/thinking/api/stage3/teach", json={"session_id": session_id, "message": "老师面板提问", "request_id": "student-new"})
+
+    assert response.status_code == 200
+    assert fake_runtime.chat_messages == [(AgentRole.STUDENT_AGENT, "老师面板提问", "student-new")]
 
 
 @pytest.mark.parametrize("correct", [False, True])

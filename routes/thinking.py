@@ -15,12 +15,11 @@ from models import (db, Assignment, AssignmentThinkingPreset,
 from utils.auth import login_required
 from utils.thinking_ai import (
     generate_preset, evaluate_description, generate_stage1_hint,
-    generate_stage2_hint, companion_agent_chat, teacher_agent_chat,
-    student_agent_chat, student_agent_write_code, evaluate_feynman_code_fix,
-    sanitize_response
+    generate_stage2_hint, companion_agent_chat, sanitize_response
 )
 from utils.agents.contracts import AgentRole
 from utils.agents.feynman import build_feynman_runtime
+from utils.agents.memory import MemoryStore, SqlAlchemyEventStore
 
 thinking = Blueprint('thinking', __name__, url_prefix='/thinking')
 
@@ -49,6 +48,44 @@ def _stage3_runtime(data: dict):
     if not assignment or not preset:
         return thinking_session, None
     return thinking_session, build_feynman_runtime(thinking_session, assignment, preset)
+
+
+def _stage3_request_result(session_id: int, request_id: str):
+    return MemoryStore(SqlAlchemyEventStore()).find_request_result(session_id, request_id)
+
+
+def _runtime_role_by_request(logs):
+    roles = {}
+    for log in logs:
+        if log.event_type != 'agent_message' or log.role not in ('teacher_agent', 'student_agent'):
+            continue
+        request_id = (log.get_metadata() or {}).get('request_id')
+        if request_id:
+            roles[str(request_id)] = log.role
+    return roles
+
+
+def _public_code_review(log):
+    metadata = log.get_metadata() or {}
+    result_payload = metadata.get('agent_result') or {}
+    public_content = metadata.get('public_content') or (
+        result_payload.get('public_content') if isinstance(result_payload, dict) else {}
+    ) or {}
+    if not isinstance(public_content, dict):
+        return None
+    tool_call = metadata.get('tool_call') or {}
+    generated_by_tool = log.event_type == 'tool_result' and (
+        not tool_call or (isinstance(tool_call, dict) and tool_call.get('name') == 'generate_buggy_attempt')
+    )
+    generated_by_result = log.event_type == 'agent_message' and log.role == 'student_agent'
+    buggy_code = public_content.get('buggy_code')
+    if not (generated_by_tool or generated_by_result) or not isinstance(buggy_code, str):
+        return None
+    return {
+        'request_id': str(metadata.get('request_id') or ''),
+        'buggy_code': buggy_code,
+        'message': str(public_content.get('message') or log.content or ''),
+    }
 
 
 def _check_and_trigger_stale_preset(preset, assignment_id):
@@ -209,6 +246,9 @@ def start_session():
             teacher_history = []
             student_history = []
             buggy_code_info = None
+            runtime_roles = _runtime_role_by_request(stage3_logs)
+            restored_code_requests = set()
+            unattributed_runtime_users = []
 
             for log in stage3_logs:
                 if log.event_type == 'chat':
@@ -223,25 +263,41 @@ def start_session():
                             'role': 'user' if log.role == 'student' else 'assistant',
                             'content': log.content
                         })
-                elif log.event_type in ('write_code', 'tool_result', 'buggy_attempt'):
+                elif log.event_type == 'write_code':
                     meta = log.get_metadata() or {}
-                    artifact = meta.get('artifact') or {}
-                    public_content = meta.get('public_content') or {}
-                    buggy_code = artifact.get('buggy_code') or public_content.get('buggy_code') or meta.get('buggy_code', '')
-                    if buggy_code or log.event_type == 'write_code':
-                        message = public_content.get('message', log.content)
-                        buggy_code_info = {'buggy_code': buggy_code, 'message': message}
-                        student_history.append({'role': 'assistant', 'content': message})
+                    buggy_code_info = {'buggy_code': meta.get('buggy_code', ''), 'message': log.content}
+                    student_history.append({'role': 'assistant', 'content': log.content})
                 elif log.event_type == 'agent_user_message':
+                    role = runtime_roles.get(str((log.get_metadata() or {}).get('request_id') or ''))
                     message = {'role': 'user', 'content': log.content}
-                    teacher_history.append(message)
-                    student_history.append(message)
+                    if role == 'teacher_agent':
+                        teacher_history.append(message)
+                    elif role == 'student_agent':
+                        student_history.append(message)
+                    else:
+                        unattributed_runtime_users.append(message)
                 elif log.event_type == 'agent_message':
+                    code_review = _public_code_review(log)
+                    if code_review and code_review['request_id'] not in restored_code_requests:
+                        restored_code_requests.add(code_review['request_id'])
+                        buggy_code_info = {'buggy_code': code_review['buggy_code'], 'message': code_review['message']}
+                        student_history.append({'role': 'assistant', 'content': code_review['message']})
+                        continue
                     message = {'role': 'assistant', 'content': log.content}
                     if log.role == 'teacher_agent':
+                        teacher_history.extend(unattributed_runtime_users)
+                        unattributed_runtime_users = []
                         teacher_history.append(message)
                     elif log.role == 'student_agent':
+                        student_history.extend(unattributed_runtime_users)
+                        unattributed_runtime_users = []
                         student_history.append(message)
+                elif log.event_type == 'tool_result':
+                    code_review = _public_code_review(log)
+                    if code_review:
+                        restored_code_requests.add(code_review['request_id'])
+                        buggy_code_info = {'buggy_code': code_review['buggy_code'], 'message': code_review['message']}
+                        student_history.append({'role': 'assistant', 'content': code_review['message']})
                 elif log.event_type == 'fix_code':
                     student_history.append({
                         'role': 'user',
@@ -761,17 +817,32 @@ def stage3_student_teach():
             return jsonify({'error': '学习数据尚未准备好'}), 503
 
         # 验证学生发给小明的解答质量（防止刷屏/复读绕过）
+        request_id = _request_id(data)
+        completed = _stage3_request_result(ts.id, request_id)
+        if completed is not None:
+            return jsonify(completed.to_public_dict())
         cleaned_current = "".join(message.split())
         if len(cleaned_current) < 5:
             return jsonify({'success': True, 'response': '呃，你说的这也太简短了（需要5字以上），我感觉完全听不明白。能稍微详细一点解释吗？', 'ready_for_code': False})
         import difflib
-        for log in ThinkingStageLog.query.filter_by(session_id=ts.id, stage=3, role='student').all():
+        history_logs = ThinkingStageLog.query.filter_by(session_id=ts.id, stage=3).all()
+        runtime_roles = _runtime_role_by_request(history_logs)
+        for log in history_logs:
+            if log.role != 'student':
+                continue
             meta = log.get_metadata() or {}
-            if log.event_type != 'agent_user_message' and not (log.event_type == 'chat' and meta.get('panel') == 'student_agent'):
+            if meta.get('request_id') == request_id:
+                continue
+            is_runtime_student_message = (
+                log.event_type == 'agent_user_message' and
+                runtime_roles.get(str(meta.get('request_id') or '')) == 'student_agent'
+            )
+            is_legacy_student_message = log.event_type == 'chat' and meta.get('panel') == 'student_agent'
+            if not (is_runtime_student_message or is_legacy_student_message):
                 continue
             if difflib.SequenceMatcher(None, "".join(log.content.split()).lower(), cleaned_current.lower()).ratio() > 0.8:
                 return jsonify({'success': True, 'response': '咦，这句话你刚才已经解释过一遍了呀！能不能换个思路，或者用别的话跟我说一下？', 'ready_for_code': False})
-        result = runtime.handle_chat(AgentRole.STUDENT_AGENT, message, request_id=_request_id(data))
+        result = runtime.handle_chat(AgentRole.STUDENT_AGENT, message, request_id=request_id)
         return jsonify(result.to_public_dict())
     except Exception:
         db.session.rollback()
