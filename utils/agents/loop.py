@@ -20,6 +20,9 @@ _PUBLIC_STATE_FIELDS = frozenset({
     "goal", "phase", "teacher_rounds", "student_rounds", "learning_evidence",
     "misconceptions", "code_review_status", "status",
 })
+_PATCHABLE_STATE_FIELDS = frozenset({"phase", "learning_evidence", "code_review_status", "status"})
+_VALID_PHASES = frozenset({"student_dialogue", "code_review"})
+_VALID_CODE_REVIEW_STATUSES = frozenset({"pending", "passed", "failed", "approved", "complete"})
 
 
 class AgentLoopError(Exception):
@@ -86,7 +89,7 @@ class AgentLoop:
             tool_results: List[Dict[str, Any]] = []
 
             for _ in range(self.config.max_model_steps):
-                decision = self._decide(input_kind, tool_results, request_id)
+                decision = self._decide(input_kind, tool_results, request_id, snapshot)
                 if isinstance(decision, AgentResult):
                     return decision
                 self.memory.append_event(
@@ -97,23 +100,41 @@ class AgentLoop:
                     return self._finish_public_response(decision, snapshot, request_id)
 
                 for call in decision.tool_calls:
-                    result = self._execute_tool(call, context, request_id)
-                    if not result.ok:
-                        return self._failure(result.error_code or "TOOL_EXECUTION_FAILED", request_id)
-                    tool_results.append(_tool_result_for_model(call, result))
-                    self._apply_state_patch(snapshot, result.state_patch)
-                    if result.public_content.get("ui_action") == UIAction.SHOW_CODE_REVIEW.value:
-                        return self._finish_code_review(result, snapshot, request_id)
+                    executions = self._execute_tool(call, context)
+                    for index, result in enumerate(executions):
+                        terminal_failure = not result.ok and index == len(executions) - 1
+                        if not result.ok:
+                            self._persist_tool_result(call, result, request_id, terminal=terminal_failure)
+                            if terminal_failure:
+                                return self._failure(result.error_code or "TOOL_EXECUTION_FAILED", request_id)
+                            continue
+                        patch = self._validated_state_patch(call, result.state_patch)
+                        if patch is None:
+                            invalid = ToolResult(
+                                ok=False,
+                                error_code="INVALID_STATE_PATCH",
+                                memory_events=list(result.memory_events),
+                            )
+                            self._persist_tool_result(call, invalid, request_id, terminal=True)
+                            return self._failure("INVALID_STATE_PATCH", request_id)
+                        self._apply_state_patch(snapshot, patch)
+                        terminal_success = result.public_content.get("ui_action") == UIAction.SHOW_CODE_REVIEW.value
+                        self._persist_tool_result(call, result, request_id, patch=patch, terminal=terminal_success)
+                        if patch and not terminal_success:
+                            self._persist_state_checkpoint(snapshot, request_id)
+                        tool_results.append(_tool_result_for_model(call, result))
+                        if terminal_success:
+                            return self._finish_code_review(result, snapshot, request_id)
 
             return self._failure("MAX_AGENT_STEPS", request_id)
 
     def _decide(
-        self, input_kind: str, tool_results: List[Dict[str, Any]], request_id: str,
+        self, input_kind: str, tool_results: List[Dict[str, Any]], request_id: str, snapshot: MemorySnapshot,
     ) -> AgentDecision | AgentResult:
         try:
             decision = self.model.decide(
                 system_prompt=self.spec.system_prompt,
-                context=self._build_context(input_kind=input_kind),
+                context=self._build_context(snapshot, input_kind=input_kind),
                 tool_specs=self.tools.specs_for(self.role),
                 tool_results=tool_results,
             )
@@ -128,8 +149,7 @@ class AgentLoop:
             return self._failure("INVALID_DECISION", request_id=request_id)
         return decision
 
-    def _build_context(self, *, input_kind: str) -> str:
-        snapshot = self.memory.load(self.session_id)
+    def _build_context(self, snapshot: MemorySnapshot, *, input_kind: str) -> str:
         prompt = self.memory.view_for(snapshot, self.role).to_prompt_dict()
         prompt["input_kind"] = input_kind
         return json.dumps(prompt, ensure_ascii=False)
@@ -145,23 +165,26 @@ class AgentLoop:
             reference_code=self.spec.reference_code,
         )
 
-    def _execute_tool(self, call: ToolCall, context: ToolContext, request_id: str) -> ToolResult:
+    def _execute_tool(self, call: ToolCall, context: ToolContext) -> List[ToolResult]:
         result = self.tools.execute(self.role, call, context)
-        self._persist_tool_result(call, result, request_id)
         if result.ok or not result.retryable or call.name not in _READ_ONLY_TOOLS:
-            return result
+            return [result]
         retry = self.tools.execute(self.role, call, context)
-        self._persist_tool_result(call, retry, request_id)
-        return retry
+        return [result, retry]
 
-    def _persist_tool_result(self, call: ToolCall, result: ToolResult, request_id: str) -> None:
+    def _persist_tool_result(
+        self, call: ToolCall, result: ToolResult, request_id: str, *,
+        patch: Optional[Dict[str, Any]] = None, terminal: bool = False,
+    ) -> None:
         metadata = {
             "request_id": request_id,
             "tool_call": call.to_payload(),
             "ok": result.ok,
             "error_code": result.error_code,
+            "terminal": terminal,
+            "ui_action": result.public_content.get("ui_action"),
             "public_content": dict(result.public_content),
-            "state_patch": dict(result.state_patch),
+            "state_patch": dict(patch or {}),
         }
         if not result.ok:
             metadata["agent_result"] = _result_payload(
@@ -187,12 +210,42 @@ class AgentLoop:
                 },
             )
 
-    def _apply_state_patch(self, snapshot: MemorySnapshot, patch: Mapping[str, Any]) -> None:
+    def _validated_state_patch(self, call: ToolCall, patch: Any) -> Optional[Dict[str, Any]]:
         if not isinstance(patch, Mapping):
-            return
+            return None
+        clean = dict(patch)
+        if any(name not in _PATCHABLE_STATE_FIELDS for name in clean):
+            return None
+        for name, value in clean.items():
+            if name == "phase" and value not in _VALID_PHASES:
+                return None
+            if name == "learning_evidence" and not _valid_entries(value, {"concept", "evidence"}):
+                return None
+            if name == "code_review_status" and value not in _VALID_CODE_REVIEW_STATUSES:
+                return None
+            if name == "status" and (
+                call.name != "complete_goal"
+                or self.role is not AgentRole.TEACHER_AGENT
+                or value != "complete"
+            ):
+                return None
+        return clean
+
+    @staticmethod
+    def _apply_state_patch(snapshot: MemorySnapshot, patch: Mapping[str, Any]) -> None:
         for name, value in patch.items():
-            if hasattr(snapshot.state, name):
-                setattr(snapshot.state, name, value)
+            setattr(snapshot.state, name, value)
+
+    def _persist_state_checkpoint(self, snapshot: MemorySnapshot, request_id: str) -> None:
+        self.memory.append_event(
+            self.session_id, "state_snapshot", self.role.value,
+            metadata={
+                "request_id": request_id,
+                "terminal": False,
+                "state": asdict(snapshot.state),
+                "agent_states": {role.value: asdict(state) for role, state in snapshot.agent_states.items()},
+            },
+        )
 
     def _finish_public_response(
         self, decision: AgentDecision, snapshot: MemorySnapshot, request_id: str,
@@ -279,3 +332,15 @@ def _tool_result_for_model(call: ToolCall, result: ToolResult) -> Dict[str, Any]
         "ok": result.ok,
         "content": dict(result.model_content),
     }
+
+
+def _valid_entries(value: Any, required_keys: set[str]) -> bool:
+    return (
+        isinstance(value, list)
+        and all(
+            isinstance(item, Mapping)
+            and required_keys.issubset(item)
+            and all(isinstance(item[key], str) and item[key].strip() for key in required_keys)
+            for item in value
+        )
+    )

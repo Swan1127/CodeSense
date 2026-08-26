@@ -15,13 +15,9 @@ from .contracts import AgentResult, AgentRole, AgentState, FeynmanState, GoalSta
 
 
 _MAX_MESSAGES = 10
-_COMPLETED_RESULT_EVENTS = {
-    "agent_message",
-    "tool_result",
-    "agent_result",
-    "agent_result_snapshot",
-    "state_snapshot",
-}
+_COMPLETED_RESULT_EVENTS = frozenset({
+    "agent_message", "tool_result", "agent_result", "agent_result_snapshot", "state_snapshot",
+})
 _STUDENT_SAFE_ARTIFACT_FIELDS = frozenset({"public_hint"})
 _ADVANCEMENT_RESULT_FIELDS = frozenset({
     "success",
@@ -214,14 +210,24 @@ class MemoryStore:
 
     def find_request_result(self, session_id: int, request_id: str) -> Optional[AgentResult]:
         for record in reversed(self.event_store.list_events(session_id, stage=3)):
-            if record.event_type not in _COMPLETED_RESULT_EVENTS:
-                continue
-            if record.metadata.get("request_id") != request_id:
+            if record.metadata.get("request_id") != request_id or not _is_terminal_result_event(record):
                 continue
             result = _result_from_event(record)
             if result is not None:
                 return result
         return None
+
+
+def _is_terminal_result_event(record: EventRecord) -> bool:
+    if record.event_type not in _COMPLETED_RESULT_EVENTS:
+        return False
+    if record.event_type == "tool_result":
+        if "terminal" in record.metadata:
+            return record.metadata.get("terminal") is True
+        return _tool_result_failed(record)
+    if record.event_type == "state_snapshot":
+        return isinstance(record.metadata.get("agent_result"), Mapping)
+    return True
 
 
 def _parse_metadata(raw_metadata: Any) -> Dict[str, Any]:
@@ -318,9 +324,12 @@ def _result_from_event(record: EventRecord) -> Optional[AgentResult]:
     return AgentResult(
         success=True,
         agent=role,
-        response=record.content or str(public_content.get("response", "")),
+        response=record.content or str(public_content.get("response", public_content.get("message", ""))),
         ui_action=_ui_action(record.metadata.get("ui_action")),
-        ready_for_code=bool(record.metadata.get("ready_for_code", False)),
+        ready_for_code=(
+            bool(record.metadata.get("ready_for_code", False))
+            or _ui_action(record.metadata.get("ui_action")) is UIAction.SHOW_CODE_REVIEW
+        ),
         state=dict(record.metadata.get("state", {})) if isinstance(record.metadata.get("state"), Mapping) else {},
         public_content=dict(public_content),
         error_code=record.metadata.get("error_code"),

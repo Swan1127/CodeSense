@@ -226,6 +226,46 @@ def test_failed_tool_result_deduplication_clears_learning_advancement():
     assert result.state == {}
 
 
+def test_intermediate_successful_tool_result_is_not_a_completed_request():
+    store = MemoryStore(FakeEventStore([
+        event(
+            "tool_result",
+            role="teacher_agent",
+            metadata={
+                "request_id": "request-in-progress",
+                "ok": True,
+                "terminal": False,
+                "public_content": {"hint": "继续思考"},
+            },
+        )
+    ]))
+
+    assert store.find_request_result(12, "request-in-progress") is None
+
+
+def test_terminal_code_review_tool_result_remains_deduplicable():
+    store = MemoryStore(FakeEventStore([
+        event(
+            "tool_result",
+            role="student_agent",
+            metadata={
+                "request_id": "request-code-review",
+                "ok": True,
+                "terminal": True,
+                "ui_action": "show_code_review",
+                "public_content": {"message": "请检查这段代码。"},
+            },
+        )
+    ]))
+
+    result = store.find_request_result(12, "request-code-review")
+
+    assert result is not None
+    assert result.response == "请检查这段代码。"
+    assert result.ui_action.value == "show_code_review"
+    assert result.ready_for_code is True
+
+
 def test_empty_corrupt_and_legacy_events_degrade_safely():
     store = MemoryStore(FakeEventStore([
         event("state_snapshot", metadata={"state": "not-an-object"}),

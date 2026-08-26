@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from utils.agents.contracts import AgentDecision, AgentResult, AgentRole, GoalStatus, ToolCall, ToolResult, UIAction
-from utils.agents.memory import FeynmanState, MemorySnapshot, MemoryStore
+from utils.agents.memory import EventRecord, FeynmanState, MemorySnapshot, MemoryStore
 from utils.agents.model import ModelError
 from utils.agents.loop import AgentLoop, AgentLoopConfig, AgentLoopSpec
 
@@ -55,6 +55,29 @@ class FakeRegistry:
         if isinstance(value, list):
             return value.pop(0)
         return value
+
+
+class FakeEventStore:
+    def __init__(self):
+        self.events = []
+
+    def list_events(self, session_id, stage=3):
+        return [event for event in self.events if event.session_id == session_id and event.stage == stage]
+
+    def append(self, event):
+        self.events.append(event)
+        return event
+
+
+class ContextCheckingModel(FakeDecisionModel):
+    def __init__(self, decisions, *, expected_phase=None):
+        super().__init__(decisions)
+        self.expected_phase = expected_phase
+
+    def decide(self, **kwargs):
+        if self.expected_phase is not None and self.calls:
+            assert f'"phase": "{self.expected_phase}"' in kwargs["context"]
+        return super().decide(**kwargs)
 
 
 def make_loop(*, model, tools=None, memory=None):
@@ -126,6 +149,23 @@ def test_agent_loop_reuses_request_result_before_model_call():
     assert make_loop(model=model, memory=memory).handle_turn("重复", request_id="same") is existing
     assert model.calls == []
     assert memory.events == []
+
+
+def test_agent_loop_continues_after_persisted_intermediate_tool_result():
+    event_store = FakeEventStore()
+    event_store.append(EventRecord(
+        session_id=12,
+        stage=3,
+        event_type="tool_result",
+        role="teacher_agent",
+        metadata={"request_id": "resume", "ok": True, "terminal": False},
+    ))
+    model = FakeDecisionModel([AgentDecision(message="继续完成本轮。")])
+
+    result = make_loop(model=model, memory=MemoryStore(event_store)).handle_turn("重试", request_id="resume")
+
+    assert result.response == "继续完成本轮。"
+    assert len(model.calls) == 1
 
 
 def test_agent_loop_persists_unknown_tool_failure_without_state_advancement():
@@ -228,3 +268,60 @@ def test_agent_loop_does_not_show_code_review_from_model_claim_alone():
 
     assert result.ready_for_code is False
     assert result.ui_action.value == "continue_chat"
+
+
+def test_agent_loop_rejects_sensitive_state_patch_without_persisting_it():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([AgentDecision(tool_calls=[ToolCall("c1", "inspect_learning_state", {})])]),
+        tools=FakeRegistry({"inspect_learning_state": ToolResult(
+            ok=True, state_patch={"session_id": 999, "buggy_code_event_id": "secret"},
+        )}),
+        memory=memory,
+    ).handle_turn("继续", request_id="invalid-patch")
+
+    assert (result.success, result.error_code, result.state) == (False, "INVALID_STATE_PATCH", {})
+    tool_event = next(event for event in memory.events if event[0] == "tool_result")
+    assert tool_event[3]["state_patch"] == {}
+    assert tool_event[3]["error_code"] == "INVALID_STATE_PATCH"
+    assert not any(event[0] == "state_snapshot" for event in memory.events)
+
+
+def test_agent_loop_rejects_status_patch_outside_complete_goal():
+    result = make_loop(
+        model=FakeDecisionModel([AgentDecision(tool_calls=[ToolCall("c1", "inspect_learning_state", {})])]),
+        tools=FakeRegistry({"inspect_learning_state": ToolResult(ok=True, state_patch={"status": "complete"})}),
+    ).handle_turn("继续", request_id="invalid-status")
+
+    assert (result.success, result.error_code, result.state) == (False, "INVALID_STATE_PATCH", {})
+
+
+def test_agent_loop_uses_request_local_patched_state_for_next_model_decision():
+    memory = MemoryStore(FakeEventStore())
+    model = ContextCheckingModel([
+        AgentDecision(tool_calls=[ToolCall("c1", "inspect_learning_state", {})]),
+        AgentDecision(message="现在进入代码检查。"),
+    ], expected_phase="code_review")
+
+    result = make_loop(
+        model=model,
+        tools=FakeRegistry({"inspect_learning_state": ToolResult(ok=True, state_patch={"phase": "code_review"})}),
+        memory=memory,
+    ).handle_turn("继续", request_id="continuity")
+
+    assert result.success is True
+
+
+def test_agent_loop_durably_persists_valid_patch_before_later_model_failure():
+    memory = MemoryStore(FakeEventStore())
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("c1", "inspect_learning_state", {})]),
+            ModelError("MODEL_FAILURE"),
+        ]),
+        tools=FakeRegistry({"inspect_learning_state": ToolResult(ok=True, state_patch={"phase": "code_review"})}),
+        memory=memory,
+    ).handle_turn("继续", request_id="durability")
+
+    assert (result.success, result.error_code) == (False, "MODEL_FAILURE")
+    assert memory.load(12).state.phase == "code_review"
