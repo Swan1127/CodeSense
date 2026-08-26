@@ -1,0 +1,230 @@
+from dataclasses import dataclass, field
+
+from utils.agents.contracts import AgentDecision, AgentResult, AgentRole, GoalStatus, ToolCall, ToolResult, UIAction
+from utils.agents.memory import FeynmanState, MemorySnapshot, MemoryStore
+from utils.agents.model import ModelError
+from utils.agents.loop import AgentLoop, AgentLoopConfig, AgentLoopSpec
+
+
+@dataclass
+class FakeMemory:
+    snapshot: MemorySnapshot = field(
+        default_factory=lambda: MemorySnapshot(state=FeynmanState(session_id=12))
+    )
+    events: list = field(default_factory=list)
+    saved_results: dict = field(default_factory=dict)
+
+    def find_request_result(self, session_id, request_id):
+        return self.saved_results.get(request_id)
+
+    def load(self, session_id):
+        return self.snapshot
+
+    def view_for(self, snapshot, role):
+        return MemoryStore.view_for(self, snapshot, role)
+
+    def append_event(self, session_id, event_type, role, content="", metadata=None):
+        self.events.append((event_type, role, content, dict(metadata or {})))
+
+
+class FakeDecisionModel:
+    def __init__(self, decisions, *, last_error=None):
+        self.decisions = list(decisions)
+        self.last_error = last_error
+        self.calls = []
+
+    def decide(self, **kwargs):
+        self.calls.append(kwargs)
+        decision = self.decisions.pop(0)
+        if isinstance(decision, Exception):
+            raise decision
+        return decision
+
+
+class FakeRegistry:
+    def __init__(self, results=None):
+        self.results = dict(results or {})
+        self.calls = []
+
+    def specs_for(self, role):
+        return [{"name": name} for name in self.results]
+
+    def execute(self, role, call, context):
+        self.calls.append((role, call.name))
+        value = self.results.get(call.name, ToolResult(ok=False, error_code="UNKNOWN_TOOL"))
+        if isinstance(value, list):
+            return value.pop(0)
+        return value
+
+
+def make_loop(*, model, tools=None, memory=None):
+    return AgentLoop(
+        session_id=12,
+        role=AgentRole.TEACHER_AGENT,
+        model=model,
+        tools=tools or FakeRegistry({"inspect_learning_state": ToolResult(ok=True)}),
+        memory=memory or FakeMemory(),
+        spec=AgentLoopSpec(system_prompt="teach safely"),
+        config=AgentLoopConfig(),
+    )
+
+
+def test_agent_loop_executes_tool_then_uses_result():
+    model = FakeDecisionModel([
+        AgentDecision(tool_calls=[ToolCall("c1", "inspect_learning_state", {})]),
+        AgentDecision(message="根据状态，我们先讨论循环边界。"),
+    ])
+    tools = FakeRegistry({"inspect_learning_state": ToolResult(
+        ok=True,
+        model_content={"focus": "循环边界"},
+    )})
+    loop = make_loop(model=model, tools=tools)
+
+    result = loop.handle_turn("我不知道怎么判断结束", request_id="r1")
+
+    assert result.response == "根据状态，我们先讨论循环边界。"
+    assert tools.calls == [(AgentRole.TEACHER_AGENT, "inspect_learning_state")]
+    assert model.calls[1]["tool_results"] == [{
+        "tool_call_id": "c1", "name": "inspect_learning_state", "ok": True,
+        "content": {"focus": "循环边界"},
+    }]
+
+
+def test_agent_loop_stops_after_four_model_decisions():
+    model = FakeDecisionModel([
+        AgentDecision(tool_calls=[ToolCall(str(i), "inspect_learning_state", {})])
+        for i in range(5)
+    ])
+
+    result = make_loop(model=model).handle_turn("继续", request_id="r2")
+
+    assert result.success is False
+    assert result.error_code == "MAX_AGENT_STEPS"
+    assert len(model.calls) == 4
+
+
+def test_agent_loop_returns_direct_response_and_persists_public_snapshot():
+    memory = FakeMemory()
+    result = make_loop(model=FakeDecisionModel([AgentDecision(message="先看循环条件。")]), memory=memory).handle_turn(
+        "怎么开始？", request_id="direct"
+    )
+
+    public = result.to_public_dict()
+    assert public["response"] == "先看循环条件。"
+    assert "buggy_code_event_id" not in public["state"]
+    assert [event[0] for event in memory.events] == [
+        "agent_user_message", "agent_decision", "agent_message", "state_snapshot"
+    ]
+    assert memory.events[-1][3]["agent_result"]["response"] == "先看循环条件。"
+
+
+def test_agent_loop_reuses_request_result_before_model_call():
+    existing = AgentResult(success=True, agent=AgentRole.TEACHER_AGENT, response="已处理。")
+    memory = FakeMemory(saved_results={"same": existing})
+    model = FakeDecisionModel([AgentDecision(message="不应调用")])
+
+    assert make_loop(model=model, memory=memory).handle_turn("重复", request_id="same") is existing
+    assert model.calls == []
+    assert memory.events == []
+
+
+def test_agent_loop_persists_unknown_tool_failure_without_state_advancement():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([AgentDecision(tool_calls=[ToolCall("missing", "nope", {})])]),
+        memory=memory,
+    ).handle_turn("继续", request_id="unknown")
+
+    assert (result.success, result.error_code, result.state) == (False, "UNKNOWN_TOOL", {})
+    tool_event = next(event for event in memory.events if event[0] == "tool_result")
+    assert tool_event[3]["ok"] is False
+    assert tool_event[3]["agent_result"]["error_code"] == "UNKNOWN_TOOL"
+
+
+def test_agent_loop_retries_read_only_tool_error_once_then_continues():
+    memory = FakeMemory()
+    tools = FakeRegistry({"inspect_learning_state": [
+        ToolResult(ok=False, error_code="TEMPORARY", retryable=True),
+        ToolResult(ok=True, model_content={"focus": "边界"}),
+    ]})
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("c1", "inspect_learning_state", {})]),
+            AgentDecision(message="现在检查边界。"),
+        ]),
+        tools=tools,
+        memory=memory,
+    ).handle_turn("继续", request_id="retry")
+
+    assert result.success is True
+    assert tools.calls == [(AgentRole.TEACHER_AGENT, "inspect_learning_state")] * 2
+    assert [event[0] for event in memory.events].count("tool_result") == 2
+
+
+def test_agent_loop_returns_model_fallback_error_without_advancing_state():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([AgentDecision(message="请重试。")], last_error=ModelError("INVALID_DECISION")),
+        memory=memory,
+    ).handle_turn("继续", request_id="invalid")
+
+    assert (result.success, result.error_code, result.state) == (False, "INVALID_DECISION", {})
+    assert "agent_message" not in [event[0] for event in memory.events]
+
+
+def test_agent_loop_persists_internal_memory_events_but_never_returns_them():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("c1", "inspect_learning_state", {})]),
+            AgentDecision(message="已记录。"),
+        ]),
+        tools=FakeRegistry({"inspect_learning_state": ToolResult(
+            ok=True,
+            model_content={"safe": True},
+            public_content={"hint": "公开提示"},
+            memory_events=[{"event_type": "private_note", "content": "internal", "metadata": {"secret": "x"}}],
+        )}),
+        memory=memory,
+    ).handle_turn("继续", request_id="events")
+
+    assert result.public_content == {}
+    assert any(event[0] == "private_note" and event[3]["secret"] == "x" for event in memory.events)
+
+
+def test_agent_loop_persists_state_patch_in_tool_result_and_final_snapshot():
+    memory = FakeMemory()
+    make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("c1", "inspect_learning_state", {})]),
+            AgentDecision(message="已更新。"),
+        ]),
+        tools=FakeRegistry({"inspect_learning_state": ToolResult(
+            ok=True, state_patch={"phase": "code_review"},
+        )}),
+        memory=memory,
+    ).handle_turn("继续", request_id="patch")
+
+    tool_event = next(event for event in memory.events if event[0] == "tool_result")
+    snapshot_event = next(event for event in memory.events if event[0] == "state_snapshot")
+    assert tool_event[3]["state_patch"] == {"phase": "code_review"}
+    assert snapshot_event[3]["state"]["phase"] == "code_review"
+
+
+def test_agent_loop_does_not_complete_goal_from_model_claim_alone():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([AgentDecision(message="完成。", goal_status=GoalStatus.COMPLETE)]),
+        memory=memory,
+    ).handle_turn("继续", request_id="model-goal")
+
+    assert result.state["status"] == "in_progress"
+
+
+def test_agent_loop_does_not_show_code_review_from_model_claim_alone():
+    result = make_loop(
+        model=FakeDecisionModel([AgentDecision(message="查看代码。", ui_action=UIAction.SHOW_CODE_REVIEW)]),
+    ).handle_turn("继续", request_id="model-ui")
+
+    assert result.ready_for_code is False
+    assert result.ui_action.value == "continue_chat"
