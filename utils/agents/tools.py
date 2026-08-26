@@ -16,6 +16,9 @@ from .memory import MemorySnapshot
 MAX_CONCEPT_CHARS = 200
 MAX_EVIDENCE_CHARS = 2_000
 MAX_FIXED_CODE_CHARS = 8_000
+_SAFE_CODE_REVIEW_MESSAGE = "我写了一版代码，请帮我检查。"
+_SAFE_PASSED_FEEDBACK = "修复已通过检查。"
+_SAFE_FAILED_FEEDBACK = "请继续检查代码逻辑。"
 
 ToolHandler = Callable[["ToolContext", Dict[str, Any]], ToolResult]
 BuggyCodeGenerator = Callable[["ToolContext"], Mapping[str, Any]]
@@ -191,6 +194,11 @@ def _recall_memory(context: ToolContext, _: Dict[str, Any]) -> ToolResult:
 
 def _record_learning_evidence(context: ToolContext, arguments: Dict[str, Any]) -> ToolResult:
     evidence = {"concept": arguments["concept"], "evidence": arguments["evidence"]}
+    if (
+        evidence["concept"] not in _allowed_concepts(context)
+        or not _is_meaningful_evidence(evidence["evidence"])
+    ):
+        return _error("INVALID_LEARNING_EVIDENCE")
     all_evidence = [*context.memory.state.learning_evidence, evidence]
     return ToolResult(
         ok=True,
@@ -214,7 +222,9 @@ def _generate_buggy_attempt(generator: BuggyCodeGenerator) -> ToolHandler:
         bugs = generated.get("bugs", [])
         if not isinstance(buggy_code, str) or not isinstance(message, str) or not isinstance(bugs, list):
             return _error("BUGGY_ATTEMPT_FAILED", retryable=True)
-        visible = {"buggy_code": buggy_code, "message": message}
+        if not _generated_code_is_safe(context, buggy_code, bugs):
+            return _error("BUGGY_ATTEMPT_INVALID")
+        visible = {"buggy_code": buggy_code, "message": _SAFE_CODE_REVIEW_MESSAGE}
         return ToolResult(
             ok=True,
             model_content=dict(visible),
@@ -234,10 +244,13 @@ def _evaluate_fix(evaluator: FixEvaluator) -> ToolHandler:
             evaluation = evaluator(context, arguments["fixed_code"])
         except Exception:
             return _error("FIX_EVALUATION_FAILED", retryable=True)
-        correct, feedback = _evaluation_fields(evaluation)
+        correct, _ = _evaluation_fields(evaluation)
         if correct is None:
             return _error("FIX_EVALUATION_FAILED", retryable=True)
-        content = {"correct": correct, "feedback": feedback}
+        content = {
+            "correct": correct,
+            "feedback": _SAFE_PASSED_FEEDBACK if correct else _SAFE_FAILED_FEEDBACK,
+        }
         patch = {"code_review_status": "passed" if correct else "failed"}
         return ToolResult(ok=True, model_content=content, public_content=content, state_patch=patch)
     return handler
@@ -252,6 +265,40 @@ def _evaluation_fields(evaluation: Any) -> tuple[Optional[bool], str]:
     else:
         return None, ""
     return (correct, str(feedback)) if isinstance(correct, bool) else (None, "")
+
+
+def _allowed_concepts(context: ToolContext) -> frozenset[str]:
+    return frozenset(
+        concept.strip()
+        for concept in context.key_concepts
+        if isinstance(concept, str) and concept.strip()
+    )
+
+
+def _is_meaningful_evidence(value: str) -> bool:
+    text = value.strip()
+    if len(text) < 5:
+        return False
+    normalized = text.casefold()
+    return normalized not in {"none", "n/a", "不知道", "无", "没有"}
+
+
+def _generated_code_is_safe(context: ToolContext, buggy_code: str, bugs: List[Any]) -> bool:
+    reference_code = context.reference_code.strip()
+    if reference_code and buggy_code.strip() == reference_code:
+        return False
+    return not any(
+        sensitive in buggy_code
+        for sensitive in _internal_artifact_strings(bugs)
+    )
+
+
+def _internal_artifact_strings(value: Any) -> List[str]:
+    if isinstance(value, Mapping):
+        return [item for nested in value.values() for item in _internal_artifact_strings(nested)]
+    if isinstance(value, list):
+        return [item for nested in value for item in _internal_artifact_strings(nested)]
+    return [value] if isinstance(value, str) and len(value) >= 8 else []
 
 
 def _complete_goal(context: ToolContext, _: Dict[str, Any]) -> ToolResult:

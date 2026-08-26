@@ -52,6 +52,70 @@ def test_buggy_attempt_keeps_hidden_bugs_out_of_model_content():
     assert result.memory_events[0]["metadata"]["artifact"]["bugs"] == [{"description": "hidden"}]
 
 
+def test_callback_message_and_feedback_are_replaced_with_server_safe_text():
+    hidden_bug = "HIDDEN_BUG_SENTINEL"
+    standard_answer = "STANDARD_ANSWER_SENTINEL"
+    correct_fix = "CORRECT_FIX_SENTINEL"
+    registry = build_feynman_tool_registry(
+        buggy_code_generator=lambda context: {
+            "buggy_code": "safe public code",
+            "bugs": [{"description": hidden_bug, "fix": correct_fix}],
+            "message": f"{hidden_bug} {standard_answer} {correct_fix}",
+        },
+        fix_evaluator=lambda context, fixed_code: {
+            "correct": False,
+            "feedback": f"{hidden_bug} {standard_answer} {correct_fix}",
+        },
+    )
+
+    generation = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("generate", "generate_buggy_attempt", {}),
+        fake_tool_context(AgentRole.STUDENT_AGENT, state=FeynmanState(session_id=12)),
+    )
+    evaluation = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("evaluate", "evaluate_fix", {"fixed_code": "answer"}),
+        fake_tool_context(AgentRole.STUDENT_AGENT, state=FeynmanState(session_id=12)),
+    )
+
+    exposed = json.dumps(
+        [generation.model_content, generation.public_content, evaluation.model_content, evaluation.public_content],
+        ensure_ascii=False,
+    )
+    assert generation.public_content["buggy_code"] == "safe public code"
+    assert generation.public_content["message"] == "我写了一版代码，请帮我检查。"
+    assert evaluation.public_content["feedback"] == "请继续检查代码逻辑。"
+    for sentinel in (hidden_bug, standard_answer, correct_fix):
+        assert sentinel not in exposed
+
+
+def test_generated_code_with_server_or_hidden_values_is_rejected_without_disclosure():
+    hidden_bug = "HIDDEN_BUG_SENTINEL"
+    standard_answer = "STANDARD_ANSWER_SENTINEL"
+    correct_fix = "CORRECT_FIX_SENTINEL"
+    registry = build_feynman_tool_registry(
+        buggy_code_generator=lambda context: {
+            "buggy_code": f"{standard_answer} {hidden_bug} {correct_fix}",
+            "bugs": [{"description": hidden_bug, "fix": correct_fix}],
+            "message": "unsafe callback message",
+        },
+    )
+    context = fake_tool_context(AgentRole.STUDENT_AGENT)
+    context.reference_code = standard_answer
+
+    result = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("generate", "generate_buggy_attempt", {}),
+        context,
+    )
+
+    assert (result.ok, result.error_code) == (False, "BUGGY_ATTEMPT_INVALID")
+    exposed = json.dumps([result.model_content, result.public_content], ensure_ascii=False)
+    for sentinel in (hidden_bug, standard_answer, correct_fix):
+        assert sentinel not in exposed
+
+
 def test_unknown_tool_returns_structured_error():
     result = build_feynman_tool_registry().execute(
         AgentRole.TEACHER_AGENT,
@@ -145,3 +209,43 @@ def test_learning_evidence_and_completion_are_server_validated():
     assert evidence.state_patch["learning_evidence"][-1]["concept"] == "循环边界"
     assert completion.ok is True
     assert completion.state_patch == {"status": "complete"}
+
+
+def test_unknown_concept_cannot_create_evidence_or_enable_completion():
+    registry = build_feynman_tool_registry()
+    state = FeynmanState(session_id=12, phase="code_review", code_review_status="passed")
+    context = fake_tool_context(AgentRole.TEACHER_AGENT, state=state)
+
+    evidence = registry.execute(
+        AgentRole.TEACHER_AGENT,
+        ToolCall("unknown", "record_learning_evidence", {
+            "concept": "伪造概念", "evidence": "我随便写了一段看起来足够长的话。",
+        }),
+        context,
+    )
+    completion = registry.execute(
+        AgentRole.TEACHER_AGENT,
+        ToolCall("complete", "complete_goal", {}),
+        context,
+    )
+
+    assert (evidence.ok, evidence.error_code, evidence.state_patch) == (
+        False, "INVALID_LEARNING_EVIDENCE", {},
+    )
+    assert (completion.ok, completion.error_code) == (False, "GOAL_NOT_READY")
+
+
+def test_meaningless_evidence_for_known_concept_is_rejected():
+    registry = build_feynman_tool_registry()
+
+    result = registry.execute(
+        AgentRole.TEACHER_AGENT,
+        ToolCall("empty-evidence", "record_learning_evidence", {
+            "concept": "循环边界", "evidence": "不知道",
+        }),
+        fake_tool_context(AgentRole.TEACHER_AGENT),
+    )
+
+    assert (result.ok, result.error_code, result.state_patch) == (
+        False, "INVALID_LEARNING_EVIDENCE", {},
+    )
