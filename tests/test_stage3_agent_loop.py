@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from utils.agents.contracts import AgentDecision, AgentResult, AgentRole, GoalStatus, ToolCall, ToolResult, UIAction
+from utils.agents.feynman import FeynmanCallbacks, build_feynman_runtime
 from utils.agents.memory import EventRecord, FeynmanState, MemorySnapshot, MemoryStore
 from utils.agents.model import ModelError
 from utils.agents.loop import AgentLoop, AgentLoopConfig, AgentLoopSpec
@@ -65,8 +67,57 @@ class FakeEventStore:
         return [event for event in self.events if event.session_id == session_id and event.stage == stage]
 
     def append(self, event):
+        event.event_id = str(len(self.events) + 1)
         self.events.append(event)
         return event
+
+
+@dataclass
+class FakeAssignment:
+    title: str = "循环练习"
+    description: str = "解释循环边界并修复错误代码"
+
+
+@dataclass
+class FakePreset:
+    reference_code: str = "标准答案：return 0;"
+    key_steps: list = field(default_factory=lambda: ["输入范围", "循环边界"])
+    algorithm_summary: str = "先确定循环的不变量。"
+
+    def get_key_steps(self):
+        return list(self.key_steps)
+
+    def get_algorithm_summary(self):
+        return self.algorithm_summary
+
+
+@dataclass
+class FakeSession:
+    id: int = 12
+    stage1_description: str = "我会先读入数据。"
+    stage2_completed: bool = True
+    stage3_completed: bool = False
+    status: str = "in_progress"
+    completed_at: datetime | None = None
+
+
+def make_feynman_runtime(*, fake_model=None, buggy_code_generator=None, fix_evaluator=None):
+    event_store = FakeEventStore()
+    callbacks = FeynmanCallbacks(
+        event_store=event_store,
+        buggy_code_generator=buggy_code_generator,
+        fix_evaluator=fix_evaluator,
+        persist_session=lambda session: None,
+    )
+    runtime = build_feynman_runtime(
+        FakeSession(),
+        FakeAssignment(),
+        FakePreset(),
+        model=fake_model or FakeDecisionModel([]),
+        callbacks=callbacks,
+    )
+    runtime.event_store = event_store
+    return runtime
 
 
 class ContextCheckingModel(FakeDecisionModel):
@@ -342,3 +393,81 @@ def test_agent_loop_durably_persists_valid_patch_before_later_model_failure():
 
     assert (result.success, result.error_code) == (False, "MODEL_FAILURE")
     assert memory.load(12).state.phase == "code_review"
+
+
+def test_student_runtime_exposes_student_goal_but_not_reference_code():
+    runtime = make_feynman_runtime(fake_model=FakeDecisionModel([
+        AgentDecision(message="你能解释一下输入范围吗？")
+    ]))
+
+    runtime.handle_chat(
+        AgentRole.STUDENT_AGENT,
+        "我先读入数据",
+        request_id="r-student-1",
+    )
+
+    context = runtime.model.calls[0]["context"]
+    assert "teach_and_repair" in context
+    assert "标准答案" not in context
+
+
+def test_feynman_runtime_keeps_hidden_bugs_out_of_student_context_and_public_code_result():
+    runtime = make_feynman_runtime(
+        fake_model=FakeDecisionModel([AgentDecision(message="继续解释循环条件。")]),
+        buggy_code_generator=lambda context: {
+            "buggy_code": "while (i <= n) { ++i; }",
+            "bugs": [{"description": "隐藏 Bug：越界", "fix": "正确修复：i < n"}],
+            "message": "请检查循环。",
+        },
+    )
+
+    runtime.generate_buggy_attempt(request_id="r-code-1")
+    runtime.handle_chat(AgentRole.STUDENT_AGENT, "我觉得边界是 i < n", request_id="r-student-2")
+
+    code_result = runtime.generate_buggy_attempt(request_id="r-code-1")
+    context = runtime.model.calls[0]["context"]
+    exposed = str(code_result.to_public_dict())
+    assert "隐藏 Bug" not in context
+    assert "正确修复" not in context
+    assert "隐藏 Bug" not in exposed
+    assert "正确修复" not in exposed
+    artifact_event = next(event for event in runtime.event_store.events if event.event_type == "buggy_attempt")
+    assert artifact_event.metadata["artifact"]["bugs"][0]["fix"] == "正确修复：i < n"
+
+
+def test_failed_fix_does_not_complete_session():
+    runtime = make_feynman_runtime(
+        buggy_code_generator=lambda context: {
+            "buggy_code": "while (i <= n) { ++i; }", "bugs": [], "message": "检查一下。",
+        },
+        fix_evaluator=lambda context, fixed_code: {"correct": False, "feedback": "边界仍有问题"},
+    )
+    runtime.generate_buggy_attempt(request_id="r-code-2")
+
+    result = runtime.evaluate_fix("still wrong", request_id="r-fix-0")
+
+    assert result.public_content["correct"] is False
+    assert runtime.session.stage3_completed is False
+    assert runtime.session.status == "in_progress"
+    assert not any(event.event_type == "stage_pass" for event in runtime.event_store.events)
+
+
+def test_successful_fix_marks_session_completed_only_after_evaluation():
+    runtime = make_feynman_runtime(
+        buggy_code_generator=lambda context: {
+            "buggy_code": "while (i <= n) { ++i; }", "bugs": [], "message": "检查一下。",
+        },
+        fix_evaluator=lambda context, fixed_code: {
+            "correct": True,
+            "feedback": "修复正确",
+        },
+    )
+    runtime.generate_buggy_attempt(request_id="r-code-3")
+
+    result = runtime.evaluate_fix("fixed code", request_id="r-fix-1")
+
+    assert result.public_content["correct"] is True
+    assert runtime.session.status == "completed"
+    assert runtime.session.stage3_completed is True
+    assert runtime.session.completed_at is not None
+    assert any(event.event_type == "stage_pass" for event in runtime.event_store.events)
