@@ -2080,7 +2080,14 @@
     // ============================================================
     function initDevDebugConsole() {
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        if (!isLocal) return;
+        const container = document.getElementById('arena-container');
+        const isDemo = container && container.dataset.demoExperience === '1';
+        if (!isLocal && !isDemo) return;
+
+        const panelTitle = isDemo ? '体验进度快捷入口' : '开发者调试面板 (Dev Only)';
+        const panelDescription = isDemo
+            ? '按需查看三个学习阶段的页面效果，完成体验后可重新回到任意阶段。'
+            : '快速进行阶段流转及自动化测试';
 
         const panel = document.createElement('div');
         panel.className = 'dev-debug-panel';
@@ -2089,12 +2096,12 @@
                     aria-controls="dev-debug-content" aria-label="展开开发者调试面板">
                 <span class="dev-debug-title">
                     <i class="bi bi-braces-asterisk" aria-hidden="true"></i>
-                    <span>开发者调试</span>
+                    <span>${panelTitle}</span>
                 </span>
                 <span class="dev-debug-chevron" aria-hidden="true">⌄</span>
             </button>
             <div id="dev-debug-content" class="dev-debug-content" hidden>
-                <div class="dev-debug-description">快速进行阶段流转及自动化测试</div>
+                <div class="dev-debug-description">${panelDescription}</div>
                 <div class="dev-debug-btn-group">
                     <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(1)">跳到阶段一</button>
                     <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(2)">跳到阶段二</button>
@@ -2102,8 +2109,8 @@
                     <button class="dev-debug-btn dev-debug-btn-success" onclick="window.ThinkingArena.debugJumpStage(4)">一键通关</button>
                 </div>
                 <div class="dev-debug-btn-group" style="margin-bottom: 0;">
-                    <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS1()">秒杀阶段一 (Auto S1)</button>
-                    <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS2()">秒杀阶段二 (Auto S2)</button>
+                    <button class="dev-debug-auto dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS1()">秒杀阶段一 (Auto S1)</button>
+                    <button class="dev-debug-auto dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS2()">秒杀阶段二 (Auto S2)</button>
                 </div>
                 <section class="dev-debug-trace" id="dev-debug-trace" aria-label="Stage 3 developer trace">
                     <div class="dev-debug-trace-header">
@@ -2116,6 +2123,10 @@
                 </section>
             </div>
         `;
+
+        if (isDemo) {
+            panel.querySelectorAll('.dev-debug-auto').forEach(button => button.remove());
+        }
 
         const toggle = panel.querySelector('.dev-debug-toggle');
         const content = panel.querySelector('.dev-debug-content');
@@ -2291,7 +2302,14 @@
         }).then(data => {
             if (data.success) {
                 showNotification(`已切换到阶段 ${stage === 4 ? '已完成' : stage}`, 'success');
-                setTimeout(() => location.reload(), 1000);
+                const arena = document.getElementById('arena-container');
+                const isDemo = arena && arena.dataset.demoExperience === '1';
+                if (stage === 4 && isDemo) {
+                    state.currentStage = 3;
+                    showCelebration();
+                } else {
+                    setTimeout(() => location.reload(), 1000);
+                }
             } else {
                 showNotification(data.error || '跳转失败', 'warning');
             }
