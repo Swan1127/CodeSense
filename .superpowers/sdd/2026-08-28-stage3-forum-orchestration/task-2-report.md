@@ -570,4 +570,4 @@ Output:
 
 ### Fix round 3 commit SHA
 
-- Pending commit in this section at the time of append; updated after commit.
+- `3f6d913a7952567741e4b855930918596261d52d` (`fix: tighten replay evidence provenance`)
