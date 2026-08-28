@@ -19,6 +19,20 @@ def test_load_coverage_config_uses_safe_defaults_when_legacy_config_has_no_cover
     assert config == CoverageConfig()
 
 
+def test_load_coverage_config_rejects_more_probes_than_unique_dimensions():
+    with pytest.raises(ValueError, match="probe_dimensions"):
+        load_coverage_config(
+            {
+                "feynman_coverage": {
+                    "min_coverage": 0.8,
+                    "max_probes_per_concept": 3,
+                    "probe_dimensions": ["core", "edge_case"],
+                }
+            },
+            ["循环边界"],
+        )
+
+
 def test_covered_concept_completes_immediately_and_advances_to_next_concept():
     state = FeynmanState(session_id=12)
     decision = apply_coverage_assessment(
@@ -166,6 +180,75 @@ def test_empty_evidence_is_rejected_before_state_changes():
     assert state.concept_coverage == []
     assert state.coverage_score == 0.0
     assert state.pending_probe is None
+
+
+@pytest.mark.parametrize("text", [
+    "好的，我懂了",
+    "嗯嗯",
+    "yes",
+    "ok thanks",
+    "收到",
+    "I understand",
+    "明白了，谢谢老师",
+])
+def test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence(text):
+    state = FeynmanState(session_id=12)
+
+    for assessment in ("covered", "partial"):
+        with pytest.raises(ValueError, match="concrete evidence"):
+            apply_coverage_assessment(
+                state,
+                ["循环边界"],
+                config=CoverageConfig(),
+                concept="循环边界",
+                dimension="core",
+                assessment=assessment,
+                evidence=text,
+                event_id=f"evt-{assessment}",
+            )
+
+
+@pytest.mark.parametrize("text", [
+    "这个知识点很重要。",
+    "跟题目有关。",
+    "It makes sense now.",
+    "这个我会了。",
+    "需要注意细节。",
+])
+def test_non_explanatory_statements_cannot_mark_concept_as_covered(text):
+    state = FeynmanState(session_id=12)
+
+    with pytest.raises(ValueError, match="concrete evidence"):
+        apply_coverage_assessment(
+            state,
+            ["循环边界"],
+            config=CoverageConfig(),
+            concept="循环边界",
+            dimension="core",
+            assessment="covered",
+            evidence=text,
+            event_id="evt-1",
+        )
+
+
+def test_concrete_boundary_explanation_is_accepted_for_covered():
+    state = FeynmanState(session_id=12)
+
+    decision = apply_coverage_assessment(
+        state,
+        ["循环边界"],
+        config=CoverageConfig(min_coverage=1.0),
+        concept="循环边界",
+        dimension="core",
+        assessment="covered",
+        evidence="因为循环条件写成 i < n，所以最后一次合法访问是 nums[n - 1]，如果写成 i <= n 就会多访问一次越界位置。",
+        event_id="evt-1",
+    )
+
+    assert decision.concept_status == "covered"
+    assert decision.attempts == 1
+    assert decision.coverage_score == 1.0
+    assert decision.ready_for_code is True
 
 
 def test_ready_for_code_requires_minimum_score_and_no_pending_probe():

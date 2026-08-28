@@ -9,6 +9,83 @@ _DEFAULT_MAX_PROBES = 2
 _DEFAULT_DIMENSIONS = ("core", "edge_case", "application")
 _ALLOWED_ASSESSMENTS = frozenset({"covered", "partial", "off_topic"})
 _MEANINGLESS_EVIDENCE = frozenset({"none", "n/a", "不知道", "无", "没有"})
+_ACKNOWLEDGEMENT_TOKENS = (
+    "好的",
+    "收到",
+    "明白了",
+    "懂了",
+    "懂啦",
+    "会了",
+    "知道了",
+    "谢谢",
+    "嗯",
+    "嗯嗯",
+    "ok",
+    "okay",
+    "yes",
+    "yep",
+    "got it",
+    "i understand",
+    "understood",
+    "thanks",
+    "thank you",
+    "makes sense",
+)
+_GENERIC_NON_EXPLANATORY_TOKENS = (
+    "知识点",
+    "有关",
+    "重要",
+    "注意",
+    "细节",
+    "题目",
+    "this",
+    "that",
+    "important",
+    "detail",
+    "sense",
+)
+_CONCRETE_EVIDENCE_MARKERS = (
+    "因为",
+    "所以",
+    "如果",
+    "否则",
+    "当",
+    "越界",
+    "边界",
+    "索引",
+    "条件",
+    "例如",
+    "比如",
+    "空数组",
+    "每轮",
+    "保持",
+    "导致",
+    "最后一次",
+    "合法",
+    "访问",
+    "应用",
+    "例子",
+    "because",
+    "if",
+    "when",
+    "then",
+    "otherwise",
+    "for example",
+    "example",
+    "condition",
+    "index",
+    "boundary",
+    "out of bounds",
+    "cause",
+    "causes",
+    "result",
+    "results",
+    "keep",
+    "keeps",
+    "maintain",
+    "applies",
+)
+_CODE_EXPRESSION_MARKERS = ("<", ">", "<=", ">=", "==", "!=", "[", "]", "(", ")", "n - 1", "n-1", "=")
 
 
 @dataclass(frozen=True)
@@ -45,8 +122,8 @@ def load_coverage_config(raw: Any, key_concepts: Any) -> CoverageConfig:
         raise ValueError("max_probes_per_concept must be a positive integer")
 
     dimensions = _normalize_dimensions(probe_dimensions)
-    if concepts and len(dimensions) < min(_DEFAULT_MAX_PROBES, max_probes):
-        raise ValueError("probe_dimensions must cover the required probe count")
+    if concepts and len(dimensions) < max_probes:
+        raise ValueError("probe_dimensions must provide at least one unique dimension per probe")
 
     return CoverageConfig(
         min_coverage=float(min_coverage),
@@ -79,6 +156,8 @@ def apply_coverage_assessment(
         raise ValueError("max probes reached for concept")
     if current_dimension in entry["used_dimensions"]:
         raise ValueError("dimension already used for concept")
+    if current_assessment in {"covered", "partial"} and not _is_concrete_explanation(evidence_text):
+        raise ValueError("concrete evidence is required for covered or partial assessments")
 
     updated = dict(entry)
     updated["attempts"] = entry["attempts"] + 1
@@ -185,6 +264,34 @@ def _normalize_evidence(value: Any) -> str:
     if not text or text.casefold() in _MEANINGLESS_EVIDENCE:
         raise ValueError("evidence must be meaningful")
     return text
+
+
+def _is_concrete_explanation(text: str) -> bool:
+    normalized = _normalize_free_text(text)
+    if not normalized:
+        return False
+
+    # Keep the validator conservative: covered/partial need an observable
+    # explanation signal such as a relation, condition, example, code
+    # expression, or causal/application detail. Generic acknowledgements or
+    # filler phrases are rejected even if they are non-empty.
+    if any(marker in text for marker in _CODE_EXPRESSION_MARKERS):
+        return True
+    if any(char.isdigit() for char in text):
+        return True
+    if any(marker in text.casefold() for marker in _CONCRETE_EVIDENCE_MARKERS):
+        return True
+
+    if any(token in normalized for token in _ACKNOWLEDGEMENT_TOKENS):
+        return False
+    if any(token in normalized for token in _GENERIC_NON_EXPLANATORY_TOKENS):
+        return False
+    return False
+
+
+def _normalize_free_text(value: str) -> str:
+    lowered = value.casefold()
+    return "".join(char for char in lowered if char.isalnum() or "\u4e00" <= char <= "\u9fff")
 
 
 def _normalize_token(name: str, value: Any) -> str:

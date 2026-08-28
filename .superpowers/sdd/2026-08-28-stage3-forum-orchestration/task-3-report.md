@@ -148,7 +148,7 @@ feat: add stage3 concept coverage gate
 Commit SHA:
 
 ```text
-c6c112e
+d032c46
 ```
 
 ## Concerns
@@ -158,3 +158,325 @@ c6c112e
    - another bullet says empty/invalid evidence must raise `ValueError` before changing state
    I resolved this by making `off_topic` consume attempts while empty/meaningless evidence raises before any state change.
 2. The named verification command in the brief uses `python`, but this workspace currently exposes `py.exe` rather than `python`. I recorded both the failed environment call and the successful equivalent test command above.
+
+## Fix Round 1
+
+### Reviewer Findings Addressed
+
+1. `covered` and `partial` assessments now require conservative server-side concrete evidence validation. Generic acknowledgements, filler, and non-explanatory text are rejected with `ValueError` before any state change.
+2. `load_coverage_config()` now rejects configs where `len(probe_dimensions) < max_probes_per_concept`.
+
+### Changed Files
+
+- `utils/agents/coverage.py`
+- `tests/test_stage3_coverage.py`
+- `.superpowers/sdd/2026-08-28-stage3-forum-orchestration/task-3-report.md`
+
+### Red Phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py -q
+```
+
+Output:
+
+```text
+.F....FFFFFFFFFFFF...                                                    [100%]
+================================== FAILURES ===================================
+____ test_load_coverage_config_rejects_more_probes_than_unique_dimensions _____
+
+    def test_load_coverage_config_rejects_more_probes_than_unique_dimensions():
+>       with pytest.raises(ValueError, match="probe_dimensions"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:23: Failed
+_ test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[\u597d\u7684\uff0c\u6211\u61c2\u4e86] _
+
+text = '�õģ��Ҷ���'
+
+    @pytest.mark.parametrize("text", [
+        "�õģ��Ҷ���",
+        "����",
+        "yes",
+        "ok thanks",
+        "�յ�",
+        "I understand",
+        "�����ˣ�лл��ʦ",
+    ])
+    def test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:198: Failed
+_ test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[\u55ef\u55ef] _
+
+text = '����'
+
+    @pytest.mark.parametrize("text", [
+        "�õģ��Ҷ���",
+        "����",
+        "yes",
+        "ok thanks",
+        "�յ�",
+        "I understand",
+        "�����ˣ�лл��ʦ",
+    ])
+    def test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:198: Failed
+_ test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[yes] _
+
+text = 'yes'
+
+    @pytest.mark.parametrize("text", [
+        "�õģ��Ҷ���",
+        "����",
+        "yes",
+        "ok thanks",
+        "�յ�",
+        "I understand",
+        "�����ˣ�лл��ʦ",
+    ])
+    def test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:198: Failed
+_ test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[ok thanks] _
+
+text = 'ok thanks'
+
+    @pytest.mark.parametrize("text", [
+        "�õģ��Ҷ���",
+        "����",
+        "yes",
+        "ok thanks",
+        "�յ�",
+        "I understand",
+        "�����ˣ�лл��ʦ",
+    ])
+    def test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:198: Failed
+_ test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[\u6536\u5230] _
+
+text = '�յ�'
+
+    @pytest.mark.parametrize("text", [
+        "�õģ��Ҷ���",
+        "����",
+        "yes",
+        "ok thanks",
+        "�յ�",
+        "I understand",
+        "�����ˣ�лл��ʦ",
+    ])
+    def test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:198: Failed
+_ test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[I understand] _
+
+text = 'I understand'
+
+    @pytest.mark.parametrize("text", [
+        "�õģ��Ҷ���",
+        "����",
+        "yes",
+        "ok thanks",
+        "�յ�",
+        "I understand",
+        "�����ˣ�лл��ʦ",
+    ])
+    def test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:198: Failed
+_ test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[\u660e\u767d\u4e86\uff0c\u8c22\u8c22\u8001\u5e08] _
+
+text = '�����ˣ�лл��ʦ'
+
+    @pytest.mark.parametrize("text", [
+        "�õģ��Ҷ���",
+        "����",
+        "yes",
+        "ok thanks",
+        "�յ�",
+        "I understand",
+        "�����ˣ�лл��ʦ",
+    ])
+    def test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:198: Failed
+_ test_non_explanatory_statements_cannot_mark_concept_as_covered[\u8fd9\u4e2a\u77e5\u8bc6\u70b9\u5f88\u91cd\u8981\u3002] _
+
+text = '���֪ʶ�����Ҫ��'
+
+    @pytest.mark.parametrize("text", [
+        "���֪ʶ�����Ҫ��",
+        "����Ŀ�йء�",
+        "It makes sense now.",
+        "����һ��ˡ�",
+        "��Ҫע��ϸ�ڡ�",
+    ])
+    def test_non_explanatory_statements_cannot_mark_concept_as_covered(text):
+        state = FeynmanState(session_id=12)
+
+>       with pytest.raises(ValueError, match="concrete evidence"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:221: Failed
+_ test_non_explanatory_statements_cannot_mark_concept_as_covered[\u8ddf\u9898\u76ee\u6709\u5173\u3002] _
+
+text = '����Ŀ�йء�'
+
+    @pytest.mark.parametrize("text", [
+        "���֪ʶ�����Ҫ��",
+        "����Ŀ�йء�",
+        "It makes sense now.",
+        "����һ��ˡ�",
+        "��Ҫע��ϸ�ڡ�",
+    ])
+    def test_non_explanatory_statements_cannot_mark_concept_as_covered(text):
+        state = FeynmanState(session_id=12)
+
+>       with pytest.raises(ValueError, match="concrete evidence"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:221: Failed
+_ test_non_explanatory_statements_cannot_mark_concept_as_covered[It makes sense now.] _
+
+text = 'It makes sense now.'
+
+    @pytest.mark.parametrize("text", [
+        "���֪ʶ�����Ҫ��",
+        "����Ŀ�йء�",
+        "It makes sense now.",
+        "����һ��ˡ�",
+        "��Ҫע��ϸ�ڡ�",
+    ])
+    def test_non_explanatory_statements_cannot_mark_concept_as_covered(text):
+        state = FeynmanState(session_id=12)
+
+>       with pytest.raises(ValueError, match="concrete evidence"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:221: Failed
+_ test_non_explanatory_statements_cannot_mark_concept_as_covered[\u8fd9\u4e2a\u6211\u4f1a\u4e86\u3002] _
+
+text = '����һ��ˡ�'
+
+    @pytest.mark.parametrize("text", [
+        "���֪ʶ�����Ҫ��",
+        "����Ŀ�йء�",
+        "It makes sense now.",
+        "����һ��ˡ�",
+        "��Ҫע��ϸ�ڡ�",
+    ])
+    def test_non_explanatory_statements_cannot_mark_concept_as_covered(text):
+        state = FeynmanState(session_id=12)
+
+>       with pytest.raises(ValueError, match="concrete evidence"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:221: Failed
+_ test_non_explanatory_statements_cannot_mark_concept_as_covered[\u9700\u8981\u6ce8\u610f\u7ec6\u8282\u3002] _
+
+text = '��Ҫע��ϸ�ڡ�'
+
+    @pytest.mark.parametrize("text", [
+        "���֪ʶ�����Ҫ��",
+        "����Ŀ�йء�",
+        "It makes sense now.",
+        "����һ��ˡ�",
+        "��Ҫע��ϸ�ڡ�",
+    ])
+    def test_non_explanatory_statements_cannot_mark_concept_as_covered(text):
+        state = FeynmanState(session_id=12)
+
+>       with pytest.raises(ValueError, match="concrete evidence"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:221: Failed
+=========================== short test summary info ===========================
+FAILED tests/test_stage3_coverage.py::test_load_coverage_config_rejects_more_probes_than_unique_dimensions
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[\u597d\u7684\uff0c\u6211\u61c2\u4e86]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[\u55ef\u55ef]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[yes]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[ok thanks]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[\u6536\u5230]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[I understand]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_acknowledgements_cannot_create_covered_or_partial_evidence[\u660e\u767d\u4e86\uff0c\u8c22\u8c22\u8001\u5e08]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_statements_cannot_mark_concept_as_covered[\u8fd9\u4e2a\u77e5\u8bc6\u70b9\u5f88\u91cd\u8981\u3002]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_statements_cannot_mark_concept_as_covered[\u8ddf\u9898\u76ee\u6709\u5173\u3002]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_statements_cannot_mark_concept_as_covered[It makes sense now.]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_statements_cannot_mark_concept_as_covered[\u8fd9\u4e2a\u6211\u4f1a\u4e86\u3002]
+FAILED tests/test_stage3_coverage.py::test_non_explanatory_statements_cannot_mark_concept_as_covered[\u9700\u8981\u6ce8\u610f\u7ec6\u8282\u3002]
+13 failed, 8 passed in 0.27s
+```
+
+### Green Phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py -q
+```
+
+Output:
+
+```text
+.....................                                                    [100%]
+21 passed in 0.10s
+```
+
+### Verification
+
+Command:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+<no output>
+```
+
+### Fix Round 1 Commit SHA
+
+```text
+PENDING
+```
