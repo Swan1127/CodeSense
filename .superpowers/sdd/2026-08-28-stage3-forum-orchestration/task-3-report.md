@@ -478,5 +478,202 @@ Output:
 ### Fix Round 1 Commit SHA
 
 ```text
+f3acfd0
+```
+
+## Fix Round 2
+
+### Reviewer Findings Addressed
+
+1. Replaced the marker-only concrete-evidence check with a conservative structural validator that rejects isolated markers, digits, symbols, and acknowledgement-plus-marker filler.
+2. Added positive regressions for valid paraphrases that do not rely on the previous marker vocabulary, while preserving prior covered/partial scoring semantics and the 3-probe/2-dimension config rejection.
+
+### Changed Files
+
+- `utils/agents/coverage.py`
+- `tests/test_stage3_coverage.py`
+- `.superpowers/sdd/2026-08-28-stage3-forum-orchestration/task-3-report.md`
+
+### Red Phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py -q
+```
+
+Output:
+
+```text
+..................FFF.FFF.....                                           [100%]
+================================== FAILURES ===================================
+_ test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[if] _
+
+text = 'if'
+
+    @pytest.mark.parametrize("text", [
+        "if",
+        "because",
+        "1",
+        "=",
+        "ok because",
+        "лл����Ϊ",
+        "I understand if",
+    ])
+    def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:247: Failed
+_ test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[because] _
+
+text = 'because'
+
+    @pytest.mark.parametrize("text", [
+        "if",
+        "because",
+        "1",
+        "=",
+        "ok because",
+        "лл����Ϊ",
+        "I understand if",
+    ])
+    def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:247: Failed
+_ test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[1] _
+
+text = '1'
+
+    @pytest.mark.parametrize("text", [
+        "if",
+        "because",
+        "1",
+        "=",
+        "ok because",
+        "лл����Ϊ",
+        "I understand if",
+    ])
+    def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:247: Failed
+_ test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[ok because] _
+
+text = 'ok because'
+
+    @pytest.mark.parametrize("text", [
+        "if",
+        "because",
+        "1",
+        "=",
+        "ok because",
+        "лл����Ϊ",
+        "I understand if",
+    ])
+    def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:247: Failed
+_ test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[\u8c22\u8c22\uff0c\u56e0\u4e3a] _
+
+text = 'лл����Ϊ'
+
+    @pytest.mark.parametrize("text", [
+        "if",
+        "because",
+        "1",
+        "=",
+        "ok because",
+        "лл����Ϊ",
+        "I understand if",
+    ])
+    def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:247: Failed
+_ test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[I understand if] _
+
+text = 'I understand if'
+
+    @pytest.mark.parametrize("text", [
+        "if",
+        "because",
+        "1",
+        "=",
+        "ok because",
+        "лл����Ϊ",
+        "I understand if",
+    ])
+    def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:247: Failed
+=========================== short test summary info ===========================
+FAILED tests/test_stage3_coverage.py::test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[if]
+FAILED tests/test_stage3_coverage.py::test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[because]
+FAILED tests/test_stage3_coverage.py::test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[1]
+FAILED tests/test_stage3_coverage.py::test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[ok because]
+FAILED tests/test_stage3_coverage.py::test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[\u8c22\u8c22\uff0c\u56e0\u4e3a]
+FAILED tests/test_stage3_coverage.py::test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[I understand if]
+6 failed, 24 passed in 0.22s
+```
+
+### Green Phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py -q
+```
+
+Output:
+
+```text
+..............................                                           [100%]
+30 passed in 0.11s
+```
+
+### Verification
+
+Command:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+<no output>
+```
+
+### Fix Round 2 Commit SHA
+
+```text
 PENDING
 ```

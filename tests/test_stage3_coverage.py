@@ -231,6 +231,32 @@ def test_non_explanatory_statements_cannot_mark_concept_as_covered(text):
         )
 
 
+@pytest.mark.parametrize("text", [
+    "if",
+    "because",
+    "1",
+    "=",
+    "ok because",
+    "谢谢，因为",
+    "I understand if",
+])
+def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
+    state = FeynmanState(session_id=12)
+
+    for assessment in ("covered", "partial"):
+        with pytest.raises(ValueError, match="concrete evidence"):
+            apply_coverage_assessment(
+                state,
+                ["循环边界"],
+                config=CoverageConfig(),
+                concept="循环边界",
+                dimension="core",
+                assessment=assessment,
+                evidence=text,
+                event_id=f"evt-{assessment}",
+            )
+
+
 def test_concrete_boundary_explanation_is_accepted_for_covered():
     state = FeynmanState(session_id=12)
 
@@ -249,6 +275,26 @@ def test_concrete_boundary_explanation_is_accepted_for_covered():
     assert decision.attempts == 1
     assert decision.coverage_score == 1.0
     assert decision.ready_for_code is True
+
+
+@pytest.mark.parametrize("assessment", ["covered", "partial"])
+def test_valid_paraphrase_without_old_marker_vocabulary_is_accepted(assessment):
+    state = FeynmanState(session_id=12)
+
+    decision = apply_coverage_assessment(
+        state,
+        ["循环边界"],
+        config=CoverageConfig(min_coverage=1.0),
+        concept="循环边界",
+        dimension="core",
+        assessment=assessment,
+        evidence="循环停在 length 前一格，末尾元素只能用 length - 1 取到，再往后走一步就会碰到数组外面的位置。",
+        event_id="evt-1",
+    )
+
+    assert decision.concept_status == assessment
+    assert decision.attempts == 1
+    assert decision.coverage_score == (1.0 if assessment == "covered" else pytest.approx(0.5))
 
 
 def test_ready_for_code_requires_minimum_score_and_no_pending_probe():

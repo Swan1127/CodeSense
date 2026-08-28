@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -9,83 +10,39 @@ _DEFAULT_MAX_PROBES = 2
 _DEFAULT_DIMENSIONS = ("core", "edge_case", "application")
 _ALLOWED_ASSESSMENTS = frozenset({"covered", "partial", "off_topic"})
 _MEANINGLESS_EVIDENCE = frozenset({"none", "n/a", "不知道", "无", "没有"})
-_ACKNOWLEDGEMENT_TOKENS = (
-    "好的",
-    "收到",
-    "明白了",
-    "懂了",
-    "懂啦",
-    "会了",
-    "知道了",
-    "谢谢",
-    "嗯",
-    "嗯嗯",
-    "ok",
-    "okay",
-    "yes",
-    "yep",
-    "got it",
-    "i understand",
-    "understood",
-    "thanks",
-    "thank you",
-    "makes sense",
-)
-_GENERIC_NON_EXPLANATORY_TOKENS = (
-    "知识点",
-    "有关",
-    "重要",
-    "注意",
-    "细节",
-    "题目",
-    "this",
-    "that",
-    "important",
-    "detail",
+_ACKNOWLEDGEMENT_TOKENS = frozenset({
+    "好的", "收到", "明白了", "懂了", "懂啦", "会了", "知道了", "谢谢", "嗯", "嗯嗯",
+    "ok", "okay", "yes", "yep", "got", "it", "understand", "understood", "thanks", "thank", "you",
     "sense",
+})
+_GENERIC_NON_EXPLANATORY_TOKENS = frozenset({
+    "知识点", "有关", "重要", "注意", "细节", "题目", "this", "that", "important", "detail",
+})
+_EN_STOPWORDS = frozenset({
+    "a", "an", "and", "are", "as", "at", "be", "before", "by", "for", "from", "in", "into",
+    "is", "it", "of", "on", "or", "so", "the", "to", "too", "was", "will", "with",
+})
+_ACKNOWLEDGEMENT_PATTERNS = (
+    re.compile(r"^(?:好(?:的)?|收到|明白了|懂了|懂啦|会了|知道了|谢谢|嗯|嗯嗯)+$"),
+    re.compile(r"^(?:ok(?:ay)?|yes|yep|got\s+it|i\s+understand|understood|thanks?|thank\s+you)+$", re.IGNORECASE),
 )
-_CONCRETE_EVIDENCE_MARKERS = (
-    "因为",
-    "所以",
-    "如果",
-    "否则",
-    "当",
-    "越界",
-    "边界",
-    "索引",
-    "条件",
-    "例如",
-    "比如",
-    "空数组",
-    "每轮",
-    "保持",
-    "导致",
-    "最后一次",
-    "合法",
-    "访问",
-    "应用",
-    "例子",
-    "because",
-    "if",
-    "when",
-    "then",
-    "otherwise",
-    "for example",
-    "example",
-    "condition",
-    "index",
-    "boundary",
-    "out of bounds",
-    "cause",
-    "causes",
-    "result",
-    "results",
-    "keep",
-    "keeps",
-    "maintain",
-    "applies",
+_GENERIC_FILLER_PATTERNS = (
+    re.compile(r"^(?:这个|这题|这个知识点).{0,8}(?:很重要|有关|要注意|需要注意).{0,4}$"),
+    re.compile(r"^(?:it|this).{0,12}(?:makes sense|is important).{0,4}$", re.IGNORECASE),
 )
-_CODE_EXPRESSION_MARKERS = ("<", ">", "<=", ">=", "==", "!=", "[", "]", "(", ")", "n - 1", "n-1", "=")
+_REASONING_PATTERNS = (
+    re.compile(r"(为什么|说明|意味着|表明|用来|这样写|不完整|说不清|讲不清|解释)"),
+    re.compile(r"\b(means|shows|explains?|uses?|stops?|keeps?|reads?|causes?|turns?)\b", re.IGNORECASE),
+)
+_CLAUSE_RELATION_PATTERNS = (
+    re.compile(r"(再.{0,8}就|多.{0,8}就|少.{0,8}就|前一.{0,4}后一|停在.{0,8}前)"),
+    re.compile(r"\b(one more|extra pass|past the array|last valid|stops before|ends at)\b", re.IGNORECASE),
+)
+_CODE_RELATION_PATTERN = re.compile(
+    r"(?<!\w)([A-Za-z_][A-Za-z0-9_\[\]\.\-\+\s]*|\d+\s*[\+\-]\s*\d+|\d+)\s*"
+    r"(<=|>=|==|!=|<|>|=|\+|-)\s*"
+    r"([A-Za-z_][A-Za-z0-9_\[\]\.\-\+\s]*|\d+\s*[\+\-]\s*\d+|\d+)(?!\w)"
+)
 
 
 @dataclass(frozen=True)
@@ -271,22 +228,140 @@ def _is_concrete_explanation(text: str) -> bool:
     if not normalized:
         return False
 
-    # Keep the validator conservative: covered/partial need an observable
-    # explanation signal such as a relation, condition, example, code
-    # expression, or causal/application detail. Generic acknowledgements or
-    # filler phrases are rejected even if they are non-empty.
-    if any(marker in text for marker in _CODE_EXPRESSION_MARKERS):
+    if _is_acknowledgement_or_filler(text, normalized):
+        return False
+    if _substantive_character_count(text) < 8:
+        return False
+    if _has_complete_code_relation(text) and _has_substantive_detail(text):
         return True
-    if any(char.isdigit() for char in text):
+    if _has_explanatory_structure(text):
         return True
-    if any(marker in text.casefold() for marker in _CONCRETE_EVIDENCE_MARKERS):
+    if _has_multiclause_relation(text):
+        return True
+    return False
+
+
+def _is_acknowledgement_or_filler(text: str, normalized: str) -> bool:
+    stripped = text.strip()
+    if any(pattern.fullmatch(stripped) for pattern in _ACKNOWLEDGEMENT_PATTERNS):
+        return True
+    if any(pattern.fullmatch(stripped) for pattern in _GENERIC_FILLER_PATTERNS):
         return True
 
-    if any(token in normalized for token in _ACKNOWLEDGEMENT_TOKENS):
-        return False
-    if any(token in normalized for token in _GENERIC_NON_EXPLANATORY_TOKENS):
-        return False
+    tokens = _word_tokens(stripped)
+    cjk_phrases = _cjk_phrases(stripped)
+    ack_hits = sum(token in _ACKNOWLEDGEMENT_TOKENS for token in tokens) + sum(
+        phrase in _ACKNOWLEDGEMENT_TOKENS for phrase in cjk_phrases
+    )
+    generic_hits = sum(token in _GENERIC_NON_EXPLANATORY_TOKENS for token in tokens) + sum(
+        phrase in _GENERIC_NON_EXPLANATORY_TOKENS for phrase in cjk_phrases
+    )
+    substantive_tokens = [
+        token for token in tokens
+        if len(token) >= 3 and token not in _EN_STOPWORDS and token not in _ACKNOWLEDGEMENT_TOKENS
+    ]
+    substantive_phrases = [
+        phrase for phrase in cjk_phrases
+        if len(phrase) >= 2 and phrase not in _ACKNOWLEDGEMENT_TOKENS and phrase not in _GENERIC_NON_EXPLANATORY_TOKENS
+    ]
+    if ack_hits and not substantive_tokens and not substantive_phrases:
+        return True
+    if generic_hits and not _has_complete_code_relation(text) and not _has_clause_detail(text):
+        return True
+    if normalized in {"if", "because", "1", "okbecause", "iunderstandif"}:
+        return True
     return False
+
+
+def _substantive_character_count(text: str) -> int:
+    return sum(1 for char in text if char.isalnum() or "\u4e00" <= char <= "\u9fff")
+
+
+def _has_complete_code_relation(text: str) -> bool:
+    for match in _CODE_RELATION_PATTERN.finditer(text):
+        left = match.group(1).strip()
+        operator = match.group(2)
+        right = match.group(3).strip()
+        if not left or not right:
+            continue
+        if left.isdigit() and right.isdigit() and operator == "=":
+            continue
+        if not any(char.isalpha() or char == "_" for char in f"{left}{right}") and "[" not in f"{left}{right}":
+            continue
+        return True
+    return False
+
+
+def _has_substantive_detail(text: str) -> bool:
+    return bool(_has_clause_detail(text) or _has_explanatory_structure(text) or _has_multiclause_relation(text))
+
+
+def _has_explanatory_structure(text: str) -> bool:
+    stripped = text.strip()
+    if _has_complete_code_relation(stripped) and len(_split_clauses(stripped)) >= 2:
+        return True
+    if any(pattern.search(stripped) for pattern in _REASONING_PATTERNS) and _has_clause_detail(stripped):
+        return True
+    return False
+
+
+def _has_multiclause_relation(text: str) -> bool:
+    clauses = [clause for clause in _split_clauses(text) if _substantive_character_count(clause) >= 4]
+    if len(clauses) < 2:
+        return False
+    if any(pattern.search(text) for pattern in _CLAUSE_RELATION_PATTERNS) and _has_clause_detail(text):
+        return True
+
+    repeated_terms = _repeated_substantive_terms(clauses)
+    if repeated_terms and any(_has_clause_detail(clause) for clause in clauses):
+        return True
+    return False
+
+
+def _has_clause_detail(text: str) -> bool:
+    clauses = _split_clauses(text)
+    return any(
+        len(_word_tokens(clause)) >= 2
+        or len(_cjk_phrases(clause)) >= 2
+        or _substantive_character_count(clause) >= 10
+        or _has_complete_code_relation(clause)
+        for clause in clauses
+    )
+
+
+def _split_clauses(text: str) -> List[str]:
+    return [
+        part.strip()
+        for part in re.split(r"[，,。；;：:\n]|但|不过|而且|然后|(?:\bbut\b|\band\b)", text, flags=re.IGNORECASE)
+        if part.strip()
+    ]
+
+
+def _repeated_substantive_terms(clauses: List[str]) -> set[str]:
+    clause_terms: List[set[str]] = []
+    for clause in clauses:
+        terms = {
+            token for token in _word_tokens(clause)
+            if len(token) >= 3 and token not in _EN_STOPWORDS and token not in _ACKNOWLEDGEMENT_TOKENS
+        }
+        terms.update({
+            phrase for phrase in _cjk_phrases(clause)
+            if len(phrase) >= 2 and phrase not in _ACKNOWLEDGEMENT_TOKENS and phrase not in _GENERIC_NON_EXPLANATORY_TOKENS
+        })
+        clause_terms.append(terms)
+    repeated: set[str] = set()
+    for index, terms in enumerate(clause_terms):
+        for other in clause_terms[index + 1:]:
+            repeated.update(terms & other)
+    return repeated
+
+
+def _word_tokens(text: str) -> List[str]:
+    return [item.casefold() for item in re.findall(r"[A-Za-z]+", text)]
+
+
+def _cjk_phrases(text: str) -> List[str]:
+    return re.findall(r"[\u4e00-\u9fff]{2,}", text)
 
 
 def _normalize_free_text(value: str) -> str:
