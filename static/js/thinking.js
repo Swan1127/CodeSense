@@ -1109,7 +1109,13 @@
 
                 // Check if ready for code writing phase
                 if ((data.ui_action === 'show_code_review' || data.ready_for_code) && state.feynmanPhase === 'chat') {
-                    setTimeout(() => triggerCodeWritingPhase(), 2000);
+                    if (typeof data.buggy_code === 'string' && data.buggy_code.trim()) {
+                        state.feynmanPhase = 'code_review';
+                        state.buggyCode = data.buggy_code;
+                        showCodeReviewPanel(data.buggy_code);
+                    } else {
+                        setTimeout(() => triggerCodeWritingPhase(), 2000);
+                    }
                 }
             }
         }).catch(err => {

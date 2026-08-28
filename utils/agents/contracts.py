@@ -5,6 +5,11 @@ from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
 
 
+MAX_TOOL_CALLS_PER_DECISION = 4
+MAX_TOOL_CALL_ID_CHARS = 128
+MAX_TOOL_NAME_CHARS = 80
+
+
 class AgentRole(str, Enum):
     TEACHER_AGENT = "teacher_agent"
     STUDENT_AGENT = "student_agent"
@@ -45,9 +50,15 @@ class ToolCall:
         arguments = payload["arguments"]
         if not isinstance(arguments, dict):
             raise ValueError("tool call arguments must be an object")
+        call_id = str(payload["id"])
+        name = str(payload["name"])
+        if len(call_id) > MAX_TOOL_CALL_ID_CHARS:
+            raise ValueError("tool call id is too long")
+        if len(name) > MAX_TOOL_NAME_CHARS:
+            raise ValueError("tool call name is too long")
         return cls(
-            call_id=str(payload["id"]),
-            name=str(payload["name"]),
+            call_id=call_id,
+            name=name,
             arguments=dict(arguments),
         )
 
@@ -73,6 +84,8 @@ class AgentDecision:
         raw_tool_calls = payload.get("tool_calls", [])
         if not isinstance(raw_tool_calls, list):
             raise ValueError("tool_calls must be a list")
+        if len(raw_tool_calls) > MAX_TOOL_CALLS_PER_DECISION:
+            raise ValueError("tool_calls exceeds the per-decision limit")
         tool_calls = [ToolCall.from_payload(item) for item in raw_tool_calls]
         return cls(
             message=str(payload.get("message", "")),

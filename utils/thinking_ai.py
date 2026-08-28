@@ -783,11 +783,7 @@ def student_agent_write_code(assignment_title: str, key_steps: List[str],
     """
     client = SharedLLMClient()
     if not client.is_available():
-        return {
-            'buggy_code': reference_code.replace('==', '=', 1),
-            'bugs': [{'line': 1, 'description': '运算符错误', 'fix': '将=改为=='}],
-            'message': '我试着写了一下，但老师说有问题，你能帮我看看吗？'
-        }
+        return _deterministic_buggy_attempt(reference_code)
 
     prompt = f"""你是一个刚学会编程的学生，根据同学教你的内容，你尝试写了这道题的代码。
 但是你的代码里应该有1-2个典型的初学者错误（bug），这些错误要：
@@ -822,11 +818,78 @@ def student_agent_write_code(assignment_title: str, key_steps: List[str],
             'message': data.get('message', '我写了一份代码，老师说不太对，你能帮我看看哪里出了问题吗？')
         }
     except Exception:
+        return _deterministic_buggy_attempt(reference_code)
+
+
+def _deterministic_buggy_attempt(reference_code: str) -> Dict:
+    """Create one reproducible mutation when model generation is unavailable."""
+    source = str(reference_code or '')
+    rules = [
+        (r'==', '!=', '比较运算符写反', '=='),
+        (r'<=', '<', '边界条件少包含一个端点', '<='),
+        (r'>=', '>', '边界条件少包含一个端点', '>='),
+        (r'\+\+', '--', '循环变量更新方向错误', '++'),
+        (r'--', '++', '循环变量更新方向错误', '--'),
+    ]
+    for pattern, replacement, description, correct_version in rules:
+        if re.search(pattern, source):
+            return {
+                'buggy_code': re.sub(pattern, replacement, source, count=1),
+                'bugs': [{
+                    'line_hint': '首次出现该运算符的位置',
+                    'description': description,
+                    'correct_version': correct_version,
+                }],
+                'message': '我试着写了一下，但老师说有问题，你能帮我看看吗？',
+            }
+
+    number = re.search(r'\breturn\s+(-?\d+)\b', source)
+    if number:
+        old_value = int(number.group(1))
+        new_value = old_value + 1
+        start, end = number.span(1)
         return {
-            'buggy_code': reference_code,
-            'bugs': [],
-            'message': '我按你说的写了，你帮我看看对不对？'
+            'buggy_code': source[:start] + str(new_value) + source[end:],
+            'bugs': [{
+                'line_hint': 'return 语句',
+                'description': '返回值被改成了相邻的错误值',
+                'correct_version': f'return {old_value}',
+            }],
+            'message': '我试着写了一下，但老师说有问题，你能帮我看看吗？',
         }
+
+    semicolon = source.find(';')
+    if semicolon >= 0:
+        return {
+            'buggy_code': source[:semicolon] + source[semicolon + 1:],
+            'bugs': [{
+                'line_hint': '第一条语句末尾',
+                'description': '漏写了语句结束符',
+                'correct_version': ';',
+            }],
+            'message': '我试着写了一下，但老师说有问题，你能帮我看看吗？',
+        }
+
+    trimmed = source.rstrip()
+    if trimmed:
+        return {
+            'buggy_code': trimmed[:-1] + source[len(trimmed):],
+            'bugs': [{
+                'line_hint': '代码末尾',
+                'description': '末尾缺少一个必要字符',
+                'correct_version': trimmed[-1],
+            }],
+            'message': '我试着写了一下，但老师说有问题，你能帮我看看吗？',
+        }
+    return {
+        'buggy_code': 'int main() { return 1; }',
+        'bugs': [{
+            'line_hint': 'return 语句',
+            'description': '空参考下使用了错误返回值',
+            'correct_version': 'return 0',
+        }],
+        'message': '我试着写了一下，但老师说有问题，你能帮我看看吗？',
+    }
 
 
 def evaluate_feynman_code_fix(buggy_code: str, fixed_code: str, 
@@ -882,12 +945,11 @@ def evaluate_feynman_code_fix(buggy_code: str, fixed_code: str,
     if not data or 'correct' not in data or 'feedback' not in data:
         raise RuntimeError("AI评估结果格式不符合预期，请稍后重试")
 
-    try:
-        is_correct = bool(data.get('correct', False))
-        feedback = data.get('feedback')
-        return is_correct, feedback
-    except Exception as e:
-        raise RuntimeError(f"解析AI评估结果失败: {str(e)}")
+    is_correct = data.get('correct')
+    feedback = data.get('feedback')
+    if type(is_correct) is not bool or not isinstance(feedback, str):
+        raise RuntimeError("AI评估结果格式不符合预期，请稍后重试")
+    return is_correct, feedback
 
 
 # ============================================================

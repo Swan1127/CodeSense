@@ -48,6 +48,20 @@ def test_agent_decision_rejects_malformed_tool_call():
         })
 
 
+def test_agent_decision_rejects_oversized_tool_batches_and_identifiers():
+    valid_call = {"id": "call-1", "name": "inspect_learning_state", "arguments": {}}
+    with pytest.raises(ValueError, match="tool_calls"):
+        AgentDecision.from_payload({"tool_calls": [valid_call] * 5})
+    with pytest.raises(ValueError, match="id"):
+        AgentDecision.from_payload({
+            "tool_calls": [{**valid_call, "id": "x" * 129}],
+        })
+    with pytest.raises(ValueError, match="name"):
+        AgentDecision.from_payload({
+            "tool_calls": [{**valid_call, "name": "x" * 81}],
+        })
+
+
 def test_agent_decision_rejects_non_object_payload():
     with pytest.raises(ValueError, match="decision payload"):
         AgentDecision.from_payload(None)

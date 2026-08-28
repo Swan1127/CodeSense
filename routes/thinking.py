@@ -42,16 +42,60 @@ def _request_id(data: dict) -> str:
 def _stage3_runtime(data: dict):
     thinking_session = ThinkingSession.query.get(data.get('session_id'))
     if not thinking_session or thinking_session.student_id != current_user.student_id:
-        return None, None
+        return None, None, 'SESSION_NOT_FOUND'
+    if not _stage3_session_is_active(thinking_session):
+        return thinking_session, None, 'STAGE3_NOT_ACTIVE'
     assignment = Assignment.query.get(thinking_session.assignment_id)
     preset = AssignmentThinkingPreset.query.filter_by(assignment_id=thinking_session.assignment_id).first()
     if not assignment or not preset:
-        return thinking_session, None
-    return thinking_session, build_feynman_runtime(thinking_session, assignment, preset)
+        return thinking_session, None, 'STAGE3_UNAVAILABLE'
+    return thinking_session, build_feynman_runtime(thinking_session, assignment, preset), None
+
+
+def _stage3_session_is_active(thinking_session) -> bool:
+    return (
+        getattr(thinking_session, 'current_stage', None) == 3
+        and bool(getattr(thinking_session, 'stage2_completed', False))
+        and getattr(thinking_session, 'status', None) == 'in_progress'
+    )
+
+
+def _stage3_runtime_error_response(error_code: str):
+    if error_code == 'SESSION_NOT_FOUND':
+        return jsonify({'error': '会话不存在', 'error_code': error_code}), 403
+    if error_code == 'STAGE3_NOT_ACTIVE':
+        return jsonify({'error': '当前会话尚不可进行阶段3', 'error_code': error_code}), 409
+    return jsonify({'error': '学习数据尚未准备好', 'error_code': error_code}), 503
+
+
+def _stage3_completion_is_verified(thinking_session) -> bool:
+    if (
+        getattr(thinking_session, 'current_stage', None) != 3
+        or not bool(getattr(thinking_session, 'stage2_completed', False))
+        or not bool(getattr(thinking_session, 'stage3_completed', False))
+        or getattr(thinking_session, 'status', None) != 'completed'
+    ):
+        return False
+    stage_pass_logs = ThinkingStageLog.query.filter_by(
+        session_id=thinking_session.id,
+        stage=3,
+        event_type='stage_pass',
+    ).order_by(ThinkingStageLog.created_at.asc(), ThinkingStageLog.id.asc()).all()
+    return any((log.get_metadata() or {}).get('validated') is True for log in stage_pass_logs)
 
 
 def _stage3_request_result(session_id: int, request_id: str):
     return MemoryStore(SqlAlchemyEventStore()).find_request_result(session_id, request_id)
+
+
+def _stable_event_order(logs):
+    return sorted(
+        logs,
+        key=lambda log: (
+            getattr(log, 'created_at', None) or dt.min,
+            getattr(log, 'id', None) or 0,
+        ),
+    )
 
 
 def _runtime_role_by_request(logs):
@@ -231,7 +275,10 @@ def start_session():
             companion_logs = ThinkingStageLog.query.filter_by(
                 session_id=existing.id,
                 event_type='companion_chat'
-            ).order_by(ThinkingStageLog.created_at.asc()).all()
+            ).order_by(
+                ThinkingStageLog.created_at.asc(), ThinkingStageLog.id.asc()
+            ).all()
+            companion_logs = _stable_event_order(companion_logs)
             companion_history = [{
                 'role': log.role,
                 'content': log.content
@@ -241,7 +288,10 @@ def start_session():
             stage3_logs = ThinkingStageLog.query.filter_by(
                 session_id=existing.id,
                 stage=3
-            ).order_by(ThinkingStageLog.created_at.asc()).all()
+            ).order_by(
+                ThinkingStageLog.created_at.asc(), ThinkingStageLog.id.asc()
+            ).all()
+            stage3_logs = _stable_event_order(stage3_logs)
 
             teacher_history = []
             student_history = []
@@ -268,6 +318,8 @@ def start_session():
                     buggy_code_info = {'buggy_code': meta.get('buggy_code', ''), 'message': log.content}
                     student_history.append({'role': 'assistant', 'content': log.content})
                 elif log.event_type == 'agent_user_message':
+                    if not (log.content or '').strip():
+                        continue
                     role = runtime_roles.get(str((log.get_metadata() or {}).get('request_id') or ''))
                     message = {'role': 'user', 'content': log.content}
                     if role == 'teacher_agent':
@@ -278,10 +330,11 @@ def start_session():
                         unattributed_runtime_users.append(message)
                 elif log.event_type == 'agent_message':
                     code_review = _public_code_review(log)
-                    if code_review and code_review['request_id'] not in restored_code_requests:
-                        restored_code_requests.add(code_review['request_id'])
-                        buggy_code_info = {'buggy_code': code_review['buggy_code'], 'message': code_review['message']}
-                        student_history.append({'role': 'assistant', 'content': code_review['message']})
+                    if code_review:
+                        if code_review['request_id'] not in restored_code_requests:
+                            restored_code_requests.add(code_review['request_id'])
+                            buggy_code_info = {'buggy_code': code_review['buggy_code'], 'message': code_review['message']}
+                            student_history.append({'role': 'assistant', 'content': code_review['message']})
                         continue
                     message = {'role': 'assistant', 'content': log.content}
                     if log.role == 'teacher_agent':
@@ -788,11 +841,9 @@ def stage3_teacher_chat():
         message = _extract_stage3_message(data)
         if not message:
             return jsonify({'error': '缺少消息'}), 400
-        ts, runtime = _stage3_runtime(data)
-        if not ts:
-            return jsonify({'error': '会话不存在'}), 403
-        if not runtime:
-            return jsonify({'error': '学习数据尚未准备好'}), 503
+        ts, runtime, error_code = _stage3_runtime(data)
+        if error_code:
+            return _stage3_runtime_error_response(error_code)
         result = runtime.handle_chat(AgentRole.TEACHER_AGENT, message, request_id=_request_id(data))
         return jsonify(result.to_public_dict())
     except Exception:
@@ -810,11 +861,9 @@ def stage3_student_teach():
         message = _extract_stage3_message(data)
         if not message:
             return jsonify({'error': '缺少消息'}), 400
-        ts, runtime = _stage3_runtime(data)
-        if not ts:
-            return jsonify({'error': '会话不存在'}), 403
-        if not runtime:
-            return jsonify({'error': '学习数据尚未准备好'}), 503
+        ts, runtime, error_code = _stage3_runtime(data)
+        if error_code:
+            return _stage3_runtime_error_response(error_code)
 
         # 验证学生发给小明的解答质量（防止刷屏/复读绕过）
         request_id = _request_id(data)
@@ -856,11 +905,9 @@ def stage3_write_code():
     """费曼阶段 — 坏学生尝试写代码（带陷阱）"""
     try:
         data = request.get_json() or {}
-        ts, runtime = _stage3_runtime(data)
-        if not ts:
-            return jsonify({'error': '会话不存在'}), 403
-        if not runtime:
-            return jsonify({'error': '学习数据尚未准备好'}), 503
+        ts, runtime, error_code = _stage3_runtime(data)
+        if error_code:
+            return _stage3_runtime_error_response(error_code)
         result = runtime.generate_buggy_attempt(request_id=_request_id(data))
         return jsonify(result.to_public_dict())
     except Exception:
@@ -876,11 +923,9 @@ def stage3_fix_code():
     try:
         data = request.get_json() or {}
         fixed_code = data.get('fixed_code', '')  # 修改后的代码或自然语言描述
-        ts, runtime = _stage3_runtime(data)
-        if not ts:
-            return jsonify({'error': '会话不存在'}), 403
-        if not runtime:
-            return jsonify({'error': '学习数据尚未准备好'}), 503
+        ts, runtime, error_code = _stage3_runtime(data)
+        if error_code:
+            return _stage3_runtime_error_response(error_code)
         result = runtime.evaluate_fix(str(fixed_code or ''), request_id=_request_id(data))
         return jsonify(result.to_public_dict())
     except Exception:
@@ -894,18 +939,20 @@ def stage3_fix_code():
 def complete_session():
     """手动标记完成（用于阶段3判定通过后）"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         session_id = data.get('session_id')
         total_time = data.get('total_time_seconds', 0)
 
         ts = ThinkingSession.query.get(session_id)
         if not ts or ts.student_id != current_user.student_id:
             return jsonify({'error': '会话不存在'}), 403
+        if not _stage3_completion_is_verified(ts):
+            return jsonify({
+                'error': '阶段3尚未通过服务端完成校验',
+                'error_code': 'STAGE3_COMPLETION_NOT_VERIFIED',
+            }), 409
 
         ts.total_time_seconds = total_time
-        if ts.status != 'completed':
-            ts.status = 'completed'
-            ts.completed_at = dt.utcnow()
 
         db.session.commit()
 
@@ -1035,7 +1082,10 @@ def get_session_log(session_id):
             return jsonify({'error': '无权查看'}), 403
 
         logs = ThinkingStageLog.query.filter_by(session_id=session_id)\
-            .order_by(ThinkingStageLog.created_at.asc()).all()
+            .order_by(
+                ThinkingStageLog.created_at.asc(), ThinkingStageLog.id.asc()
+            ).all()
+        logs = _stable_event_order(logs)
 
         return jsonify({
             'success': True,

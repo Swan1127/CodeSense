@@ -132,10 +132,9 @@ class DualFeynmanRuntime:
     def handle_chat(self, role: AgentRole, message: str, *, request_id: str) -> AgentResult:
         if role not in self.specs:
             raise ValueError("unsupported agent role")
-        duplicate = self.memory.find_request_result(self.session.id, request_id) is not None
         result = self._loop_for(role, self.model).handle_turn(message, request_id=request_id)
-        if not duplicate:
-            self._sync_completed_goal(role, result)
+        self._sync_compat_rounds(role, result)
+        self._sync_completed_goal(role, result)
         return result
 
     def generate_buggy_attempt(self, *, request_id: str) -> AgentResult:
@@ -161,7 +160,6 @@ class DualFeynmanRuntime:
         )
 
     def evaluate_fix(self, fixed_code: str, *, request_id: str) -> AgentResult:
-        duplicate = self.memory.find_request_result(self.session.id, request_id) is not None
         result = self._run_forced_tool("evaluate_fix", {"fixed_code": fixed_code}, request_id)
         if not result.success:
             return result
@@ -175,7 +173,7 @@ class DualFeynmanRuntime:
             state=result.state,
             public_content={"correct": content["correct"], "feedback": str(content.get("feedback", ""))},
         )
-        if not duplicate and content["correct"]:
+        if content["correct"]:
             self._complete_session(str(content.get("feedback", "")), request_id, source="validated_evaluation")
         return evaluation
 
@@ -192,6 +190,7 @@ class DualFeynmanRuntime:
                 assignment_title=str(getattr(self.assignment, "title", "") or ""),
                 key_concepts=self._key_concepts(),
                 reference_code=str(getattr(self.preset, "reference_code", "") or ""),
+                max_output_chars=spec.max_output_chars,
             ),
             context_builder=lambda snapshot, input_kind: self._context_for(role, snapshot, input_kind),
         )
@@ -266,22 +265,51 @@ class DualFeynmanRuntime:
         return self.memory.event_store.list_events(self.session.id, stage=3)
 
     def _sync_completed_goal(self, role: AgentRole, result: AgentResult) -> None:
-        if role is AgentRole.TEACHER_AGENT and result.success and result.state.get("status") == "complete":
+        if result.success and result.state.get("status") == "complete":
             self._complete_session("学习目标已通过服务端检查。", request_id=None, source="complete_goal")
 
-    def _complete_session(self, feedback: str, request_id: Optional[str], *, source: str) -> None:
-        if getattr(self.session, "stage3_completed", False) or getattr(self.session, "status", "") == "completed":
+    def _sync_compat_rounds(self, role: AgentRole, result: AgentResult) -> None:
+        if not result.success:
             return
+        state_field = (
+            "teacher_rounds"
+            if role is AgentRole.TEACHER_AGENT
+            else "student_rounds"
+        )
+        session_field = (
+            "stage3_teacher_rounds"
+            if role is AgentRole.TEACHER_AGENT
+            else "stage3_student_rounds"
+        )
+        value = result.state.get(state_field)
+        if type(value) is not int or value < 0:
+            return
+        if getattr(self.session, session_field, 0) != value:
+            setattr(self.session, session_field, value)
+            self.callbacks.save_session(self.session)
+
+    def _complete_session(self, feedback: str, request_id: Optional[str], *, source: str) -> None:
+        has_validated_pass = any(
+            event.event_type == "stage_pass"
+            and event.metadata.get("validated") is True
+            for event in self._events()
+        )
+        if not has_validated_pass:
+            self.memory.append_event(
+                self.session.id,
+                "stage_pass",
+                "system",
+                content=feedback,
+                metadata={
+                    "request_id": request_id,
+                    "source": source,
+                    "validated": True,
+                },
+            )
         self.session.stage3_completed = True
         self.session.status = "completed"
-        self.session.completed_at = self.callbacks.now()
-        self.memory.append_event(
-            self.session.id,
-            "stage_pass",
-            "system",
-            content=feedback,
-            metadata={"request_id": request_id, "source": source},
-        )
+        if getattr(self.session, "completed_at", None) is None:
+            self.session.completed_at = self.callbacks.now()
         self.callbacks.save_session(self.session)
 
 

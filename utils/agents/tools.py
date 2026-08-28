@@ -6,6 +6,7 @@ results deliberately keep private artifacts out of ``model_content``.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, FrozenSet, List, Mapping, Optional
 
@@ -68,6 +69,10 @@ class ToolRegistry:
             if role in definition.allowed_roles
         ]
 
+    def is_side_effect(self, name: str) -> bool:
+        definition = self._definitions.get(name)
+        return bool(definition and definition.side_effect)
+
     def execute(self, role: AgentRole, call: ToolCall, context: ToolContext) -> ToolResult:
         definition = self._definitions.get(call.name)
         if definition is None:
@@ -117,7 +122,6 @@ def build_feynman_tool_registry(
     evaluator = fix_evaluator or _default_fix_evaluator
     registry = ToolRegistry()
     both_roles = frozenset({AgentRole.TEACHER_AGENT, AgentRole.STUDENT_AGENT})
-    teacher_only = frozenset({AgentRole.TEACHER_AGENT})
     student_only = frozenset({AgentRole.STUDENT_AGENT})
 
     registry.register(ToolDefinition(
@@ -151,7 +155,7 @@ def build_feynman_tool_registry(
     ))
     registry.register(ToolDefinition(
         "complete_goal", "Complete the goal after server-side readiness checks.",
-        _object_schema(), teacher_only, _complete_goal, side_effect=True,
+        _object_schema(), both_roles, _complete_goal, side_effect=True,
     ))
     return registry
 
@@ -228,7 +232,8 @@ def _generate_buggy_attempt(generator: BuggyCodeGenerator) -> ToolHandler:
         return ToolResult(
             ok=True,
             model_content=dict(visible),
-            public_content=dict(visible),
+            public_content={**visible, "ui_action": "show_code_review"},
+            state_patch={"phase": "code_review", "code_review_status": "pending"},
             memory_events=[{
                 "event_type": "buggy_attempt",
                 "content": message,
@@ -240,6 +245,8 @@ def _generate_buggy_attempt(generator: BuggyCodeGenerator) -> ToolHandler:
 
 def _evaluate_fix(evaluator: FixEvaluator) -> ToolHandler:
     def handler(context: ToolContext, arguments: Dict[str, Any]) -> ToolResult:
+        if not _fix_evaluation_is_ready(context):
+            return _error("FIX_NOT_READY")
         try:
             evaluation = evaluator(context, arguments["fixed_code"])
         except Exception:
@@ -285,12 +292,36 @@ def _is_meaningful_evidence(value: str) -> bool:
 
 def _generated_code_is_safe(context: ToolContext, buggy_code: str, bugs: List[Any]) -> bool:
     reference_code = context.reference_code.strip()
-    if reference_code and buggy_code.strip() == reference_code:
+    if not buggy_code.strip() or not bugs or not all(_structured_bug(bug) for bug in bugs):
+        return False
+    if reference_code and _semantic_code_key(buggy_code) == _semantic_code_key(reference_code):
         return False
     return not any(
         sensitive in buggy_code
         for sensitive in _internal_artifact_strings(bugs)
     )
+
+
+def _structured_bug(value: Any) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    description = value.get("description")
+    anchors = (
+        value.get("fix"),
+        value.get("correct_version"),
+        value.get("line"),
+        value.get("line_hint"),
+    )
+    return (
+        isinstance(description, str)
+        and bool(description.strip())
+        and any(anchor is not None and str(anchor).strip() for anchor in anchors)
+    )
+
+
+def _semantic_code_key(value: str) -> str:
+    without_comments = re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", value)
+    return re.sub(r"\s+", "", without_comments).casefold()
 
 
 def _internal_artifact_strings(value: Any) -> List[str]:
@@ -304,8 +335,7 @@ def _internal_artifact_strings(value: Any) -> List[str]:
 def _complete_goal(context: ToolContext, _: Dict[str, Any]) -> ToolResult:
     state = context.memory.state
     if (
-        not state.learning_evidence
-        or state.phase != "code_review"
+        not _base_completion_is_ready(context)
         or state.code_review_status not in {"passed", "approved", "complete"}
     ):
         return _error("GOAL_NOT_READY")
@@ -315,6 +345,18 @@ def _complete_goal(context: ToolContext, _: Dict[str, Any]) -> ToolResult:
         public_content={"goal_status": "complete"},
         state_patch={"status": "complete"},
     )
+
+
+def _fix_evaluation_is_ready(context: ToolContext) -> bool:
+    return (
+        _base_completion_is_ready(context)
+        and _latest_buggy_artifact(context) is not None
+    )
+
+
+def _base_completion_is_ready(context: ToolContext) -> bool:
+    state = context.memory.state
+    return state.phase == "code_review" and bool(state.learning_evidence)
 
 
 def _default_buggy_code_generator(context: ToolContext) -> Mapping[str, Any]:
@@ -338,7 +380,41 @@ def _default_fix_evaluator(context: ToolContext, fixed_code: str) -> Dict[str, A
     correct, feedback = evaluate_feynman_code_fix(
         artifact["buggy_code"], fixed_code, artifact["bugs"], context.reference_code,
     )
+    if correct and not _deterministic_fix_confirms(
+        artifact["buggy_code"], fixed_code, artifact["bugs"], context.reference_code,
+    ):
+        correct = False
+        feedback = "修复尚未通过确定性检查。"
     return {"correct": correct, "feedback": feedback}
+
+
+def _deterministic_fix_confirms(
+    buggy_code: str,
+    fixed_code: str,
+    bugs: List[Any],
+    reference_code: str,
+) -> bool:
+    fixed_key = _semantic_code_key(fixed_code)
+    if not fixed_key or fixed_key == _semantic_code_key(buggy_code):
+        return False
+    reference_key = _semantic_code_key(reference_code)
+    if reference_key and fixed_key == reference_key:
+        return True
+    compact_fixed = re.sub(r"\s+", "", fixed_code).casefold()
+    for bug in bugs:
+        if not isinstance(bug, Mapping):
+            return False
+        corrections = [
+            str(bug.get(name) or "").strip()
+            for name in ("correct_version", "fix")
+        ]
+        corrections = [item for item in corrections if item]
+        if not corrections or not any(
+            re.sub(r"\s+", "", item).casefold() in compact_fixed
+            for item in corrections
+        ):
+            return False
+    return True
 
 
 def _latest_buggy_artifact(context: ToolContext) -> Optional[Dict[str, Any]]:

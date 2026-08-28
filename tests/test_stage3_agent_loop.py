@@ -1,6 +1,9 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 
+import pytest
+from flask import Flask
+
 from utils.agents.contracts import AgentDecision, AgentResult, AgentRole, GoalStatus, ToolCall, ToolResult, UIAction
 from utils.agents.feynman import FeynmanCallbacks, build_feynman_runtime
 from utils.agents.memory import EventRecord, FeynmanState, MemorySnapshot, MemoryStore
@@ -51,6 +54,9 @@ class FakeRegistry:
     def specs_for(self, role):
         return [{"name": name} for name in self.results]
 
+    def is_side_effect(self, name):
+        return False
+
     def execute(self, role, call, context):
         self.calls.append((role, call.name))
         value = self.results.get(call.name, ToolResult(ok=False, error_code="UNKNOWN_TOOL"))
@@ -62,6 +68,7 @@ class FakeRegistry:
 class FakeEventStore:
     def __init__(self):
         self.events = []
+        self.batches = []
 
     def list_events(self, session_id, stage=3):
         return [event for event in self.events if event.session_id == session_id and event.stage == stage]
@@ -70,6 +77,10 @@ class FakeEventStore:
         event.event_id = str(len(self.events) + 1)
         self.events.append(event)
         return event
+
+    def append_many(self, events):
+        self.batches.append([event.event_type for event in events])
+        return [self.append(event) for event in events]
 
 
 @dataclass
@@ -99,6 +110,8 @@ class FakeSession:
     stage3_completed: bool = False
     status: str = "in_progress"
     completed_at: datetime | None = None
+    stage3_teacher_rounds: int = 0
+    stage3_student_rounds: int = 0
 
 
 def make_feynman_runtime(*, fake_model=None, buggy_code_generator=None, fix_evaluator=None):
@@ -118,6 +131,22 @@ def make_feynman_runtime(*, fake_model=None, buggy_code_generator=None, fix_eval
     )
     runtime.event_store = event_store
     return runtime
+
+
+def mark_runtime_ready_for_fix(runtime):
+    runtime.memory.append_event(
+        runtime.session.id,
+        "state_snapshot",
+        "system",
+        metadata={"state": {
+            "phase": "code_review",
+            "code_review_status": "pending",
+            "learning_evidence": [{
+                "concept": "循环边界",
+                "evidence": "能够解释边界条件为什么能避免越界。",
+            }],
+        }},
+    )
 
 
 class ContextCheckingModel(FakeDecisionModel):
@@ -141,6 +170,77 @@ def make_loop(*, model, tools=None, memory=None):
         spec=AgentLoopSpec(system_prompt="teach safely"),
         config=AgentLoopConfig(),
     )
+
+
+def test_agent_loop_sanitizes_code_before_public_response_and_persistence():
+    memory = FakeMemory()
+    result = AgentLoop(
+        session_id=12,
+        role=AgentRole.TEACHER_AGENT,
+        model=FakeDecisionModel([AgentDecision(
+            message="先看这一段：\n```cpp\nint main() { return 0; }\n```",
+        )]),
+        tools=FakeRegistry(),
+        memory=memory,
+        spec=AgentLoopSpec(system_prompt="teach safely", max_output_chars=1200),
+    ).handle_turn("继续", request_id="sanitize-code")
+
+    persisted = next(event for event in memory.events if event[0] == "agent_message")
+    assert "int main" not in result.response
+    assert "代码已被过滤" in result.response
+    assert persisted[2] == result.response
+
+
+def test_agent_loop_bounds_sanitized_response_before_persistence():
+    memory = FakeMemory()
+    result = AgentLoop(
+        session_id=12,
+        role=AgentRole.STUDENT_AGENT,
+        model=FakeDecisionModel([AgentDecision(message="解释" * 100)]),
+        tools=FakeRegistry(),
+        memory=memory,
+        spec=AgentLoopSpec(system_prompt="teach safely", max_output_chars=24),
+    ).handle_turn("继续", request_id="bounded-output")
+
+    persisted = next(event for event in memory.events if event[0] == "agent_message")
+    assert len(result.response) == 24
+    assert persisted[2] == result.response
+
+
+def test_agent_loop_rejects_oversized_tool_batch_before_executing_any_call():
+    tools = FakeRegistry({"inspect_learning_state": ToolResult(ok=True)})
+    result = make_loop(
+        model=FakeDecisionModel([AgentDecision(tool_calls=[
+            ToolCall(f"batch-{index}", "inspect_learning_state", {})
+            for index in range(5)
+        ])]),
+        tools=tools,
+    ).handle_turn("继续", request_id="tool-batch-limit")
+
+    assert (result.success, result.error_code) == (False, "TOOL_CALL_LIMIT")
+    assert tools.calls == []
+
+
+def test_agent_loop_rejects_request_tool_limit_before_executing_next_batch():
+    tools = FakeRegistry({"inspect_learning_state": ToolResult(ok=True)})
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[
+                ToolCall(f"first-{index}", "inspect_learning_state", {})
+                for index in range(3)
+            ]),
+            AgentDecision(tool_calls=[
+                ToolCall(f"second-{index}", "inspect_learning_state", {})
+                for index in range(2)
+            ]),
+        ]),
+        tools=tools,
+    ).handle_turn("继续", request_id="tool-request-limit")
+
+    assert (result.success, result.error_code) == (False, "TOOL_CALL_LIMIT")
+    assert tools.calls == [
+        (AgentRole.TEACHER_AGENT, "inspect_learning_state"),
+    ] * 3
 
 
 def test_agent_loop_executes_tool_then_uses_result():
@@ -261,6 +361,24 @@ def test_agent_loop_returns_model_fallback_error_without_advancing_state():
 
     assert (result.success, result.error_code, result.state) == (False, "INVALID_DECISION", {})
     assert "agent_message" not in [event[0] for event in memory.events]
+
+
+def test_agent_loop_records_sanitized_agent_decision_error_event():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([ModelError("INVALID_DECISION")]),
+        memory=memory,
+    ).handle_turn("继续", request_id="decision-error")
+
+    assert (result.success, result.error_code) == (False, "INVALID_DECISION")
+    error_event = next(event for event in memory.events if event[0] == "agent_decision_error")
+    assert error_event[2] == ""
+    assert error_event[3] == {
+        "request_id": "decision-error",
+        "role": "teacher_agent",
+        "step": 0,
+        "error_code": "INVALID_DECISION",
+    }
 
 
 def test_agent_loop_persists_internal_memory_events_but_never_returns_them():
@@ -412,6 +530,382 @@ def test_feynman_student_runtime_exposes_student_goal_but_not_reference_code():
     assert "标准答案派生摘要" not in context
 
 
+def test_unique_successful_chat_updates_rounds_and_agent_state_once():
+    model = FakeDecisionModel([AgentDecision(message="请继续解释循环边界。")])
+    runtime = make_feynman_runtime(fake_model=model)
+
+    first = runtime.handle_chat(
+        AgentRole.TEACHER_AGENT,
+        "循环在 i 等于 n 前停止。",
+        request_id="teacher-round-1",
+    )
+    duplicate = runtime.handle_chat(
+        AgentRole.TEACHER_AGENT,
+        "这条重复内容不应覆盖状态。",
+        request_id="teacher-round-1",
+    )
+
+    restored = runtime.memory.load(runtime.session.id)
+    agent_state = restored.agent_states[AgentRole.TEACHER_AGENT]
+    assert first.state["teacher_rounds"] == 1
+    assert duplicate.state["teacher_rounds"] == 1
+    assert runtime.session.stage3_teacher_rounds == 1
+    assert runtime.session.stage3_student_rounds == 0
+    assert agent_state.agent_id == "teacher_agent"
+    assert agent_state.turn_index == 1
+    assert agent_state.last_user_message == "循环在 i 等于 n 前停止。"
+    assert agent_state.current_focus == "student_dialogue"
+    assert model.calls and len(model.calls) == 1
+
+
+def test_student_model_generation_reaches_code_review_and_survives_recovery():
+    """A real Student tool decision must make the code-review transition itself."""
+    hidden_fix = "return 0;"
+    runtime = make_feynman_runtime(
+        fake_model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("generate-1", "generate_buggy_attempt", {})]),
+        ]),
+        buggy_code_generator=lambda context: {
+            "buggy_code": "int main() { return 1; }",
+            "bugs": [{
+                "line": 1,
+                "description": "返回值错误",
+                "correct_version": hidden_fix,
+            }],
+            "message": "我不确定返回值对不对。",
+        },
+    )
+
+    result = runtime.handle_chat(
+        AgentRole.STUDENT_AGENT,
+        "我已经解释了循环的停止条件。",
+        request_id="student-generate-1",
+    )
+
+    assert result.success is True
+    assert result.ui_action is UIAction.SHOW_CODE_REVIEW
+    assert result.ready_for_code is True
+    assert result.state["phase"] == "code_review"
+    assert result.public_content["buggy_code"] == "int main() { return 1; }"
+    assert hidden_fix not in str(result.to_public_dict())
+
+    restored = runtime.memory.load(runtime.session.id)
+    assert restored.state.phase == "code_review"
+    assert len(restored.code_artifact_index) == 1
+    assert hidden_fix not in str(
+        runtime.memory.view_for(restored, AgentRole.STUDENT_AGENT).to_prompt_dict()
+    )
+
+
+def test_student_complete_goal_uses_the_same_server_readiness_gate_as_teacher():
+    """The approved registry gives either role the same validated completion path."""
+    runtime = make_feynman_runtime(fake_model=FakeDecisionModel([
+        AgentDecision(tool_calls=[ToolCall("complete-1", "complete_goal", {})]),
+    ]))
+    runtime.memory.append_event(
+        runtime.session.id,
+        "state_snapshot",
+        "system",
+        metadata={
+            "state": {
+                "phase": "code_review",
+                "code_review_status": "passed",
+                "learning_evidence": [{
+                    "concept": "循环边界",
+                    "evidence": "能够说明 i < n 为什么能避免越界。",
+                }],
+            },
+        },
+    )
+
+    result = runtime.handle_chat(
+        AgentRole.STUDENT_AGENT,
+        "我已经把循环边界讲清楚了。",
+        request_id="student-complete-1",
+    )
+
+    assert result.success is True
+    assert result.state["status"] == "complete"
+    assert runtime.session.stage3_completed is True
+    assert runtime.session.status == "completed"
+
+
+def test_replayed_persisted_buggy_tool_result_does_not_execute_generator_twice():
+    """A restart must replay the durable result rather than repeat a side effect."""
+    generator_calls = []
+    runtime = make_feynman_runtime(
+        fake_model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("generate-replay", "generate_buggy_attempt", {})]),
+        ]),
+        buggy_code_generator=lambda context: generator_calls.append(context.request_id) or {
+            "buggy_code": "int main() { return 2; }",
+            "bugs": [{"line": 1, "description": "不应再次生成", "correct_version": "return 0;"}],
+            "message": "不应再次调用。",
+        },
+    )
+    persisted_call = ToolCall("generate-replay", "generate_buggy_attempt", {})
+    runtime.event_store.append(EventRecord(
+        session_id=runtime.session.id,
+        stage=3,
+        event_type="tool_call",
+        role="student_agent",
+        metadata={
+            "request_id": "replay-generate-1",
+            "tool_call": persisted_call.to_payload(),
+            "claim": True,
+            "side_effect": True,
+        },
+    ))
+    runtime.event_store.append(EventRecord(
+        session_id=runtime.session.id,
+        stage=3,
+        event_type="tool_result",
+        role="student_agent",
+        metadata={
+            "request_id": "replay-generate-1",
+            "tool_call": persisted_call.to_payload(),
+            "ok": True,
+            "terminal": False,
+            "model_content": {
+                "buggy_code": "int main() { return 1; }",
+                "message": "我写了一版代码，请帮我检查。",
+            },
+            "public_content": {
+                "buggy_code": "int main() { return 1; }",
+                "message": "我写了一版代码，请帮我检查。",
+                "ui_action": "show_code_review",
+            },
+            "state_patch": {"phase": "code_review", "code_review_status": "pending"},
+        },
+    ))
+    runtime.event_store.append(EventRecord(
+        session_id=runtime.session.id,
+        stage=3,
+        event_type="buggy_attempt",
+        role="student_agent",
+        metadata={"request_id": "replay-generate-1", "artifact": {
+            "buggy_code": "int main() { return 1; }",
+            "bugs": [{"line": 1, "description": "返回值错误", "correct_version": "return 0;"}],
+        }},
+    ))
+
+    result = runtime.handle_chat(
+        AgentRole.STUDENT_AGENT,
+        "我已经解释过边界条件。",
+        request_id="replay-generate-1",
+    )
+
+    assert result.success is True
+    assert result.ui_action is UIAction.SHOW_CODE_REVIEW
+    assert result.state["phase"] == "code_review"
+    assert generator_calls == []
+    assert len([event for event in runtime.event_store.events if event.event_type == "buggy_attempt"]) == 1
+
+
+def test_side_effect_tool_claim_is_persisted_before_callback_runs():
+    observed_claims = []
+    runtime = make_feynman_runtime(
+        buggy_code_generator=lambda context: observed_claims.append(
+            runtime.memory.has_tool_call_claim(
+                context.session_id,
+                context.request_id,
+                "claim-before-callback",
+            )
+        ) or {
+            "buggy_code": "int main() { return 1; }",
+            "bugs": [{"description": "返回值错误", "correct_version": "return 0;"}],
+            "message": "请检查返回值。",
+        },
+    )
+
+    result = runtime._loop_for(
+        AgentRole.STUDENT_AGENT,
+        FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall(
+                "claim-before-callback", "generate_buggy_attempt", {},
+            )]),
+        ]),
+    ).handle_turn("请生成代码。", request_id="claim-before-callback-request")
+
+    assert result.success is True
+    assert observed_claims == [True]
+
+
+def test_unfinished_side_effect_claim_is_refused_without_reexecution():
+    generator_calls = []
+    runtime = make_feynman_runtime(
+        fake_model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("unfinished-call", "generate_buggy_attempt", {})]),
+        ]),
+        buggy_code_generator=lambda context: generator_calls.append(context.request_id) or {},
+    )
+    runtime.event_store.append(EventRecord(
+        session_id=runtime.session.id,
+        stage=3,
+        event_type="tool_call",
+        role="student_agent",
+        metadata={
+            "request_id": "unfinished-request",
+            "tool_call": ToolCall("unfinished-call", "generate_buggy_attempt", {}).to_payload(),
+            "claim": True,
+            "side_effect": True,
+        },
+    ))
+
+    result = runtime.handle_chat(
+        AgentRole.STUDENT_AGENT,
+        "继续。",
+        request_id="unfinished-request",
+    )
+
+    assert (result.success, result.error_code) == (False, "TOOL_CALL_UNFINISHED")
+    assert generator_calls == []
+
+
+def test_agent_loop_uses_configured_redis_lock_with_ttl():
+    class FakeRedisLock:
+        def __init__(self):
+            self.acquired = 0
+            self.released = 0
+
+        def acquire(self, blocking=True):
+            self.acquired += 1
+            return True
+
+        def release(self):
+            self.released += 1
+
+    class FakeRedis:
+        def __init__(self):
+            self.calls = []
+            self.lock_instance = FakeRedisLock()
+
+        def lock(self, name, *, timeout, blocking_timeout):
+            self.calls.append((name, timeout, blocking_timeout))
+            return self.lock_instance
+
+    app = Flask(__name__)
+    redis_client = FakeRedis()
+    app.config["SESSION_REDIS"] = redis_client
+
+    with app.app_context():
+        result = make_loop(
+            model=FakeDecisionModel([AgentDecision(message="继续检查边界。")]),
+        ).handle_turn("继续", request_id="redis-lock")
+
+    assert result.success is True
+    assert redis_client.calls == [("stage3-agent-session:12", 120, 5)]
+    assert (redis_client.lock_instance.acquired, redis_client.lock_instance.released) == (1, 1)
+
+
+def test_terminal_agent_message_and_snapshot_are_persisted_in_one_batch():
+    event_store = FakeEventStore()
+    result = make_loop(
+        model=FakeDecisionModel([AgentDecision(message="检查循环边界。")]),
+        memory=MemoryStore(event_store),
+    ).handle_turn("继续", request_id="terminal-batch")
+
+    assert result.success is True
+    assert ["agent_message", "state_snapshot"] in event_store.batches
+    terminal_snapshot = next(
+        event for event in event_store.events if event.event_type == "state_snapshot"
+    )
+    assert terminal_snapshot.metadata["terminal"] is True
+
+
+def test_correct_evaluate_fix_is_terminal_without_second_model_step():
+    model = FakeDecisionModel([
+        AgentDecision(tool_calls=[ToolCall(
+            "evaluate-1",
+            "evaluate_fix",
+            {"fixed_code": "print('fixed')"},
+        )]),
+    ])
+    result = AgentLoop(
+        session_id=12,
+        role=AgentRole.STUDENT_AGENT,
+        model=model,
+        tools=FakeRegistry({
+            "evaluate_fix": ToolResult(
+                ok=True,
+                public_content={"correct": True, "feedback": "修复正确。"},
+                state_patch={"code_review_status": "passed"},
+            ),
+        }),
+        memory=FakeMemory(),
+        spec=AgentLoopSpec(system_prompt="teach safely"),
+    ).handle_turn("请检查修复", request_id="request-evaluate-terminal")
+
+    assert result.success is True
+    assert result.public_content["correct"] is True
+    assert result.response == "修复正确。"
+    assert len(model.calls) == 1
+
+
+def test_redis_lock_releases_and_preserves_body_exception():
+    class RaisingMemory(FakeMemory):
+        def find_request_result(self, session_id, request_id):
+            raise RuntimeError("memory exploded")
+
+    class FakeRedisLock:
+        released = 0
+
+        def acquire(self, blocking=True):
+            return True
+
+        def release(self):
+            self.released += 1
+
+    class FakeRedis:
+        def __init__(self):
+            self.lock_instance = FakeRedisLock()
+
+        def lock(self, name, *, timeout, blocking_timeout):
+            return self.lock_instance
+
+    app = Flask(__name__)
+    redis_client = FakeRedis()
+    app.config["SESSION_REDIS"] = redis_client
+
+    with app.app_context(), pytest.raises(RuntimeError, match="memory exploded"):
+        make_loop(
+            model=FakeDecisionModel([]),
+            memory=RaisingMemory(),
+        ).handle_turn("继续", request_id="redis-lock-error")
+
+    assert redis_client.lock_instance.released == 1
+
+
+def test_duplicate_successful_fix_reconciles_session_without_re_evaluation():
+    evaluator_calls = []
+    runtime = make_feynman_runtime(
+        buggy_code_generator=lambda context: {
+            "buggy_code": "int main() { return 1; }",
+            "bugs": [{"description": "返回值错误", "correct_version": "return 0;"}],
+            "message": "检查返回值。",
+        },
+        fix_evaluator=lambda context, fixed_code: evaluator_calls.append(fixed_code) or {
+            "correct": True,
+            "feedback": "修复正确",
+        },
+    )
+    runtime.generate_buggy_attempt(request_id="reconcile-code")
+    mark_runtime_ready_for_fix(runtime)
+    first = runtime.evaluate_fix("int main() { return 0; }", request_id="reconcile-fix")
+    runtime.session.stage3_completed = False
+    runtime.session.status = "in_progress"
+    runtime.session.completed_at = None
+
+    duplicate = runtime.evaluate_fix("ignored duplicate", request_id="reconcile-fix")
+
+    assert first.public_content["correct"] is True
+    assert duplicate.public_content["correct"] is True
+    assert evaluator_calls == ["int main() { return 0; }"]
+    assert runtime.session.stage3_completed is True
+    assert runtime.session.status == "completed"
+    assert runtime.session.completed_at is not None
+
+
 def test_feynman_runtime_keeps_hidden_bugs_out_of_student_context_and_public_code_result():
     runtime = make_feynman_runtime(
         fake_model=FakeDecisionModel([AgentDecision(message="继续解释循环条件。")]),
@@ -441,11 +935,14 @@ def test_feynman_runtime_keeps_hidden_bugs_out_of_student_context_and_public_cod
 def test_feynman_failed_fix_does_not_complete_session():
     runtime = make_feynman_runtime(
         buggy_code_generator=lambda context: {
-            "buggy_code": "while (i <= n) { ++i; }", "bugs": [], "message": "检查一下。",
+            "buggy_code": "while (i <= n) { ++i; }",
+            "bugs": [{"description": "边界错误", "correct_version": "i < n"}],
+            "message": "检查一下。",
         },
         fix_evaluator=lambda context, fixed_code: {"correct": False, "feedback": "边界仍有问题"},
     )
     runtime.generate_buggy_attempt(request_id="r-code-2")
+    mark_runtime_ready_for_fix(runtime)
 
     result = runtime.evaluate_fix("still wrong", request_id="r-fix-0")
 
@@ -455,10 +952,38 @@ def test_feynman_failed_fix_does_not_complete_session():
     assert not any(event.event_type == "stage_pass" for event in runtime.event_store.events)
 
 
+def test_correct_fix_cannot_complete_without_learning_evidence():
+    evaluator_calls = []
+    runtime = make_feynman_runtime(
+        buggy_code_generator=lambda context: {
+            "buggy_code": "int main() { return 1; }",
+            "bugs": [{"description": "返回值错误", "correct_version": "return 0;"}],
+            "message": "检查返回值。",
+        },
+        fix_evaluator=lambda context, fixed_code: evaluator_calls.append(fixed_code) or {
+            "correct": True,
+            "feedback": "修复正确",
+        },
+    )
+    runtime.generate_buggy_attempt(request_id="no-evidence-code")
+
+    result = runtime.evaluate_fix(
+        "int main() { return 0; }",
+        request_id="no-evidence-fix",
+    )
+
+    assert (result.success, result.error_code) == (False, "FIX_NOT_READY")
+    assert evaluator_calls == []
+    assert runtime.session.stage3_completed is False
+    assert runtime.session.status == "in_progress"
+
+
 def test_feynman_successful_fix_marks_session_completed_only_after_evaluation():
     runtime = make_feynman_runtime(
         buggy_code_generator=lambda context: {
-            "buggy_code": "while (i <= n) { ++i; }", "bugs": [], "message": "检查一下。",
+            "buggy_code": "while (i <= n) { ++i; }",
+            "bugs": [{"description": "边界错误", "correct_version": "i < n"}],
+            "message": "检查一下。",
         },
         fix_evaluator=lambda context, fixed_code: {
             "correct": True,
@@ -466,6 +991,7 @@ def test_feynman_successful_fix_marks_session_completed_only_after_evaluation():
         },
     )
     runtime.generate_buggy_attempt(request_id="r-code-3")
+    mark_runtime_ready_for_fix(runtime)
 
     result = runtime.evaluate_fix("fixed code", request_id="r-fix-1")
 

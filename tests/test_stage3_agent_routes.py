@@ -1,4 +1,6 @@
 import json
+from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -87,6 +89,74 @@ def test_stage3_chat_requires_authenticated_user(stage3_context):
     app, _, session_id = stage3_context
     response = app.test_client().post("/thinking/api/stage3/chat", json={"session_id": session_id, "message": "当前消息"})
     assert response.status_code in {302, 401}
+
+
+def test_stage3_event_order_is_stable_for_equal_timestamps():
+    created_at = datetime(2026, 8, 28, 12, 0, 0)
+    logs = [
+        SimpleNamespace(id=3, created_at=created_at),
+        SimpleNamespace(id=1, created_at=created_at),
+        SimpleNamespace(id=2, created_at=created_at),
+    ]
+
+    ordered = thinking_routes._stable_event_order(logs)
+
+    assert [log.id for log in ordered] == [1, 2, 3]
+
+
+@pytest.mark.parametrize("endpoint,payload", [
+    ("/thinking/api/stage3/chat", {"message": "请解释循环边界。"}),
+    ("/thinking/api/stage3/teach", {"message": "循环要在边界前停止。"}),
+    ("/thinking/api/stage3/write_code", {}),
+    ("/thinking/api/stage3/fix_code", {"fixed_code": "修复后的代码"}),
+])
+@pytest.mark.parametrize("session_updates", [
+    {"current_stage": 2},
+    {"stage2_completed": False},
+    {"status": "completed"},
+])
+def test_every_stage3_endpoint_rejects_sessions_outside_active_stage3(
+    stage3_context, monkeypatch, endpoint, payload, session_updates,
+):
+    """The route gate must run before any Stage 3 runtime construction."""
+    app, client, session_id = stage3_context
+    with app.app_context():
+        thinking_session = db.session.get(ThinkingSession, session_id)
+        for field, value in session_updates.items():
+            setattr(thinking_session, field, value)
+        db.session.commit()
+
+    monkeypatch.setattr(
+        thinking_routes,
+        "build_feynman_runtime",
+        lambda *args, **kwargs: pytest.fail("Stage 3 runtime must not be constructed"),
+    )
+    response = client.post(endpoint, json={
+        "session_id": session_id,
+        "request_id": f"blocked-{endpoint.rsplit('/', 1)[-1]}",
+        **payload,
+    })
+
+    assert response.status_code == 409
+    assert response.json["error_code"] == "STAGE3_NOT_ACTIVE"
+
+
+def test_complete_session_cannot_grant_stage3_completion_by_itself(stage3_context):
+    """This compatibility endpoint may save timing only after a verified runtime completion."""
+    app, client, session_id = stage3_context
+
+    response = client.post("/thinking/api/complete_session", json={
+        "session_id": session_id,
+        "total_time_seconds": 123,
+    })
+
+    assert response.status_code == 409
+    assert response.json["error_code"] == "STAGE3_COMPLETION_NOT_VERIFIED"
+    with app.app_context():
+        saved = db.session.get(ThinkingSession, session_id)
+        assert saved.status == "in_progress"
+        assert saved.stage3_completed is False
+        assert saved.total_time_seconds == 0
 
 
 def test_stage3_chat_uses_current_message_not_client_history(stage3_context, monkeypatch):
@@ -244,13 +314,33 @@ def test_fix_code_persists_evaluation_and_updates_completion(stage3_context, mon
 
     def runtime_factory(session, assignment, preset):
         callbacks = FeynmanCallbacks(
-            buggy_code_generator=lambda context: {"buggy_code": "while (i <= n) { ++i; }", "bugs": [], "message": "检查。"},
+            buggy_code_generator=lambda context: {
+                "buggy_code": "while (i <= n) { ++i; }",
+                "bugs": [{"description": "边界错误", "correct_version": "i < n"}],
+                "message": "检查。",
+            },
             fix_evaluator=lambda context, fixed_code: fixed_codes.append(fixed_code) or {"correct": correct, "feedback": "内部反馈"},
         )
         return build_feynman_runtime(session, assignment, preset, callbacks=callbacks)
 
     monkeypatch.setattr(thinking_routes, "build_feynman_runtime", runtime_factory)
     client.post("/thinking/api/stage3/write_code", json={"session_id": session_id, "request_id": f"code-{correct}"})
+    with app.app_context():
+        db.session.add(ThinkingStageLog(
+            session_id=session_id,
+            stage=3,
+            event_type="state_snapshot",
+            role="system",
+            metadata_json=json.dumps({"state": {
+                "phase": "code_review",
+                "code_review_status": "pending",
+                "learning_evidence": [{
+                    "concept": "循环边界",
+                    "evidence": "能够解释边界条件为什么能避免越界。",
+                }],
+            }}, ensure_ascii=False),
+        ))
+        db.session.commit()
     response = client.post("/thinking/api/stage3/fix_code", json={"session_id": session_id, "buggy_code": "客户端伪造", "fixed_code": "提交修复", "request_id": f"fix-{correct}"})
 
     assert response.status_code == 200

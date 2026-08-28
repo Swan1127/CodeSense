@@ -11,12 +11,23 @@ import json
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, List, Mapping, Optional, Protocol
 
-from .contracts import AgentResult, AgentRole, AgentState, FeynmanState, GoalStatus, UIAction
+from .contracts import (
+    AgentResult,
+    AgentRole,
+    AgentState,
+    FeynmanState,
+    GoalStatus,
+    ToolResult,
+    UIAction,
+)
 
 
 _MAX_MESSAGES = 10
 _COMPLETED_RESULT_EVENTS = frozenset({
-    "agent_message", "tool_result", "agent_result", "agent_result_snapshot", "state_snapshot",
+    "agent_message", "tool_result", "agent_result", "state_snapshot",
+})
+_REPLAYABLE_STATE_FIELDS = frozenset({
+    "phase", "learning_evidence", "code_review_status", "status",
 })
 _STUDENT_SAFE_ARTIFACT_FIELDS = frozenset({"public_hint"})
 _ADVANCEMENT_RESULT_FIELDS = frozenset({
@@ -82,25 +93,28 @@ class SqlAlchemyEventStore:
         logs = self.model_cls.query.filter_by(
             session_id=session_id,
             stage=stage,
-        ).order_by(self.model_cls.created_at.asc()).all()
+        ).order_by(self.model_cls.created_at.asc(), self.model_cls.id.asc()).all()
         return [EventRecord.from_log(log) for log in logs]
 
     def append(self, event: EventRecord) -> EventRecord:
-        log = self.model_cls(
+        return self.append_many([event])[0]
+
+    def append_many(self, events: List[EventRecord]) -> List[EventRecord]:
+        logs = [self.model_cls(
             session_id=event.session_id,
             stage=event.stage,
             event_type=event.event_type,
             role=event.role,
             content=event.content,
             metadata_json=json.dumps(event.metadata, ensure_ascii=False),
-        )
+        ) for event in events]
         try:
-            self.db_session.add(log)
+            self.db_session.add_all(logs)
             self.db_session.commit()
         except Exception:
             self.db_session.rollback()
             raise
-        return EventRecord.from_log(log)
+        return [EventRecord.from_log(log) for log in logs]
 
 
 @dataclass
@@ -149,6 +163,8 @@ class MemoryStore:
                 if isinstance(raw_state, Mapping):
                     snapshot.state = _feynman_state(raw_state, session_id)
                     snapshot.agent_states = _agent_states(record.metadata.get("agent_states"))
+            elif record.event_type == "tool_result":
+                _apply_replayable_state_patch(snapshot.state, record.metadata.get("state_patch"))
             elif record.event_type == "agent_user_message":
                 message = _message(record)
                 snapshot.student_messages.append(message)
@@ -208,6 +224,40 @@ class MemoryStore:
         )
         return self.event_store.append(event)
 
+    def append_events(self, events: List[EventRecord]) -> List[EventRecord]:
+        if not events:
+            return []
+        append_many = getattr(self.event_store, "append_many", None)
+        if callable(append_many):
+            return append_many(events)
+        return [self.event_store.append(event) for event in events]
+
+    def has_request_event(self, session_id: int, request_id: str, event_type: str) -> bool:
+        return any(
+            record.event_type == event_type and record.metadata.get("request_id") == request_id
+            for record in self.event_store.list_events(session_id, stage=3)
+        )
+
+    def find_tool_result(
+        self, session_id: int, request_id: str, call_id: str,
+    ) -> Optional[ToolResult]:
+        for record in reversed(self.event_store.list_events(session_id, stage=3)):
+            if (
+                record.event_type == "tool_result"
+                and _matches_tool_call(record, request_id, call_id)
+                and isinstance(record.metadata.get("ok"), bool)
+            ):
+                return _tool_result_from_event(record)
+        return None
+
+    def has_tool_call_claim(self, session_id: int, request_id: str, call_id: str) -> bool:
+        return any(
+            record.event_type == "tool_call"
+            and record.metadata.get("claim") is True
+            and _matches_tool_call(record, request_id, call_id)
+            for record in self.event_store.list_events(session_id, stage=3)
+        )
+
     def find_request_result(self, session_id: int, request_id: str) -> Optional[AgentResult]:
         for record in reversed(self.event_store.list_events(session_id, stage=3)):
             if record.metadata.get("request_id") != request_id or not _is_terminal_result_event(record):
@@ -221,13 +271,53 @@ class MemoryStore:
 def _is_terminal_result_event(record: EventRecord) -> bool:
     if record.event_type not in _COMPLETED_RESULT_EVENTS:
         return False
+    if record.event_type == "agent_message":
+        return record.metadata.get("terminal") is not False
     if record.event_type == "tool_result":
-        if "terminal" in record.metadata:
-            return record.metadata.get("terminal") is True
-        return _tool_result_failed(record)
+        if _tool_result_failed(record):
+            return True
+        return (
+            record.metadata.get("terminal") is True
+            and not isinstance(record.metadata.get("tool_call"), Mapping)
+        )
     if record.event_type == "state_snapshot":
-        return isinstance(record.metadata.get("agent_result"), Mapping)
+        return (
+            record.metadata.get("terminal") is not False
+            and isinstance(record.metadata.get("agent_result"), Mapping)
+        )
     return True
+
+
+def _matches_tool_call(record: EventRecord, request_id: str, call_id: str) -> bool:
+    raw_call = record.metadata.get("tool_call")
+    return (
+        record.metadata.get("request_id") == request_id
+        and isinstance(raw_call, Mapping)
+        and str(raw_call.get("id") or "") == call_id
+    )
+
+
+def _tool_result_from_event(record: EventRecord) -> ToolResult:
+    metadata = record.metadata
+    public_content = metadata.get("public_content")
+    model_content = metadata.get("model_content")
+    state_patch = metadata.get("state_patch")
+    return ToolResult(
+        ok=metadata.get("ok") is True,
+        model_content=dict(model_content) if isinstance(model_content, Mapping) else {},
+        public_content=dict(public_content) if isinstance(public_content, Mapping) else {},
+        state_patch=dict(state_patch) if isinstance(state_patch, Mapping) else {},
+        error_code=str(metadata["error_code"]) if metadata.get("error_code") else None,
+        retryable=False,
+    )
+
+
+def _apply_replayable_state_patch(state: FeynmanState, patch: Any) -> None:
+    if not isinstance(patch, Mapping):
+        return
+    for field_name, value in patch.items():
+        if field_name in _REPLAYABLE_STATE_FIELDS:
+            setattr(state, field_name, value)
 
 
 def _parse_metadata(raw_metadata: Any) -> Dict[str, Any]:
