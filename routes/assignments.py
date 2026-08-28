@@ -6,7 +6,7 @@ from flask_login import current_user
 from models import db, User, Assignment, Submission, SystemLog
 from forms import AssignmentForm, SubmissionForm
 from utils.auth import login_required, admin_required, teacher_required, admin_or_teacher_required
-from utils.code_evaluator import evaluate_cpp_code, initialize_models
+from utils.code_evaluator import evaluate_cpp_code
 from tasks.submission_tasks import evaluate_submission_async
 from io import BytesIO
 from sqlalchemy import desc
@@ -49,9 +49,6 @@ class InMemoryPagination:
 
     def __bool__(self):
         return len(self.items) > 0
-
-# 在模块开始时初始化模型
-initialize_models()
 
 @assignments.route('/assignments/generate', methods=['POST'])
 @login_required

@@ -1,68 +1,96 @@
-# Python
+# Python cache and virtual environments
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-
-# 虚拟环境
 venv/
+.venv/
 ENV/
 env/
 
-# Flask
+# Flask runtime data
 instance/
 flask_session/
-.webassets-cache
-
-# 数据库
-*.sqlite
-*.db
-
-# 日志
 logs/
-*.log
+.webassets-cache/
 
-# 本地环境配置（敏感信息）
+# Local databases and generated data
+*.sqlite
+*.sqlite3
+*.db
+*.csv
+*.jsonl
+*.zip
+*.xlsx
+*.xls
+*.docx
+
+# Local environment and secrets
 .env
-.env.local
-.env.production
-.env.*.local
-# 但允许env.example提交
-!env.example
+.env.*
+!.env.example
 
-# IDE 文件
+# User uploads and generated media
+uploads/*
+!uploads/.gitkeep
+static/uploads/*
+static/images/generated/
+
+# Optional/deprecated local model assets
+CodeBERT_model/
+models/
+*.pth
+*.npy
+*.bin
+*.msgpack
+*.h5
+
+# Local agent, browser, and design tooling
+.claude/
+.playwright-mcp/
+.superpowers/
+.worktrees/
+awesome-design-md-temp/
+
+# Internal notes, research, and one-off tooling
+AGENTS.md
+CLAUDE.md
+DESIGN.md
+DEPLOYMENT_GUIDE.md
+docs/
+research/
+research_eval/
+research_exports/
+scripts/
+问题汇总/
+新登录页/
+tiku_extract/
+temp_extract/
+cleanup_bogus_classes.py
+env.example
+research_export.py
+seed.py
+static/images/README.txt
+
+# Internal research tests kept locally but not shipped with the product
+tests/test_concurrency_*.py
+tests/test_guided_learning_paper_*.py
+tests/test_guided_learning_research_analysis.py
+tests/test_research_data_export.py
+tests/test_simulation_*.py
+
+# Local test output and temporary artifacts
+test_results*.txt
+test_single_result.txt
+original_hash.txt
+.superpowers-server.log
+.pytest_cache/
+*.bak
+*.tmp
+
+# IDE and OS files
 .idea/
 .vscode/
 *.swp
-
-# 上传文件和临时文件
-uploads/*
-!uploads/.gitkeep
-
-# 机器学习模型文件（如果很大）
-# models/*.pth
-# CodeBERT_model/
-
-# 其他
-*.xlsx
-*.xls
 .DS_Store
 Thumbs.db
-
-# 内部工作文档（不上传）
-问题汇总/
-run.py
-gunicorn_config.py
-wsgi.py
-
-# 临时测试与自动生成文件
-.playwright-mcp/
-.worktrees/
-original_hash.txt
-新登录页/
-
-# Research datasets contain anonymized but non-public course records
-research/guided_learning_paper/data/
-research/guided_learning_paper/*.zip
-research/guided_learning_paper/rendered*/
-research/guided_learning_paper/results/raw/

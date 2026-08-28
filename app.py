@@ -32,9 +32,6 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # 导入配置
 from config import config
 from models import db, init_db
-from utils.code_evaluator import initialize_models
-from utils.guidance_generator import initialize_guidance_system
-from utils.code_advisor import initialize_code_advisor  # 导入代码建议系统初始化函数
 from services.api_keys import api_keys  # 导入 API 密钥管理器
 
 # 环境变量检查和警告
@@ -329,59 +326,9 @@ def create_app(config_name='default'):
         init_db(app)
         app.logger.info("数据库初始化完成")
         
-    # 预加载机器学习模型 - 添加错误处理和内存优化
-    load_local_model = os.getenv('LOAD_LOCAL_MODEL', 'False').lower() == 'true'
-
-    if load_local_model:
-        print("\n正在初始化评估模型，请稍候...")
-        app.logger.info("开始初始化评估模型...")
-        try:
-            initialize_models()
-            print("✓ 评估模型初始化成功")
-            app.logger.info("评估模型初始化成功")
-        except Exception as e:
-            error_msg = f"评估模型初始化失败: {str(e)}"
-            print(f"× {error_msg}")
-            print("应用将继续运行，但评估功能可能受限")
-            app.logger.error(error_msg, exc_info=True)
-            app.logger.warning("应用将继续运行，但评估功能可能受限")
-    else:
-        print("\n✓ 运行在 API-only 模式，跳过本地模型加载以节省内存")
-        app.logger.info("运行在 API-only 模式，跳过本地模型加载")
-    
-    # 初始化编程指导系统
-    if load_local_model:
-        print("\n正在初始化编程指导系统，请稍候...")
-        app.logger.info("开始初始化编程指导系统...")
-        try:
-            initialize_guidance_system()
-            print("✓ 编程指导系统初始化成功")
-            app.logger.info("编程指导系统初始化成功")
-        except Exception as e:
-            error_msg = f"编程指导系统初始化失败: {str(e)}"
-            print(f"× {error_msg}")
-            print("应用将继续运行，但指导功能可能受限")
-            app.logger.error(error_msg, exc_info=True)
-            app.logger.warning("应用将继续运行，但指导功能可能受限")
-    else:
-        app.logger.info("跳过编程指导系统初始化（API-only 模式）")
-    
-    # 初始化代码建议系统
-    if load_local_model:
-        print("\n正在初始化代码建议系统，请稍候...")
-        app.logger.info("开始初始化代码建议系统...")
-        try:
-            initialize_code_advisor()
-            print("✓ 代码建议系统初始化成功")
-            app.logger.info("代码建议系统初始化成功")
-        except Exception as e:
-            error_msg = f"代码建议系统初始化失败: {str(e)}"
-            print(f"× {error_msg}")
-            print("应用将继续运行，但建议功能可能受限")
-            app.logger.error(error_msg, exc_info=True)
-            app.logger.warning("应用将继续运行，但建议功能可能受限")
-    else:
-        app.logger.info("跳过代码建议系统初始化（API-only 模式）")
+    # 代码评估不依赖仓库内的本地训练模型资源。
+    # 评估时按需使用启发式规则和已配置的 AI 服务。
+    app.logger.info("使用启发式规则和已配置的 AI 服务进行代码评估")
     
     # 初始化异步任务系统
     print("\n正在初始化异步任务系统...")

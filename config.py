@@ -1,4 +1,3 @@
-import time
 import os
 import secrets
 
@@ -10,42 +9,8 @@ class Config(object):
     """
 
     def __init__(self):
-        # 获取项目根目录路径
-        self.root_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # Gpu
-        self.use_gpu = False
-        self.use_multi_gpu = False
-        self.device_list = "0"  # id list of gpus used for training
-
-        # Path
-        self.model_path = os.path.join(self.root_dir, 'CodeBERT_model')
-        self.dataset_name = 2195
-        # 使用绝对路径
-        self.folder_path = os.path.join(self.root_dir, 'data', str(self.dataset_name), 'cpp')
-        self.excel_path = os.path.join(self.root_dir, 'data', str(self.dataset_name), '打分表.xlsx')
-        self.npy_path = os.path.join(self.root_dir, 'data', str(self.dataset_name), 'code_sequences.npy')
-        self.model_name = 'CodeBERTCNN_' + str(self.dataset_name)
-        self.result_path = os.path.join(self.root_dir, 'result', self.model_name, 'log.txt')
-
-        # CNN Parameter
-        self.num_classes = 5  # 类别数
-        self.code_length = 512  # 句子最大长度
-        self.embedding_size = 768  # 词向量维度
-        self.num_channels = [32, 32, 32, 32]
-        self.kernel_size = [2, 3, 4, 5]  # 卷积核长度
-        self.dropout = 0.3  # dropout概率
-
-        # Train Parameter
-        self.learning_rate = 0.01  # 学习率大小
-        self.train_batch_size = 8
-        self.test_batch_size = 8
-        self.epoch = 50
-        
         # 大模型评估配置
         self.use_llm = True  # 是否使用大模型评估
-        self.llm_weight = 0.7  # 大模型评分权重
-        self.traditional_weight = 0.3  # 传统模型评分权重
         self.llm_timeout = 10  # API调用超时时间(秒)
 
     # 应用程序密钥 - 从环境变量读取

@@ -1,9 +1,7 @@
 """
 代码评估模块 - 使用启发式评分和大模型评估
 """
-import os
 import re
-import sys
 import traceback
 
 # 评分权重常量
@@ -25,48 +23,7 @@ MATURITY_WEIGHTS = {
     'phi_std': 0.15
 }
 
-# 可选导入torch，如果没有安装就跳过深度学习模型功能
-try:
-    import torch
-    import torch.nn.parallel
-    import torch.serialization
-    HAS_TORCH = True
-except ImportError:
-    print("× torch库未安装，深度学习模型功能将不可用")
-    print("将使用启发式评分方法")
-    torch = None
-    HAS_TORCH = False
-
-# 可选导入transformers，如果没有安装就跳过CodeBERT功能
-try:
-    from transformers import AutoModel, AutoTokenizer
-    HAS_TRANSFORMERS = True
-except ImportError:
-    print("× transformers库未安装，CodeBERT功能将不可用")
-    print("将使用启发式评分方法")
-    AutoModel = None
-    AutoTokenizer = None
-    HAS_TRANSFORMERS = False
-
 from config import Config
-
-# 添加项目根目录到路径，确保可以导入所需模块
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# 可选导入CNN模块
-if HAS_TORCH:
-    try:
-        # 直接导入CNN模块，指定完整路径
-        CNN_module_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models')
-        sys.path.append(CNN_module_path)
-        from CNN import TextCNN
-        # 允许使用DataParallel
-        torch.serialization.add_safe_globals([torch.nn.parallel.DataParallel])
-    except ImportError:
-        print("× CNN模块导入失败")
-        TextCNN = None
-else:
-    TextCNN = None
 
 # 导入大模型评估器
 from utils.llm_evaluator import LLMEvaluator
@@ -74,164 +31,44 @@ from utils.llm_evaluator import LLMEvaluator
 # 导入统一的 API 密钥管理器
 from services.api_keys import api_keys
 
-# 全局变量以存储模型
-model_initialized = False
-tokenizer = None
-codebert_model = None
-textcnn = None
-device = None
 cfg = None
-# 添加大模型评估器全局变量
 llm_evaluator = None
-use_llm = False  # 是否使用大模型评估，默认关闭
+use_llm = False
+ai_initialized = False
 
 
-def initialize_models():
-    """预加载模型"""
-    global model_initialized, tokenizer, codebert_model, textcnn, device, cfg, llm_evaluator, use_llm
-    
-    # 初始化大模型评估器
-    try:
-        print("\n尝试初始化大模型评估器...")
-        # 使用统一的 API 密钥管理器检查
+def initialize_ai_evaluator():
+    """初始化可选的 AI 评估器；未配置密钥时使用启发式评估。"""
+    global cfg, llm_evaluator, use_llm, ai_initialized
 
-        if api_keys.has_any_key:
-            # 初始化评估器
-            try:
-                if api_keys.has_zhipu:
-                    print("正在初始化智谱AI大模型评估器...")
-                    llm_evaluator = LLMEvaluator(api_type="zhipu", strict_mode=False)  # 修改为False，降低严格程度
-                    print("✓ 智谱AI大模型评估器初始化成功（关闭严格评分模式）")
-                elif api_keys.has_openai:
-                    print("正在初始化OpenAI大模型评估器...")
-                    llm_evaluator = LLMEvaluator(api_type="openai", strict_mode=False)  # 修改为False，降低严格程度
-                    print("✓ OpenAI大模型评估器初始化成功（关闭严格评分模式）")
-                
-                use_llm = True
-                print("✓ 大模型评估功能已启用")
-            except ImportError as e:
-                print(f"× 大模型依赖库加载失败: {e}")
-                if "zhipuai" in str(e):
-                    print("\n安装智谱AI库命令: pip install zhipuai")
-                    print("或者使用: pip install -U zhipuai --user")
-                elif "openai" in str(e):
-                    print("\n安装OpenAI库命令: pip install openai")
-                    print("或者使用: pip install -U openai --user")
-                print("安装完成后请重启应用。")
-                use_llm = False
-        else:
-            print("× 未找到大模型API密钥，大模型评估功能将不可用")
-            print("  请在.env文件中设置ZHIPU_API_KEY或OPENAI_API_KEY")
-            use_llm = False
-    except Exception as e:
-        print(f"× 大模型评估器初始化失败: {e}")
-        print(traceback.format_exc())
-        print("将使用启发式评分方法")
-        use_llm = False
-    
-    # 检查是否有torch库可用
-    if not HAS_TORCH:
-        print("\n× torch库不可用，跳过深度学习模型加载")
-        print("将使用启发式评分方法进行代码评估")
-        model_initialized = False
+    if ai_initialized:
         return
-    
-    if not model_initialized:
-        try:
-            print("\n========= 开始预加载模型 =========")
-            cfg = Config()
-            
-            # 检查模型目录是否存在
-            model_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'CodeBERT_model'))
-            print(f"模型目录: {model_dir}")
-            
-            codebert_available = os.path.exists(model_dir)
-            if not codebert_available:
-                print(f"× CodeBERT模型目录不存在: {model_dir}")
-                print("将跳过CodeBERT模型加载，仅使用启发式评估")
-                # 继续初始化其他组件，不直接返回
-                
-            # 确保模型文件存在
-            weight_path = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models', 'codebertcnn.pth'))
-            if not os.path.exists(weight_path):
-                print(f"错误: 模型权重文件不存在: {weight_path}")
-                model_initialized = False
-                return
-            
-            # 条件性加载CodeBERT模型
-            if codebert_available and HAS_TRANSFORMERS:
-                print("1. 加载CodeBERT分词器和模型...")
-                try:
-                    # 使用本地路径加载模型
-                    tokenizer = AutoTokenizer.from_pretrained(model_dir, local_files_only=True)
-                    codebert_model = AutoModel.from_pretrained(model_dir, local_files_only=True)
-                    print("✓ CodeBERT模型加载成功")
-                except Exception as e:
-                    print(f"× CodeBERT模型加载失败: {e}")
-                    print(traceback.format_exc())
-                    tokenizer = None
-                    codebert_model = None
-                    codebert_available = False
-            else:
-                if not HAS_TRANSFORMERS:
-                    print("1. 跳过CodeBERT模型加载（transformers库未安装）")
-                else:
-                    print("1. 跳过CodeBERT模型加载（模型文件不存在）")
-                tokenizer = None
-                codebert_model = None
-            
-            print("2. 加载TextCNN模型...")
-            try:
-                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                print(f"使用设备: {device}")
-                
-                # 加载TextCNN模型
-                textcnn = TextCNN(cfg)
-                
-                # 加载模型权重
-                print(f"加载模型权重: {weight_path}")
-                
-                # 简化加载逻辑，减少可能出错的环节
-                try:
-                    # 尝试使用weights_only=False加载模型
-                    loaded_checkpoint = torch.load(weight_path, map_location=device, weights_only=False)
-                    print("✓ 成功加载模型权重")
-                    
-                    # 兼容不同的权重格式
-                    if isinstance(loaded_checkpoint, torch.nn.DataParallel):
-                        state_dict = loaded_checkpoint.module.state_dict()
-                    elif hasattr(loaded_checkpoint, 'state_dict'):
-                        state_dict = loaded_checkpoint.state_dict()
-                    else:
-                        state_dict = loaded_checkpoint
-                    
-                    textcnn.load_state_dict(state_dict)
-                    textcnn = textcnn.to(device)
-                    textcnn.eval()
-                    print("✓ 模型权重加载成功")
-                    model_initialized = True
-                except Exception as e:
-                    print(f"× 模型权重加载失败: {e}")
-                    print(traceback.format_exc())
-                    print("将降级使用改进的启发式评分")
-                    textcnn = None
-                    model_initialized = False
-            except Exception as e:
-                print(f"× TextCNN模型加载失败: {e}")
-                print(traceback.format_exc())
-                textcnn = None
-                model_initialized = False
-                return
-            
-            if model_initialized:
-                print("✓ 所有模型加载成功!")
-            else:
-                print("× 模型加载失败，将使用改进的启发式评分")
-            print("========= 模型预加载完成 =========\n")
-        except Exception as e:
-            print(f"× 模型预加载过程中发生错误: {e}")
-            print(traceback.format_exc())
-            model_initialized = False
+
+    ai_initialized = True
+    cfg = Config()
+
+    try:
+        if not api_keys.has_any_key:
+            print("未配置 AI API 密钥，将使用启发式评分")
+            return
+
+        if api_keys.has_zhipu:
+            print("正在初始化智谱 AI 评估器...")
+            llm_evaluator = LLMEvaluator(api_type="zhipu", strict_mode=False)
+        elif api_keys.has_openai:
+            print("正在初始化 OpenAI 评估器...")
+            llm_evaluator = LLMEvaluator(api_type="openai", strict_mode=False)
+
+        use_llm = llm_evaluator is not None
+        if use_llm:
+            print("✓ AI 评估功能已启用")
+    except ImportError as exc:
+        print(f"AI 评估依赖未安装，将使用启发式评分: {exc}")
+        use_llm = False
+    except Exception as exc:
+        print(f"AI 评估器初始化失败，将使用启发式评分: {exc}")
+        print(traceback.format_exc())
+        use_llm = False
 
 
 def calculate_heuristic_score(code, assignment_title=None):
@@ -671,227 +508,6 @@ def calculate_heuristic_score(code, assignment_title=None):
     return normalized_score, feedback
 
 
-def predict_with_model(code):
-    """使用预训练的CodeBERT+CNN模型预测代码质量分数"""
-    global model_initialized, tokenizer, codebert_model, textcnn, device, cfg
-    
-    # 检查torch是否可用
-    if not HAS_TORCH:
-        print("× torch库不可用，无法使用模型评分")
-        return 0
-    
-    if not model_initialized or tokenizer is None or codebert_model is None or textcnn is None:
-        print("× 模型未正确初始化，无法使用模型评分")
-        return 0
-        
-    try:
-        print("正在使用深度学习模型评估代码...")
-        
-        # 预处理代码
-        processed_code = re.sub(r'//.*?$', '', code, flags=re.MULTILINE)  # 去除行注释
-        processed_code = re.sub(r'/\*.*?\*/', '', processed_code, flags=re.DOTALL)  # 去除块注释
-        processed_code = re.sub(r'\s+', ' ', processed_code).strip()  # 规范化空白字符
-        
-        # 如果代码太短，直接返回低分
-        code_lines = len(code.strip().split('\n'))
-        if code_lines < 3 or len(processed_code) < 20:
-            print(f"× 代码过短 ({code_lines}行，{len(processed_code)}字符)，直接给予低分")
-            return 1
-        
-        # 使用CodeBERT编码代码
-        encoded_input = tokenizer.encode_plus(
-            processed_code,
-            add_special_tokens=True,
-            return_tensors='pt',
-            max_length=cfg.code_length,
-            padding='max_length',
-            truncation=True
-        )
-        
-        input_ids = encoded_input['input_ids'].to(device)
-        attention_mask = encoded_input['attention_mask'].to(device)
-        
-        # 获取代码的嵌入表示
-        with torch.no_grad():
-            output = codebert_model(input_ids, attention_mask=attention_mask)
-            
-            # 处理不同格式的输出
-            if hasattr(output, 'last_hidden_state'):
-                vector = output.last_hidden_state
-            elif isinstance(output, tuple) and len(output) > 0:
-                vector = output[0]
-            else:
-                vector = output
-            
-            # 使用CNN模型预测分数
-            try:
-                prediction = textcnn(vector)
-                print(f"模型原始输出: {prediction}")
-                probabilities = torch.nn.functional.softmax(prediction, dim=1)
-                print(f"归一化概率: {probabilities}")
-                
-                # 注意：模型存在严重偏差，几乎总是预测最高分
-                # 记录原始的预测分数
-                score_tensor = torch.argmax(prediction, dim=1)
-                raw_model_score = score_tensor.item() + 1  # 转换为1-5的分数
-                
-                # 实现更严格的评分调整规则
-                adjusted_score = raw_model_score
-                
-                # 1. 检查代码长度 - 加强惩罚力度
-                if code_lines < 15:
-                    # 根据代码行数设置惩罚
-                    if code_lines < 5:
-                        length_penalty = 3  # 少于5行，降低3分
-                    elif code_lines < 10:
-                        length_penalty = 2  # 5-10行，降低2分
-                    else:
-                        length_penalty = 1  # 10-15行，降低1分
-                    
-                    adjusted_score = max(1, adjusted_score - length_penalty)
-                    print(f"× 代码行数少({code_lines}行)，分数从 {raw_model_score} 调整为 {adjusted_score}")
-                
-                # 2. 检查代码复杂性 - 更严格的评判标准
-                structure_penalty = 0
-                if "#include" not in code:
-                    structure_penalty += 1
-                    print("× 缺少头文件包含")
-                
-                if "using namespace std" not in code and "std::" not in code:
-                    structure_penalty += 1
-                    print("× 缺少std命名空间声明")
-                    
-                if "int main" not in code and "void main" not in code:
-                    structure_penalty += 1
-                    print("× 缺少main函数")
-                    
-                if structure_penalty > 0:
-                    adjusted_score = max(1, adjusted_score - structure_penalty)
-                    print(f"× 代码缺乏基本结构，分数从 {raw_model_score} 调整为 {adjusted_score}")
-                
-                # 3. 检查代码多样性和复杂度
-                unique_tokens = len(set(re.findall(r'\b\w+\b', code)))
-                complexity_features = 0
-                
-                # 检查各种代码特性
-                if "for" in code or "while" in code:
-                    complexity_features += 1
-                
-                if "if" in code or "switch" in code:
-                    complexity_features += 1
-                    
-                if "class" in code or "struct" in code:
-                    complexity_features += 1
-                    
-                if code.count("{") > 2:  # 检查代码块数量
-                    complexity_features += 1
-                    
-                # 基于多样性和复杂度评分
-                if unique_tokens < 10 or complexity_features < 2:
-                    diversity_penalty = 2
-                    adjusted_score = max(1, adjusted_score - diversity_penalty)
-                    print(f"× 代码复杂度低({unique_tokens}个不同单词，{complexity_features}个复杂结构)，分数从 {raw_model_score} 调整为 {adjusted_score}")
-                
-                # 4. 惩罚错误的模式 - 如Hello World但题目不是要求Hello World
-                if "Hello World" in code and raw_model_score > 3:
-                    # 由于我们无法直接检查题目要求，只能猜测大多数题目都不是Hello World
-                    adjusted_score = max(1, min(3, adjusted_score))  # 最高给3分
-                    print(f"× 检测到Hello World代码，分数限制为 {adjusted_score}")
-                
-                # 5. 最后的完整性检查
-                has_input = "cin" in code or "scanf" in code or "gets" in code
-                has_output = "cout" in code or "printf" in code
-                has_return = "return" in code
-                
-                if not (has_input or has_output or has_return):
-                    adjusted_score = max(1, adjusted_score - 1)
-                    print("× 代码缺乏输入输出或返回语句")
-                
-                # 如果原始评分为5分，但代码行数不超过30行，最高只给4分
-                if raw_model_score == 5 and code_lines < 30:
-                    adjusted_score = min(adjusted_score, 4)
-                    print(f"× 代码行数少于30行，满分限制为4分")
-                
-                print(f"✓ 最终模型预测分数: {adjusted_score}/5 (原始分数: {raw_model_score}/5)")
-                return adjusted_score
-            except Exception as e:
-                print(f"× 模型预测处理出错: {e}")
-                print(traceback.format_exc())
-                return 1  # 出错时给1分
-    except Exception as e:
-        print(f"× 模型预测失败: {e}")
-        print(traceback.format_exc())
-        return 1  # 出错时给1分
-
-
-def get_code_embedding(code):
-    """获取代码的CodeBERT嵌入向量表示"""
-    global model_initialized, tokenizer, codebert_model, device, cfg
-    
-    # 检查torch是否可用
-    if not HAS_TORCH:
-        print("× torch库不可用，无法获取代码嵌入")
-        return None
-    
-    if not model_initialized or tokenizer is None or codebert_model is None:
-        print("× 模型未正确初始化，无法获取代码嵌入")
-        return None
-        
-    try:
-        # 预处理代码
-        processed_code = re.sub(r'//.*?$', '', code, flags=re.MULTILINE)  # 去除行注释
-        processed_code = re.sub(r'/\*.*?\*/', '', processed_code, flags=re.DOTALL)  # 去除块注释
-        processed_code = re.sub(r'\s+', ' ', processed_code).strip()  # 规范化空白字符
-        
-        # 编码代码
-        encoded_input = tokenizer.encode_plus(
-            processed_code,
-            add_special_tokens=True,
-            return_tensors='pt',
-            max_length=cfg.code_length,
-            padding='max_length',
-            truncation=True
-        )
-        
-        input_ids = encoded_input['input_ids'].to(device)
-        attention_mask = encoded_input['attention_mask'].to(device)
-        
-        # 获取代码的嵌入表示
-        with torch.no_grad():
-            output = codebert_model(input_ids, attention_mask=attention_mask)
-            
-            # 检查输出格式并适当处理
-            if hasattr(output, 'last_hidden_state'):
-                vector = output.last_hidden_state
-            elif isinstance(output, tuple) and len(output) > 0:
-                vector = output[0]  # 部分模型可能返回元组
-            else:
-                vector = output  # 假设输出本身就是嵌入向量
-            
-            print(f"CodeBERT原始输出维度: {vector.shape}")
-            
-            # 重要改动：将输出处理成与训练时相同的格式
-            # 参考models/codebert.py中的cpp_to_sequence函数
-            # 训练时是将向量reshape为[code_length, embedding_size]的形状
-            try:
-                # 移除batch维度并展平张量
-                flat_vector = vector.squeeze(0).view(-1)
-                # 重新reshape为[code_length, embedding_size]
-                reshaped_vector = flat_vector.reshape(cfg.code_length, cfg.embedding_size)
-                print(f"重塑后的向量维度: {reshaped_vector.shape}")
-                return reshaped_vector
-            except Exception as e:
-                print(f"× 重塑向量失败: {e}，尝试替代方案")
-                # 如果reshape失败，尝试直接返回原始张量第一个序列的嵌入
-                if vector.dim() >= 3:
-                    result = vector[0]  # 取第一个batch
-                    print(f"使用第一个batch: {result.shape}")
-                    return result
-                return vector
-    except Exception as e:
-        print(f"× 获取代码嵌入失败: {e}")
-        print(traceback.format_exc())
-        return None
 
 
 def generate_feedback(code, score, assignment_title=None):
@@ -1162,7 +778,7 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
     
     参数:
         code_str: 要评估的代码字符串
-        model: 预训练的模型，如果为None则使用全局模型
+        model: 兼容旧调用的参数；标准版不加载本地模型
         assignment_title: 作业标题，用于提供给大模型进行评估
         preview_only: 是否仅进行预览评估，如果为True则只调用大模型评估
         guidance_mode: 是否是指导模式，如果为True则生成更鼓励和指导性的内容
@@ -1170,7 +786,10 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
     返回:
         (score, feedback): 分数（0-100）和反馈信息的元组
     """
-    global use_llm, llm_evaluator
+    global use_llm, llm_evaluator, ai_initialized
+
+    if not ai_initialized:
+        initialize_ai_evaluator()
     
     # 如果是指导模式，必定使用大模型
     if guidance_mode:
@@ -1209,9 +828,9 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
             else:
                 return 3, f"大模型评估失败: {str(e)}"
     
-    # 修改：大幅提高大模型权重，降低传统模型权重
+    # 大模型结果优先，启发式结果作为兜底
     llm_weight = 0.9 if use_llm_local and cfg else 0
-    traditional_weight = 0.1 if use_llm_local and cfg else 1.0
+    heuristic_weight = 0.1 if use_llm_local and cfg else 1.0
     
     # 检查代码长度是否太短
     if len(code_str.strip()) < 10:
@@ -1253,14 +872,14 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
             if preview_only or guidance_mode or llm_weight >= 0.9:
                 return llm_score, llm_feedback
             
-            # 否则继续进行传统模型评估，最终结果将综合两种评估
+            # 否则继续进行启发式评估，最终结果将综合两种评估
         except Exception as e:
-            print(f"大模型{'指导' if guidance_mode else '评估'}失败，将仅使用传统模型: {e}")
+            print(f"大模型{'指导' if guidance_mode else '评估'}失败，将仅使用启发式评分: {e}")
             llm_score = None
             llm_feedback = None
-            # 如果大模型评估失败，使用传统模型权重
+            # 如果大模型评估失败，使用启发式评分
             llm_weight = 0
-            traditional_weight = 1.0
+            heuristic_weight = 1.0
             
             # 指导模式下，如果大模型失败，提供通用指导
             if guidance_mode:
@@ -1268,9 +887,9 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
     else:
         llm_score = None
         llm_feedback = None
-        # 不使用大模型时，传统模型权重为100%
+        # 不使用大模型时，启发式评分权重为100%
         llm_weight = 0
-        traditional_weight = 1.0
+        heuristic_weight = 1.0
         
         # 指导模式下，如果没有大模型，提供通用指导
         if guidance_mode:
@@ -1289,95 +908,29 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
 """
             return max(3, score), basic_feedback + "\n\n" + encouragement
     
-    # 使用传统模型评估
-    print("使用传统模型评估代码...")
-    
-    # 检查模型是否已初始化
-    global model_initialized
-    if not model_initialized:
-        initialize_models()  # 确保模型已加载
-    
-    # 选择模型：优先使用传入的模型，否则使用全局模型
-    model_to_use = model if model is not None else textcnn
-    
-    # 如果模型不可用，使用启发式方法
-    if model_to_use is None:
-        score, feedback = calculate_heuristic_score(code_str, assignment_title)
-        
-        # 如果是指导模式，调整反馈内容为更鼓励的语言
-        if guidance_mode:
-            score = max(3, score)  # 基础分至少为3分，以示鼓励
-            feedback = feedback.replace("改进建议", "学习建议")
-            feedback = feedback.replace("缺少", "可以添加")
-            feedback = feedback.replace("代码质量很差", "代码有提升空间")
-            feedback = feedback.replace("需要全面改进", "可以进一步完善")
-            feedback += "\n\n别灰心！每个程序员都是从基础开始的。继续练习，您会越来越好！"
-    else:
-        # 使用预训练模型评估
-        try:
-            # 获取CodeBERT编码
-            code_embedding = get_code_embedding(code_str)
-            if code_embedding is None:
-                print("× 无法获取代码嵌入，回退到启发式评分")
-                score, feedback = calculate_heuristic_score(code_str, assignment_title)
-            else:
-                # 使用TextCNN模型预测分数
-                try:
-                    code_embedding = code_embedding.to(device)
-                    model_to_use.eval()
-                    with torch.no_grad():
-                        try:
-                            # 使用更健壮的方式处理模型预测
-                            pred = model_to_use(code_embedding.unsqueeze(0))
-                            print(f"模型输出原始值: {pred}")
-                            
-                            # 检查pred的类型和形状
-                            if isinstance(pred, torch.Tensor):
-                                if pred.dim() == 1:
-                                    # 如果是一维张量，直接取最大值
-                                    score = torch.argmax(pred).item() + 1
-                                else:
-                                    # 如果是二维张量 [batch_size, num_classes]
-                                    score = torch.argmax(pred, dim=1).item() + 1
-                            else:
-                                # 如果不是张量，尝试转换为浮点数
-                                score = round(float(pred.item() if hasattr(pred, 'item') else pred))
-                                
-                            # 确保分数在1-5之间
-                            score = max(1, min(5, score))
-                            print(f"✓ 模型预测分数: {score}/5")
-                        except Exception as e:
-                            print(f"× 模型预测处理出错: {e}")
-                            print(traceback.format_exc())
-                            print("回退到启发式评分")
-                            score, feedback = calculate_heuristic_score(code_str, assignment_title)
-                except Exception as e:
-                    print(f"× 模型评估处理出错: {e}")
-                    print(traceback.format_exc())
-                    print("回退到启发式评分")
-                    score, feedback = calculate_heuristic_score(code_str, assignment_title)
-                
-                if 'feedback' not in locals():
-                    # 如果使用模型评估成功但没有生成反馈
-                    feedback = generate_feedback(code_str, score, assignment_title)
-        except Exception as e:
-            print(f"模型评估失败: {e}")
-            print(traceback.format_exc())
-            # 出错时使用启发式方法
-            score, feedback = calculate_heuristic_score(code_str, assignment_title)
-    
-    # 将传统评分结果存储到traditional_score变量
-    traditional_score = score if 'score' in locals() else None
+    # 使用启发式规则评估代码
+    print("使用启发式规则评估代码...")
+    score, feedback = calculate_heuristic_score(code_str, assignment_title)
+
+    if guidance_mode:
+        score = max(3, score)
+        feedback = feedback.replace("改进建议", "学习建议")
+        feedback = feedback.replace("缺少", "可以添加")
+        feedback = feedback.replace("代码质量很差", "代码有提升空间")
+        feedback = feedback.replace("需要全面改进", "可以进一步完善")
+        feedback += "\n\n别灰心！每个程序员都是从基础开始的。继续练习，您会越来越好！"
+
+    heuristic_score = score if 'score' in locals() else None
     
     # 加权计算最终分数
     final_score = 0
     
     if llm_score is not None:
         # 如果使用了大模型评估，进行加权平均
-        if traditional_score is not None:
+        if heuristic_score is not None:
             # 综合两种评分
-            final_score = llm_score * llm_weight + traditional_score * traditional_weight
-            print(f"计算最终分数: {llm_score} × {llm_weight} + {traditional_score} × {traditional_weight} = {final_score}")
+            final_score = llm_score * llm_weight + heuristic_score * heuristic_weight
+            print(f"计算最终分数: {llm_score} × {llm_weight} + {heuristic_score} × {heuristic_weight} = {final_score}")
             
             # 检查是否需要题目匹配度加分
             if assignment_title:
@@ -1437,10 +990,10 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
             final_score = llm_score
             print(f"使用大模型分数作为最终分数: {final_score}")
     else:
-        # 只有传统评分
-        if traditional_score is not None:
-            final_score = traditional_score
-            print(f"使用传统模型分数作为最终分数: {final_score}")
+        # 只有启发式评分
+        if heuristic_score is not None:
+            final_score = heuristic_score
+            print(f"使用启发式评分作为最终分数: {final_score}")
         else:
             # 没有任何有效评分，给出警告默认分数
             final_score = 1
