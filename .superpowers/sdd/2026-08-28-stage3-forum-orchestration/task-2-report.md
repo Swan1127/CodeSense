@@ -434,4 +434,4 @@ Output:
 
 ### Fix round 2 commit SHA
 
-- Pending commit in this section at the time of append; updated after commit.
+- `16120801ff1d5df3f6a5c85787aa2d57ce77b757` (`fix: require student provenance for replayed evidence`)
