@@ -144,8 +144,8 @@ Output:
 
 ## Commit
 
-- Commit message: `feat: project stage3 memory by forum target`
-- Commit SHA: `cb06d59075ae80cacf2ace50df7ddbd00000e3a7`
+- Implementation commit: `cb06d59075ae80cacf2ace50df7ddbd00000e3a7` (`feat: project stage3 memory by forum target`)
+- Report commit: `6f285e2` (`docs: add task 2 implementation report`)
 
 ## Concerns
 
