@@ -141,13 +141,15 @@ class DualFeynmanRuntime:
         result = self._run_forced_tool("generate_buggy_attempt", {}, request_id)
         if not result.success:
             return result
-        artifact = self._artifact_for(request_id)
-        if artifact is None:
-            return AgentResult(success=False, agent=AgentRole.STUDENT_AGENT, error_code="BUGGY_ATTEMPT_FAILED")
-        buggy_code = artifact.get("buggy_code")
-        if not isinstance(buggy_code, str):
-            return AgentResult(success=False, agent=AgentRole.STUDENT_AGENT, error_code="BUGGY_ATTEMPT_FAILED")
         content = self._tool_public_content(request_id, "generate_buggy_attempt")
+        buggy_code = content.get("buggy_code")
+        if not isinstance(buggy_code, str):
+            artifact = self._artifact_for(request_id)
+            if artifact is None:
+                return AgentResult(success=False, agent=AgentRole.STUDENT_AGENT, error_code="BUGGY_ATTEMPT_FAILED")
+            buggy_code = artifact.get("buggy_code")
+            if not isinstance(buggy_code, str):
+                return AgentResult(success=False, agent=AgentRole.STUDENT_AGENT, error_code="BUGGY_ATTEMPT_FAILED")
         message = str(content.get("message", "我写了一版代码，请帮我检查。"))
         return AgentResult(
             success=True,

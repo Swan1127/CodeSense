@@ -702,6 +702,67 @@ def test_replayed_persisted_buggy_tool_result_does_not_execute_generator_twice()
     assert len([event for event in runtime.event_store.events if event.event_type == "buggy_attempt"]) == 1
 
 
+def test_replayed_buggy_tool_result_without_artifact_recovers_public_result():
+    """A forced-tool replay must succeed from durable public content without re-running side effects."""
+    generator_calls = []
+    runtime = make_feynman_runtime(
+        buggy_code_generator=lambda context: generator_calls.append(context.request_id) or {
+            "buggy_code": "int main() { return 2; }",
+            "bugs": [{"line": 1, "description": "不应再次生成", "correct_version": "return 0;"}],
+            "message": "不应再次调用。",
+        },
+    )
+    request_id = "replay-missing-artifact"
+    persisted_call = ToolCall(f"{request_id}:generate_buggy_attempt", "generate_buggy_attempt", {})
+    runtime.event_store.append(EventRecord(
+        session_id=runtime.session.id,
+        stage=3,
+        event_type="tool_call",
+        role="student_agent",
+        metadata={
+            "request_id": request_id,
+            "tool_call": persisted_call.to_payload(),
+            "claim": True,
+            "side_effect": True,
+        },
+    ))
+    runtime.event_store.append(EventRecord(
+        session_id=runtime.session.id,
+        stage=3,
+        event_type="tool_result",
+        role="student_agent",
+        metadata={
+            "request_id": request_id,
+            "tool_call": persisted_call.to_payload(),
+            "ok": True,
+            "terminal": False,
+            "model_content": {
+                "buggy_code": "int main() { return 1; }",
+                "message": "我写了一版代码，请帮我检查。",
+            },
+            "public_content": {
+                "buggy_code": "int main() { return 1; }",
+                "message": "我写了一版代码，请帮我检查。",
+                "ui_action": "show_code_review",
+            },
+            "state_patch": {"phase": "code_review", "code_review_status": "pending"},
+        },
+    ))
+
+    result = runtime.generate_buggy_attempt(request_id=request_id)
+
+    assert result.success is True
+    assert result.error_code is None
+    assert result.ui_action is UIAction.SHOW_CODE_REVIEW
+    assert result.ready_for_code is True
+    assert result.state["phase"] == "code_review"
+    assert result.public_content["buggy_code"] == "int main() { return 1; }"
+    assert result.public_content["message"] == "我写了一版代码，请帮我检查。"
+    assert result.response == "我写了一版代码，请帮我检查。"
+    assert generator_calls == []
+    assert [event for event in runtime.event_store.events if event.event_type == "buggy_attempt"] == []
+
+
 def test_side_effect_tool_claim_is_persisted_before_callback_runs():
     observed_claims = []
     runtime = make_feynman_runtime(
