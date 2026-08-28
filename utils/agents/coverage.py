@@ -1,0 +1,301 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Mapping, Optional, Tuple
+
+
+_DEFAULT_MIN_COVERAGE = 0.8
+_DEFAULT_MAX_PROBES = 2
+_DEFAULT_DIMENSIONS = ("core", "edge_case", "application")
+_ALLOWED_ASSESSMENTS = frozenset({"covered", "partial", "off_topic"})
+_MEANINGLESS_EVIDENCE = frozenset({"none", "n/a", "不知道", "无", "没有"})
+
+
+@dataclass(frozen=True)
+class CoverageConfig:
+    min_coverage: float = _DEFAULT_MIN_COVERAGE
+    max_probes_per_concept: int = _DEFAULT_MAX_PROBES
+    probe_dimensions: Tuple[str, ...] = _DEFAULT_DIMENSIONS
+
+
+@dataclass(frozen=True)
+class CoverageDecision:
+    concept_status: str
+    attempts: int
+    next_concept: Optional[str]
+    next_dimension: Optional[str]
+    ready_for_code: bool
+    coverage_score: float
+    state_patch: Dict[str, Any]
+
+
+def load_coverage_config(raw: Any, key_concepts: Any) -> CoverageConfig:
+    concepts = _normalize_key_concepts(key_concepts)
+    candidate = raw.get("feynman_coverage") if isinstance(raw, Mapping) else None
+    if not isinstance(candidate, Mapping):
+        candidate = raw if isinstance(raw, Mapping) and "min_coverage" in raw else {}
+
+    min_coverage = candidate.get("min_coverage", _DEFAULT_MIN_COVERAGE)
+    max_probes = candidate.get("max_probes_per_concept", _DEFAULT_MAX_PROBES)
+    probe_dimensions = candidate.get("probe_dimensions", _DEFAULT_DIMENSIONS)
+
+    if not isinstance(min_coverage, (int, float)) or not 0.0 <= float(min_coverage) <= 1.0:
+        raise ValueError("min_coverage must be between 0 and 1")
+    if type(max_probes) is not int or max_probes <= 0:
+        raise ValueError("max_probes_per_concept must be a positive integer")
+
+    dimensions = _normalize_dimensions(probe_dimensions)
+    if concepts and len(dimensions) < min(_DEFAULT_MAX_PROBES, max_probes):
+        raise ValueError("probe_dimensions must cover the required probe count")
+
+    return CoverageConfig(
+        min_coverage=float(min_coverage),
+        max_probes_per_concept=max_probes,
+        probe_dimensions=dimensions,
+    )
+
+
+def apply_coverage_assessment(
+    state: Any,
+    key_concepts: Any,
+    *,
+    config: CoverageConfig,
+    concept: Any,
+    dimension: Any,
+    assessment: Any,
+    evidence: Any,
+    event_id: Any,
+) -> CoverageDecision:
+    concepts = _normalize_key_concepts(key_concepts)
+    current_concept = _require_member("concept", concept, concepts)
+    current_dimension = _require_member("dimension", dimension, config.probe_dimensions)
+    current_assessment = _require_member("assessment", assessment, _ALLOWED_ASSESSMENTS)
+    evidence_text = _normalize_evidence(evidence)
+    event_token = _normalize_token("event_id", event_id)
+
+    coverage = _normalized_coverage(getattr(state, "concept_coverage", []), concepts)
+    entry = coverage[current_concept]
+    if entry["attempts"] >= config.max_probes_per_concept:
+        raise ValueError("max probes reached for concept")
+    if current_dimension in entry["used_dimensions"]:
+        raise ValueError("dimension already used for concept")
+
+    updated = dict(entry)
+    updated["attempts"] = entry["attempts"] + 1
+    updated["used_dimensions"] = [*entry["used_dimensions"], current_dimension]
+    updated["attempt_event_ids"] = [*entry["attempt_event_ids"], event_token]
+    updated["last_evidence_event_id"] = event_token
+
+    if current_assessment == "covered":
+        updated["status"] = "covered"
+        updated["accepted_evidence_count"] = entry["accepted_evidence_count"] + 1
+        updated["evidence_event_ids"] = [*entry["evidence_event_ids"], event_token]
+    else:
+        updated["status"] = current_assessment
+
+    coverage[current_concept] = updated
+    ordered_coverage = [coverage[name] for name in concepts]
+    next_concept, next_dimension = _next_probe(coverage, concepts, config)
+    coverage_score = _coverage_score(ordered_coverage)
+    pending_probe = (
+        {"concept": next_concept, "dimension": next_dimension}
+        if next_concept is not None and next_dimension is not None
+        else None
+    )
+    unresolved = [
+        item["concept"]
+        for item in ordered_coverage
+        if item["status"] != "covered"
+    ]
+    ready_for_code = pending_probe is None and coverage_score >= config.min_coverage
+
+    return CoverageDecision(
+        concept_status=updated["status"],
+        attempts=updated["attempts"],
+        next_concept=next_concept,
+        next_dimension=next_dimension,
+        ready_for_code=ready_for_code,
+        coverage_score=coverage_score,
+        state_patch={
+            "concept_coverage": ordered_coverage,
+            "coverage_score": coverage_score,
+            "unresolved_concepts": unresolved,
+            "ready_for_code": ready_for_code,
+            "pending_probe": pending_probe,
+        },
+    )
+
+
+def _normalize_key_concepts(key_concepts: Any) -> List[str]:
+    if not isinstance(key_concepts, list):
+        return []
+    seen = set()
+    concepts: List[str] = []
+    for value in key_concepts:
+        if not isinstance(value, str):
+            continue
+        text = value.strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        concepts.append(text)
+    return concepts
+
+
+def _normalize_dimensions(raw: Any) -> Tuple[str, ...]:
+    if isinstance(raw, tuple):
+        values = list(raw)
+    elif isinstance(raw, list):
+        values = raw
+    else:
+        raise ValueError("probe_dimensions must be a list or tuple")
+
+    seen = set()
+    dimensions: List[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            raise ValueError("probe_dimensions entries must be strings")
+        text = value.strip()
+        if not text:
+            raise ValueError("probe_dimensions entries must not be empty")
+        if text in seen:
+            raise ValueError("probe_dimensions entries must be unique")
+        seen.add(text)
+        dimensions.append(text)
+    if not dimensions:
+        raise ValueError("probe_dimensions must not be empty")
+    return tuple(dimensions)
+
+
+def _require_member(name: str, value: Any, allowed: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a non-empty string")
+    text = value.strip()
+    if not text:
+        raise ValueError(f"{name} must be a non-empty string")
+    if text not in allowed:
+        raise ValueError(f"invalid {name}: {value!r}")
+    return text
+
+
+def _normalize_evidence(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("evidence must be a non-empty string")
+    text = value.strip()
+    if not text or text.casefold() in _MEANINGLESS_EVIDENCE:
+        raise ValueError("evidence must be meaningful")
+    return text
+
+
+def _normalize_token(name: str, value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must be a non-empty string")
+    return value.strip()
+
+
+def _normalized_coverage(raw: Any, concepts: List[str]) -> Dict[str, Dict[str, Any]]:
+    ordered = {concept: _empty_entry(concept) for concept in concepts}
+    items = []
+    if isinstance(raw, Mapping):
+        items = [{"concept": key, **value} for key, value in raw.items() if isinstance(value, Mapping)]
+    elif isinstance(raw, list):
+        items = [item for item in raw if isinstance(item, Mapping)]
+
+    for item in items:
+        concept = item.get("concept")
+        if concept not in ordered:
+            continue
+        ordered[concept] = _normalize_entry(item, concept)
+    return ordered
+
+
+def _empty_entry(concept: str) -> Dict[str, Any]:
+    return {
+        "concept": concept,
+        "status": "unseen",
+        "attempts": 0,
+        "used_dimensions": [],
+        "attempt_event_ids": [],
+        "accepted_evidence_count": 0,
+        "evidence_event_ids": [],
+        "last_evidence_event_id": None,
+    }
+
+
+def _normalize_entry(raw: Mapping[str, Any], concept: str) -> Dict[str, Any]:
+    entry = _empty_entry(concept)
+    status = raw.get("status", entry["status"])
+    if isinstance(status, str) and status in {"unseen", "covered", "partial", "off_topic"}:
+        entry["status"] = status
+
+    attempts = raw.get("attempts", 0)
+    if type(attempts) is int and attempts >= 0:
+        entry["attempts"] = attempts
+
+    used_dimensions = raw.get("used_dimensions", [])
+    if isinstance(used_dimensions, list):
+        entry["used_dimensions"] = [
+            item.strip()
+            for item in used_dimensions
+            if isinstance(item, str) and item.strip()
+        ]
+
+    attempt_event_ids = raw.get("attempt_event_ids", [])
+    if isinstance(attempt_event_ids, list):
+        entry["attempt_event_ids"] = [
+            item.strip()
+            for item in attempt_event_ids
+            if isinstance(item, str) and item.strip()
+        ]
+
+    accepted = raw.get("accepted_evidence_count", 0)
+    if type(accepted) is int and accepted >= 0:
+        entry["accepted_evidence_count"] = accepted
+
+    evidence_event_ids = raw.get("evidence_event_ids", [])
+    if isinstance(evidence_event_ids, list):
+        entry["evidence_event_ids"] = [
+            item.strip()
+            for item in evidence_event_ids
+            if isinstance(item, str) and item.strip()
+        ]
+
+    last_event_id = raw.get("last_evidence_event_id")
+    if isinstance(last_event_id, str) and last_event_id.strip():
+        entry["last_evidence_event_id"] = last_event_id.strip()
+    return entry
+
+
+def _next_probe(
+    coverage: Mapping[str, Dict[str, Any]],
+    concepts: List[str],
+    config: CoverageConfig,
+) -> tuple[Optional[str], Optional[str]]:
+    for concept in concepts:
+        entry = coverage[concept]
+        if entry["status"] == "covered" or entry["attempts"] >= config.max_probes_per_concept:
+            continue
+        used_dimensions = frozenset(entry["used_dimensions"])
+        for dimension in config.probe_dimensions:
+            if dimension not in used_dimensions:
+                return concept, dimension
+    return None, None
+
+
+def _coverage_score(entries: List[Dict[str, Any]]) -> float:
+    if not entries:
+        return 0.0
+    total_weight = 0.0
+    earned_weight = 0.0
+    for entry in entries:
+        raw_weight = entry.get("weight", 1.0)
+        weight = float(raw_weight) if isinstance(raw_weight, (int, float)) and raw_weight > 0 else 1.0
+        total_weight += weight
+        if entry["status"] == "covered":
+            earned_weight += weight
+        elif entry["status"] == "partial":
+            earned_weight += weight * 0.5
+    if total_weight <= 0:
+        return 0.0
+    score = earned_weight / total_weight
+    return max(0.0, min(1.0, score))
