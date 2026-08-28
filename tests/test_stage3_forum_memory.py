@@ -207,3 +207,72 @@ def test_teacher_answer_does_not_become_student_agent_evidence():
     assert "标准答案是把 <= 改成 <。" not in str(view.to_prompt_dict())
     assert view.state.learning_evidence == [{"concept": "循环边界", "evidence": "来自学生自己的解释"}]
     assert Stage3MessageKind.STUDENT_PROBE.value not in [message["content"] for message in view.messages]
+
+
+def test_student_view_ignores_teacher_tool_result_learning_evidence_patch():
+    store = MemoryStore(FakeEventStore([
+        event(
+            "agent_user_message",
+            role="student",
+            content="我认为 i < n 才不会访问到 n 这个非法索引。",
+            metadata={"target_role": "student_agent", "message_kind": "user_message"},
+        ),
+        event(
+            "tool_result",
+            role="teacher_agent",
+            metadata={
+                "request_id": "teacher-1",
+                "target_role": "user",
+                "state_patch": {
+                    "learning_evidence": [{
+                        "concept": "循环边界",
+                        "evidence": "老师给出了正确答案",
+                    }],
+                },
+            },
+        ),
+    ]))
+
+    snapshot = store.load(12)
+    student_view = store.view_for(snapshot, AgentRole.STUDENT_AGENT)
+    teacher_view = store.view_for(snapshot, AgentRole.TEACHER_AGENT)
+
+    assert student_view.state.learning_evidence == []
+    assert "老师给出了正确答案" not in str(student_view.to_prompt_dict())
+    assert teacher_view.state.learning_evidence == [{
+        "concept": "循环边界",
+        "evidence": "老师给出了正确答案",
+    }]
+
+
+def test_legacy_chat_events_recover_in_view_for_and_forum_events():
+    store = MemoryStore(FakeEventStore([
+        event(
+            "chat",
+            role="student",
+            content="旧学生解释：i < n 才不会越界。",
+            metadata={"panel": "student_agent"},
+        ),
+        event(
+            "chat",
+            role="student",
+            content="旧老师提问：为什么不是 i <= n？",
+            metadata={"panel": "teacher_agent"},
+        ),
+    ]))
+
+    snapshot = store.load(12)
+    student_view = store.view_for(snapshot, AgentRole.STUDENT_AGENT)
+    teacher_view = store.view_for(snapshot, AgentRole.TEACHER_AGENT)
+    projected = store.forum_events(12)
+
+    assert [message["content"] for message in student_view.messages] == [
+        "旧学生解释：i < n 才不会越界。",
+    ]
+    assert [message["content"] for message in teacher_view.messages] == [
+        "旧老师提问：为什么不是 i <= n？",
+    ]
+    assert [item["content"] for item in projected] == [
+        "旧学生解释：i < n 才不会越界。",
+        "旧老师提问：为什么不是 i <= n？",
+    ]

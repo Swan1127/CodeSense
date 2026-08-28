@@ -151,3 +151,150 @@ Output:
 
 - The shell in this workspace does not expose `python` on `PATH`; I had to use `py -m pytest`.
 - The required regression suite passes, but it still emits 97 pre-existing Werkzeug deprecation warnings under the current interpreter.
+
+## Fix round 1
+
+### Changed files
+
+- `tests/test_stage3_forum_memory.py`
+- `utils/agents/memory.py`
+
+### Root cause notes
+
+- `load()` replayed every `tool_result.state_patch` into shared `snapshot.state`, including teacher-originated `learning_evidence`.
+- `view_for(STUDENT_AGENT)` then exposed that shared state directly to the Student Agent prompt.
+- Legacy `chat` records were projected by `forum_events()`, but `load()` never normalized them into `visible_messages`, so recovery and prompt reconstruction diverged.
+
+### Red phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_forum_memory.py -q
+```
+
+Output:
+
+```text
+....FF                                                                   [100%]
+================================== FAILURES ===================================
+____ test_student_view_ignores_teacher_tool_result_learning_evidence_patch ____
+
+E       AssertionError: assert [{'concept': ..., 'evidence': '老师给出了正确答案'}] == []
+
+________ test_legacy_chat_events_recover_in_view_for_and_forum_events _________
+
+E       AssertionError: assert [] == ['旧学生解释：i < n 才不会越界。']
+
+=========================== short test summary info ============================
+FAILED tests/test_stage3_forum_memory.py::test_student_view_ignores_teacher_tool_result_learning_evidence_patch
+FAILED tests/test_stage3_forum_memory.py::test_legacy_chat_events_recover_in_view_for_and_forum_events
+2 failed, 4 passed in 0.19s
+```
+
+### Green phase
+
+Targeted command:
+
+```powershell
+py -m pytest tests/test_stage3_forum_memory.py -q
+```
+
+Output:
+
+```text
+......                                                                   [100%]
+6 passed in 0.09s
+```
+
+Required regression command:
+
+```powershell
+py -m pytest tests/test_stage3_forum_memory.py tests/test_stage3_agent_memory.py tests/test_stage3_agent_loop.py -q
+```
+
+First sandboxed attempt output:
+
+```text
+exec_command failed for "... pwsh.exe -Command 'py -m pytest tests/test_stage3_forum_memory.py tests/test_stage3_agent_memory.py tests/test_stage3_agent_loop.py -q'": CreateProcess { message: "Rejected(\"Failed to create unified exec process: helper_unknown_error: apply deny-read ACLs\")" }
+```
+
+Escalated rerun output:
+
+```text
+............................................................             [100%]
+============================== warnings summary ===============================
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:751: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    parts = parts or [ast.Str("")]
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:748: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    _convert(elem) if is_dynamic else ast.Str(s=elem)
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\ast.py:602: DeprecationWarning: Constant.__init__ got an unexpected keyword argument 's'. Support for arbitrary keyword arguments is deprecated and will be removed in Python 3.15.
+    return Constant(*args, **kwargs)
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\ast.py:602: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    return Constant(*args, **kwargs)
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\ast.py:602: DeprecationWarning: Constant.__init__ missing 1 required positional argument: 'value'. This will become an error in Python 3.15.
+    return Constant(*args, **kwargs)
+
+tests/test_stage3_agent_loop.py: 20 warnings
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:755: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    if isinstance(p, ast.Str) and isinstance(ret[-1], ast.Str):
+
+tests/test_stage3_agent_loop.py: 16 warnings
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:756: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    ret[-1] = ast.Str(ret[-1].s + p.s)
+
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:756: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    ret[-1] = ast.Str(ret[-1].s + p.s)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+60 passed, 97 warnings in 1.45s
+```
+
+Formatting check:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+[no output]
+```
+
+### Fix details
+
+- Added a Student Agent learning-evidence projection that ignores teacher-originated replay patches while preserving the shared state for teacher compatibility.
+- Normalized legacy `chat` records inside `load()` so `view_for()` and `forum_events()` now recover the same history.
+- Kept target inference metadata-driven through `target_role` and legacy `panel` fallback.
+
+### Self-review notes
+
+- Teacher behavior remains intact: teacher views still see teacher-originated replayed `learning_evidence`.
+- Student projection is minimal and local to memory serialization; it does not change routes, tools, loop behavior, or legacy fields.
+- Legacy recovery now uses the same visibility inference path for `chat` and `agent_user_message`.
+
+### Fix round 1 commit SHA
+
+- Pending commit in this section at the time of append; updated after commit.

@@ -8,7 +8,7 @@ Flask application context.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from typing import Any, Dict, List, Mapping, Optional, Protocol
 
 from .contracts import (
@@ -132,6 +132,7 @@ class MemorySnapshot:
         default_factory=lambda: {role: [] for role in AgentRole}
     )
     code_artifact_index: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    student_learning_evidence: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -160,15 +161,22 @@ class MemoryStore:
 
     def load(self, session_id: int) -> MemorySnapshot:
         snapshot = MemorySnapshot(state=FeynmanState(session_id=session_id))
+        snapshot.student_learning_evidence = list(snapshot.state.learning_evidence)
         for record in self.event_store.list_events(session_id, stage=3):
             if record.event_type == "state_snapshot":
                 raw_state = record.metadata.get("state")
                 if isinstance(raw_state, Mapping):
                     snapshot.state = _feynman_state(raw_state, session_id)
                     snapshot.agent_states = _agent_states(record.metadata.get("agent_states"))
+                    snapshot.student_learning_evidence = list(snapshot.state.learning_evidence)
             elif record.event_type == "tool_result":
                 _apply_replayable_state_patch(snapshot.state, record.metadata.get("state_patch"))
-            elif record.event_type == "agent_user_message":
+                snapshot.student_learning_evidence = _project_student_learning_evidence(
+                    snapshot.student_learning_evidence,
+                    record,
+                    snapshot.state.learning_evidence,
+                )
+            elif record.event_type in {"agent_user_message", "chat"}:
                 message = _message(record)
                 snapshot.student_messages.append(message)
                 for agent_role in AgentRole:
@@ -210,11 +218,13 @@ class MemoryStore:
         agent_state = snapshot.agent_states.get(role, AgentState())
         messages = list(snapshot.visible_messages[role])
         artifacts = list(snapshot.code_artifact_index.values())
+        state = snapshot.state
         if role is AgentRole.STUDENT_AGENT:
             artifacts = [_student_safe_artifact(item) for item in artifacts]
+            state = replace(snapshot.state, learning_evidence=list(snapshot.student_learning_evidence))
         return MemoryView(
             role=role,
-            state=snapshot.state,
+            state=state,
             agent_state=agent_state,
             messages=messages[-_MAX_MESSAGES:],
             code_artifacts=artifacts,
@@ -393,7 +403,7 @@ def _message(record: EventRecord) -> Dict[str, str]:
 
 def _message_visible_to_role(record: EventRecord, viewer_role: AgentRole) -> bool:
     target_role = _target_role(record)
-    if record.event_type == "agent_user_message":
+    if record.event_type in {"agent_user_message", "chat"}:
         if target_role is None:
             return True
         return target_role == viewer_role.value
@@ -405,6 +415,18 @@ def _message_visible_to_role(record: EventRecord, viewer_role: AgentRole) -> boo
             return _agent_role(record.role) == viewer_role
         return target_role == viewer_role.value
     return False
+
+
+def _project_student_learning_evidence(
+    current: List[Dict[str, Any]],
+    record: EventRecord,
+    candidate: Any,
+) -> List[Dict[str, Any]]:
+    if "learning_evidence" not in record.metadata.get("state_patch", {}):
+        return current
+    if _agent_role(record.role) is not AgentRole.STUDENT_AGENT:
+        return current
+    return _normalized_learning_evidence(candidate)
 
 
 def _forum_event(record: EventRecord) -> Optional[Dict[str, Any]]:
@@ -492,6 +514,16 @@ def _visibility(record: EventRecord) -> str:
 def _string_metadata(record: EventRecord, key: str) -> Optional[str]:
     value = record.metadata.get(key)
     return str(value) if value else None
+
+
+def _normalized_learning_evidence(value: Any) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, Mapping):
+            normalized.append(dict(item))
+    return normalized
 
 
 def _student_safe_artifact(item: Dict[str, Any]) -> Dict[str, Any]:
