@@ -239,6 +239,9 @@ def test_non_explanatory_statements_cannot_mark_concept_as_covered(text):
     "ok because",
     "谢谢，因为",
     "I understand if",
+    "because this causes",
+    "因为因为因为",
+    "if if if",
 ])
 def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
     state = FeynmanState(session_id=12)
@@ -289,6 +292,26 @@ def test_valid_paraphrase_without_old_marker_vocabulary_is_accepted(assessment):
         dimension="core",
         assessment=assessment,
         evidence="循环停在 length 前一格，末尾元素只能用 length - 1 取到，再往后走一步就会碰到数组外面的位置。",
+        event_id="evt-1",
+    )
+
+    assert decision.concept_status == assessment
+    assert decision.attempts == 1
+    assert decision.coverage_score == (1.0 if assessment == "covered" else pytest.approx(0.5))
+
+
+@pytest.mark.parametrize("assessment", ["covered", "partial"])
+def test_valid_causal_or_conditional_explanation_outside_current_regex_lists_is_accepted(assessment):
+    state = FeynmanState(session_id=12)
+
+    decision = apply_coverage_assessment(
+        state,
+        ["循环边界"],
+        config=CoverageConfig(min_coverage=1.0),
+        concept="循环边界",
+        dimension="core",
+        assessment=assessment,
+        evidence="The loop halts before the array limit, and an extra step would read past the final slot, so the last safe cell stays at length minus one.",
         event_id="evt-1",
     )
 

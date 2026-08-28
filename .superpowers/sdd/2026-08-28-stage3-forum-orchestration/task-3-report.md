@@ -675,5 +675,95 @@ Output:
 ### Fix Round 2 Commit SHA
 
 ```text
+ba96804
+```
+
+## Fix Round 3
+
+### Reviewer Findings Addressed
+
+1. Tightened concrete-evidence validation again so isolated markers, digits, symbols, repeated filler, and generic phrases cannot pass by matching one hard-coded reasoning token.
+2. The predicate now accepts evidence through structure rather than one marker substring: either a complete code relation with real operands plus explanatory detail, or multiple rich explanatory clauses with an actual relation between them.
+
+### Changed Files
+
+- `utils/agents/coverage.py`
+- `tests/test_stage3_coverage.py`
+- `.superpowers/sdd/2026-08-28-stage3-forum-orchestration/task-3-report.md`
+
+### Red Phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py -q
+```
+
+Output:
+
+```text
+.........................F.........                                      [100%]
+================================== FAILURES ===================================
+_ test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[because this causes] _
+
+text = 'because this causes'
+
+    @pytest.mark.parametrize("text", [
+        "if",
+        "because",
+        "1",
+        "=",
+        "ok because",
+        "лл����Ϊ",
+        "I understand if",
+        "because this causes",
+        "��Ϊ��Ϊ��Ϊ",
+        "if if if",
+    ])
+    def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:250: Failed
+=========================== short test summary info ===========================
+FAILED tests/test_stage3_coverage.py::test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[because this causes]
+1 failed, 34 passed in 0.19s
+```
+
+### Green Phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py -q
+```
+
+Output:
+
+```text
+...................................                                      [100%]
+35 passed in 0.11s
+```
+
+### Verification
+
+Command:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+<no output>
+```
+
+### Fix Round 3 Commit SHA
+
+```text
 PENDING
 ```

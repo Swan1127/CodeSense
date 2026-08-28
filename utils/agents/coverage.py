@@ -22,6 +22,13 @@ _EN_STOPWORDS = frozenset({
     "a", "an", "and", "are", "as", "at", "be", "before", "by", "for", "from", "in", "into",
     "is", "it", "of", "on", "or", "so", "the", "to", "too", "was", "will", "with",
 })
+_NON_SUBSTANTIVE_ENGLISH_TOKENS = frozenset({
+    "because", "if", "then", "this", "that", "these", "those", "cause", "causes", "means", "shows",
+    "explain", "explains", "explained", "use", "uses", "used", "stop", "stops", "stayed", "stays",
+    "keep", "keeps", "turn", "turns", "read", "reads", "safe", "cell", "slot", "final", "extra",
+    "step", "important", "detail", "sense", "understand", "understood", "got", "okay", "ok", "yes",
+    "yep", "thanks", "thank", "you",
+})
 _ACKNOWLEDGEMENT_PATTERNS = (
     re.compile(r"^(?:好(?:的)?|收到|明白了|懂了|懂啦|会了|知道了|谢谢|嗯|嗯嗯)+$"),
     re.compile(r"^(?:ok(?:ay)?|yes|yep|got\s+it|i\s+understand|understood|thanks?|thank\s+you)+$", re.IGNORECASE),
@@ -293,27 +300,29 @@ def _has_complete_code_relation(text: str) -> bool:
 
 
 def _has_substantive_detail(text: str) -> bool:
-    return bool(_has_clause_detail(text) or _has_explanatory_structure(text) or _has_multiclause_relation(text))
+    return bool(_has_rich_clause_detail(text) or _has_multiclause_relation(text))
 
 
 def _has_explanatory_structure(text: str) -> bool:
     stripped = text.strip()
     if _has_complete_code_relation(stripped) and len(_split_clauses(stripped)) >= 2:
         return True
-    if any(pattern.search(stripped) for pattern in _REASONING_PATTERNS) and _has_clause_detail(stripped):
+    if any(pattern.search(stripped) for pattern in _REASONING_PATTERNS) and _has_rich_clause_detail(stripped):
         return True
     return False
 
 
 def _has_multiclause_relation(text: str) -> bool:
-    clauses = [clause for clause in _split_clauses(text) if _substantive_character_count(clause) >= 4]
+    clauses = [clause for clause in _split_clauses(text) if _is_rich_clause(clause)]
     if len(clauses) < 2:
         return False
     if any(pattern.search(text) for pattern in _CLAUSE_RELATION_PATTERNS) and _has_clause_detail(text):
         return True
 
     repeated_terms = _repeated_substantive_terms(clauses)
-    if repeated_terms and any(_has_clause_detail(clause) for clause in clauses):
+    if repeated_terms and any(_has_rich_clause_detail(clause) for clause in clauses):
+        return True
+    if len(_substantive_terms(text)) >= 4:
         return True
     return False
 
@@ -323,10 +332,21 @@ def _has_clause_detail(text: str) -> bool:
     return any(
         len(_word_tokens(clause)) >= 2
         or len(_cjk_phrases(clause)) >= 2
-        or _substantive_character_count(clause) >= 10
         or _has_complete_code_relation(clause)
         for clause in clauses
     )
+
+
+def _has_rich_clause_detail(text: str) -> bool:
+    return any(_is_rich_clause(clause) for clause in _split_clauses(text))
+
+
+def _is_rich_clause(clause: str) -> bool:
+    if _has_complete_code_relation(clause):
+        return True
+    if len(_substantive_english_tokens(clause)) >= 2:
+        return True
+    return any(len(phrase) >= 8 for phrase in _substantive_cjk_phrases(clause))
 
 
 def _split_clauses(text: str) -> List[str]:
@@ -340,20 +360,38 @@ def _split_clauses(text: str) -> List[str]:
 def _repeated_substantive_terms(clauses: List[str]) -> set[str]:
     clause_terms: List[set[str]] = []
     for clause in clauses:
-        terms = {
-            token for token in _word_tokens(clause)
-            if len(token) >= 3 and token not in _EN_STOPWORDS and token not in _ACKNOWLEDGEMENT_TOKENS
-        }
-        terms.update({
-            phrase for phrase in _cjk_phrases(clause)
-            if len(phrase) >= 2 and phrase not in _ACKNOWLEDGEMENT_TOKENS and phrase not in _GENERIC_NON_EXPLANATORY_TOKENS
-        })
+        terms = set(_substantive_english_tokens(clause))
+        terms.update(_substantive_cjk_phrases(clause))
         clause_terms.append(terms)
     repeated: set[str] = set()
     for index, terms in enumerate(clause_terms):
         for other in clause_terms[index + 1:]:
             repeated.update(terms & other)
     return repeated
+
+
+def _substantive_terms(text: str) -> set[str]:
+    return set(_substantive_english_tokens(text)) | set(_substantive_cjk_phrases(text))
+
+
+def _substantive_english_tokens(text: str) -> List[str]:
+    return [
+        token for token in _word_tokens(text)
+        if len(token) >= 4
+        and token not in _EN_STOPWORDS
+        and token not in _ACKNOWLEDGEMENT_TOKENS
+        and token not in _GENERIC_NON_EXPLANATORY_TOKENS
+        and token not in _NON_SUBSTANTIVE_ENGLISH_TOKENS
+    ]
+
+
+def _substantive_cjk_phrases(text: str) -> List[str]:
+    return [
+        phrase for phrase in _cjk_phrases(text)
+        if len(phrase) >= 2
+        and phrase not in _ACKNOWLEDGEMENT_TOKENS
+        and phrase not in _GENERIC_NON_EXPLANATORY_TOKENS
+    ]
 
 
 def _word_tokens(text: str) -> List[str]:
