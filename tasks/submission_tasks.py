@@ -4,7 +4,7 @@ import traceback
 import json
 from datetime import datetime
 from models import db, User, Assignment, Submission, SystemLog, TestCase as TC
-from utils.code_evaluator import evaluate_cpp_code, llm_evaluator
+from utils import code_evaluator
 from utils.sandbox_runner import run_test_cases
 
 def evaluate_submission_async(app, submission_id, assignment_title):
@@ -27,11 +27,11 @@ def evaluate_submission_async(app, submission_id, assignment_title):
                 # 1. AI 基础评估 (使用 C++ 评估器)
                 print(f"🚀 开始后台評估提交 {submission_id}，题目: {assignment_title}")
                 try:
-                    score, feedback = evaluate_cpp_code(code, assignment_title=assignment_title)
+                    score, feedback = code_evaluator.evaluate_cpp_code(code, assignment_title=assignment_title)
                     
                     # 保存 AI 结构化数据
-                    if hasattr(llm_evaluator, '_last_structured_data'):
-                        structured_data = llm_evaluator._last_structured_data
+                    if hasattr(code_evaluator.llm_evaluator, '_last_structured_data'):
+                        structured_data = code_evaluator.llm_evaluator._last_structured_data
                         submission.ai_feedback = json.dumps(structured_data, ensure_ascii=False)
                     elif isinstance(feedback, str) and ("【" in feedback or "改进建议" in feedback):
                         submission.ai_feedback = feedback

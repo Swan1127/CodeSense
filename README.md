@@ -2,7 +2,7 @@
 
 > 面向高校编程教学的 AI 辅助评测与学习平台。
 
-[English](README.en.md) · [项目文档](docs/) · [部署说明](DEPLOYMENT_GUIDE.md) · [提交 Issue](https://github.com/XiaoCow666/CodeSense/issues)
+[English](README.en.md) · [提交 Issue](https://github.com/XiaoCow666/CodeSense/issues)
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-2.2.3-000000?style=flat-square&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
@@ -214,8 +214,6 @@ SECRET_KEY=replace-with-a-random-secret
 ZHIPU_API_KEY=
 OPENAI_API_KEY=
 
-# 不需要本地模型时保持 False
-LOAD_LOCAL_MODEL=False
 ```
 
 应用启动时会创建数据库表。生产配置要求显式设置 `DATABASE_URL` 和 `SECRET_KEY`；请不要把 `.env`、API 密钥或本地数据库文件提交到 Git。
@@ -247,7 +245,7 @@ python -m pytest tests -q
 
 ### 生产部署入口
 
-生产部署前请阅读 [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)，并根据服务器环境重新检查数据库、密钥、会话、日志、反向代理和代码执行隔离配置。仓库中的 WSGI 对象名为 `wsgi:application`，不要使用旧文档中的 `wsgi:app`。
+生产环境需要重新检查数据库、密钥、会话、日志、反向代理和代码执行隔离配置。仓库中的 WSGI 对象名为 `wsgi:application`，可按服务器环境使用 Gunicorn 或其他 WSGI 服务启动。
 
 ## 配置说明
 
@@ -259,7 +257,6 @@ python -m pytest tests -q
 | `TEST_DATABASE_URL` | 测试环境数据库连接，不设置时使用独立 SQLite。 |
 | `SECRET_KEY` | Flask 会话和签名密钥；生产环境必须设置，且至少 32 个字符。 |
 | `ZHIPU_API_KEY` / `OPENAI_API_KEY` | AI 服务密钥，至少配置一个才能使用对应的 AI 功能。 |
-| `LOAD_LOCAL_MODEL` | 是否加载可选本地模型；云端或轻量环境通常保持 `False`。 |
 | `REDIS_URL` | 可选 Redis 地址；用于会话或缓存相关能力。 |
 
 ## API 入口
@@ -297,7 +294,7 @@ CodeSense 采用语义化版本号：
 
 ## 参与贡献
 
-欢迎通过 Issue 反馈问题或提交 Pull Request。提交改动前请阅读 [AGENTS.md](AGENTS.md) 和相关项目文档；改动应放在独立分支中，并在 PR 中写明改动内容、测试结果和注意事项。`main` 的合并由项目负责人审核后进行。
+欢迎通过 Issue 反馈问题或提交 Pull Request。改动应放在独立分支中，并在 PR 中写明改动内容、测试结果和注意事项。`main` 的合并由项目负责人审核后进行。
 
 ## 许可证
 

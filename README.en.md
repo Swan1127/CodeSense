@@ -2,7 +2,7 @@
 
 > An AI-assisted assessment and learning platform for university programming courses.
 
-[简体中文](README.md) · [Project docs](docs/) · [Deployment guide](DEPLOYMENT_GUIDE.md) · [Open an issue](https://github.com/XiaoCow666/CodeSense/issues)
+[简体中文](README.md) · [Open an issue](https://github.com/XiaoCow666/CodeSense/issues)
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-2.2.3-000000?style=flat-square&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
@@ -214,8 +214,6 @@ SECRET_KEY=replace-with-a-random-secret
 ZHIPU_API_KEY=
 OPENAI_API_KEY=
 
-# Keep False when local model loading is not required
-LOAD_LOCAL_MODEL=False
 ```
 
 The application creates database tables at startup. Production configuration requires `DATABASE_URL` and `SECRET_KEY`. Do not commit `.env`, API keys, or local database files.
@@ -247,7 +245,7 @@ Tests involving C++ assessment require `g++`. Tests that call a real AI service 
 
 ### Production entry point
 
-Read [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) before deploying. Recheck the database, secret, session, logging, reverse-proxy, and code-execution isolation settings for the target server. The WSGI object exposed by this repository is `wsgi:application`; older instructions referring to `wsgi:app` are incorrect.
+Before deploying, recheck the database, secret, session, logging, reverse-proxy, and code-execution isolation settings for the target server. The WSGI object exposed by this repository is `wsgi:application`; start it with Gunicorn or another WSGI server according to the target environment.
 
 ## Configuration
 
@@ -259,7 +257,6 @@ Read [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) before deploying. Recheck the da
 | `TEST_DATABASE_URL` | Test database connection; a separate SQLite database is used when it is unset. |
 | `SECRET_KEY` | Flask session and signing key; required in production and at least 32 characters long. |
 | `ZHIPU_API_KEY` / `OPENAI_API_KEY` | AI service keys; configure at least one to enable the corresponding AI features. |
-| `LOAD_LOCAL_MODEL` | Whether to load optional local models; normally keep `False` on lightweight or cloud servers. |
 | `REDIS_URL` | Optional Redis URL for session or cache-related capabilities. |
 
 ## API entry points
@@ -297,7 +294,7 @@ The current version is **`v1.0.0`**, the first formal release of the CodeSense S
 
 ## Contributing
 
-Issues and pull requests are welcome. Before making a change, read [AGENTS.md](AGENTS.md) and the relevant project documentation. Put changes on an independent branch and describe the changes, test results, and notes in the pull request. Merges into `main` are made after maintainer review.
+Issues and pull requests are welcome. Put changes on an independent branch and describe the changes, test results, and notes in the pull request. Merges into `main` are made after maintainer review.
 
 ## License
 

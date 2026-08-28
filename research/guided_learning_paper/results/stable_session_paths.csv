@@ -1,5 +1,0 @@
-﻿path,label,sessions,percent
-no_valid_stage1,未形成第一阶段有效记录,89,22.36
-stage2_incomplete,到达第二阶段但未完成,74,18.59
-stage3_incomplete,完成第二阶段但未完成第三阶段,11,2.76
-all_completed,完成全部阶段,224,56.28
