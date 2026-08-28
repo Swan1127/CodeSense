@@ -297,4 +297,4 @@ Output:
 
 ### Fix round 1 commit SHA
 
-- Pending commit in this section at the time of append; updated after commit.
+- `9718e86cf01e0a57e92e8edff06b3a15a7038b7f` (`fix: isolate student memory replay projection`)
