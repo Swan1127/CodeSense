@@ -1044,6 +1044,13 @@
         }
     }
 
+    function newAgentRequestId(prefix) {
+        if (window.crypto && window.crypto.randomUUID) {
+            return `${prefix}-${window.crypto.randomUUID()}`;
+        }
+        return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
     function sendTeacherChat() {
         const input = document.getElementById('teacher-chat-input');
         const message = input ? input.value.trim() : '';
@@ -1061,8 +1068,8 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                messages: state.teacherMessages,
-                student_state: collectStudentState()
+                message: message,
+                request_id: newAgentRequestId('teacher')
             })
         }).then(data => {
             hideTypingIndicator('teacher');
@@ -1091,8 +1098,8 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                messages: state.studentMessages,
-                student_state: collectStudentState()
+                message: message,
+                request_id: newAgentRequestId('student')
             })
         }).then(data => {
             hideTypingIndicator('student');
@@ -1101,8 +1108,14 @@
                 state.studentMessages.push({ role: 'assistant', content: data.response });
 
                 // Check if ready for code writing phase
-                if (data.ready_for_code && state.feynmanPhase === 'chat') {
-                    setTimeout(() => triggerCodeWritingPhase(), 2000);
+                if ((data.ui_action === 'show_code_review' || data.ready_for_code) && state.feynmanPhase === 'chat') {
+                    if (typeof data.buggy_code === 'string' && data.buggy_code.trim()) {
+                        state.feynmanPhase = 'code_review';
+                        state.buggyCode = data.buggy_code;
+                        showCodeReviewPanel(data.buggy_code);
+                    } else {
+                        setTimeout(() => triggerCodeWritingPhase(), 2000);
+                    }
                 }
             }
         }).catch(err => {
@@ -1120,7 +1133,7 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                messages: state.studentMessages
+                request_id: newAgentRequestId('write')
             })
         }).then(data => {
             hideTypingIndicator('student');
@@ -1197,8 +1210,8 @@
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
-                buggy_code: state.buggyCode,
-                fixed_code: fixedCode
+                fixed_code: fixedCode,
+                request_id: newAgentRequestId('fix')
             })
         }).then(data => {
             if (data.success) {
@@ -1333,19 +1346,73 @@
         const panel = document.createElement('div');
         panel.className = 'dev-debug-panel';
         panel.innerHTML = `
-            <h4><i class="bi bi-braces-asterisk"></i> 开发者调试面板 (Dev Only)</h4>
-            <div style="font-size: 11px; margin-bottom: 8px; color: #94a3b8;">快速进行阶段流转及自动化测试</div>
-            <div class="dev-debug-btn-group">
-                <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(1)">跳到阶段一</button>
-                <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(2)">跳到阶段二</button>
-                <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(3)">跳到阶段三</button>
-                <button class="dev-debug-btn dev-debug-btn-success" onclick="window.ThinkingArena.debugJumpStage(4)">一键通关</button>
-            </div>
-            <div class="dev-debug-btn-group" style="margin-bottom: 0;">
-                <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS1()">秒杀阶段一 (Auto S1)</button>
-                <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS2()" style="margin-top: 6px;">秒杀阶段二 (Auto S2)</button>
+            <button type="button" class="dev-debug-toggle" aria-expanded="false"
+                    aria-controls="dev-debug-content" aria-label="展开开发者调试面板">
+                <span class="dev-debug-title">
+                    <i class="bi bi-braces-asterisk" aria-hidden="true"></i>
+                    <span>开发者调试</span>
+                </span>
+                <span class="dev-debug-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div id="dev-debug-content" class="dev-debug-content" hidden>
+                <div class="dev-debug-description">快速进行阶段流转及自动化测试</div>
+                <div class="dev-debug-btn-group">
+                    <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(1)">跳到阶段一</button>
+                    <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(2)">跳到阶段二</button>
+                    <button class="dev-debug-btn" onclick="window.ThinkingArena.debugJumpStage(3)">跳到阶段三</button>
+                    <button class="dev-debug-btn dev-debug-btn-success" onclick="window.ThinkingArena.debugJumpStage(4)">一键通关</button>
+                </div>
+                <div class="dev-debug-btn-group" style="margin-bottom: 0;">
+                    <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS1()">秒杀阶段一 (Auto S1)</button>
+                    <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS2()">秒杀阶段二 (Auto S2)</button>
+                </div>
             </div>
         `;
+
+        const toggle = panel.querySelector('.dev-debug-toggle');
+        const content = panel.querySelector('.dev-debug-content');
+        const storageKey = 'codesense-dev-debug-panel-collapsed';
+        let storage = null;
+        try {
+            storage = window.sessionStorage;
+        } catch (error) {
+            // Private browsing modes may deny sessionStorage access.
+        }
+
+        const setCollapsed = (collapsed) => {
+            panel.classList.toggle('is-collapsed', collapsed);
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+            toggle.setAttribute('aria-label', collapsed ? '展开开发者调试面板' : '收起开发者调试面板');
+            content.hidden = collapsed;
+            if (storage) {
+                try {
+                    storage.setItem(storageKey, String(collapsed));
+                } catch (error) {
+                    // Keep the toggle usable when storage is unavailable.
+                }
+            }
+        };
+
+        let rememberedCollapsed = null;
+        if (storage) {
+            try {
+                rememberedCollapsed = storage.getItem(storageKey);
+            } catch (error) {
+                // Use the default collapsed state when storage is unavailable.
+            }
+        }
+        setCollapsed(rememberedCollapsed !== 'false');
+
+        toggle.addEventListener('click', () => {
+            setCollapsed(!panel.classList.contains('is-collapsed'));
+        });
+        toggle.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                setCollapsed(true);
+                toggle.focus();
+            }
+        });
+
         document.body.appendChild(panel);
     }
 

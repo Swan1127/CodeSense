@@ -1,0 +1,644 @@
+"""Bounded, server-authoritative execution loop for Stage 3 agents."""
+
+from __future__ import annotations
+
+import json
+import threading
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, Iterator, List, Mapping, Optional
+
+from .contracts import (
+    MAX_TOOL_CALLS_PER_DECISION,
+    AgentDecision,
+    AgentResult,
+    AgentRole,
+    AgentState,
+    GoalStatus,
+    ToolCall,
+    ToolResult,
+    UIAction,
+)
+from .memory import EventRecord, MemorySnapshot, MemoryStore
+from .model import DecisionModel, ModelError
+from .tools import ToolContext, ToolRegistry
+
+
+_SESSION_LOCKS: Dict[int, threading.RLock] = {}
+_SESSION_LOCKS_GUARD = threading.Lock()
+_REDIS_LOCK_TTL_SECONDS = 120
+_REDIS_LOCK_BLOCKING_SECONDS = 5
+_READ_ONLY_TOOLS = frozenset({"inspect_learning_state", "recall_memory"})
+_PUBLIC_STATE_FIELDS = frozenset({
+    "goal", "phase", "teacher_rounds", "student_rounds", "learning_evidence",
+    "misconceptions", "code_review_status", "status",
+})
+_PATCHABLE_STATE_FIELDS = frozenset({"phase", "learning_evidence", "code_review_status", "status"})
+_VALID_PHASES = frozenset({"student_dialogue", "code_review"})
+_VALID_CODE_REVIEW_STATUSES = frozenset({"pending", "passed", "failed", "approved", "complete"})
+
+
+class AgentLoopError(Exception):
+    """An expected bounded-loop failure represented by a public error code."""
+
+
+@dataclass(frozen=True)
+class AgentLoopConfig:
+    max_model_steps: int = 4
+    max_tool_calls_per_decision: int = MAX_TOOL_CALLS_PER_DECISION
+    max_tool_calls_per_request: int = 4
+
+    def __post_init__(self) -> None:
+        if self.max_model_steps != 4:
+            raise ValueError("max_model_steps must be exactly 4")
+        if not 1 <= self.max_tool_calls_per_decision <= MAX_TOOL_CALLS_PER_DECISION:
+            raise ValueError("invalid per-decision tool-call limit")
+        if not 1 <= self.max_tool_calls_per_request <= 16:
+            raise ValueError("invalid per-request tool-call limit")
+
+
+@dataclass(frozen=True)
+class AgentLoopSpec:
+    system_prompt: str
+    assignment_title: str = ""
+    key_concepts: List[str] = field(default_factory=list)
+    reference_code: str = ""
+    max_output_chars: int = 1200
+
+
+class AgentLoop:
+    def __init__(
+        self,
+        *,
+        session_id: int,
+        role: AgentRole,
+        model: DecisionModel,
+        tools: ToolRegistry,
+        memory: MemoryStore,
+        spec: AgentLoopSpec,
+        config: Optional[AgentLoopConfig] = None,
+    ) -> None:
+        self.session_id = session_id
+        self.role = role
+        self.model = model
+        self.tools = tools
+        self.memory = memory
+        self.spec = spec
+        self.config = config or AgentLoopConfig()
+
+    def handle_turn(
+        self,
+        user_message: str,
+        *,
+        request_id: str,
+        input_kind: str = "chat",
+    ) -> AgentResult:
+        """Handle one idempotent user request without exposing private artifacts."""
+        lock = _session_lock(self.session_id)
+        with lock:
+            with _distributed_session_lock(self.session_id) as acquired:
+                if not acquired:
+                    return AgentResult(
+                        success=False,
+                        agent=self.role,
+                        error_code="SESSION_LOCK_UNAVAILABLE",
+                    )
+                return self._handle_turn_locked(user_message, request_id, input_kind)
+
+    def _handle_turn_locked(
+        self, user_message: str, request_id: str, input_kind: str,
+    ) -> AgentResult:
+        existing = self.memory.find_request_result(self.session_id, request_id)
+        if existing is not None:
+            return existing
+
+        self.memory.append_event(
+            self.session_id, "agent_user_message", "student", content=user_message,
+            metadata={"request_id": request_id, "input_kind": input_kind},
+        )
+        snapshot = self.memory.load(self.session_id)
+        context = self._tool_context(snapshot, request_id)
+        tool_results: List[Dict[str, Any]] = []
+        total_tool_calls = 0
+
+        for step in range(self.config.max_model_steps):
+            decision = self._decide(input_kind, tool_results, request_id, snapshot, step)
+            if isinstance(decision, AgentResult):
+                return decision
+            safe_decision_message = _sanitize_public_response(
+                decision.message, self.spec.max_output_chars,
+            )
+            decision_payload = decision.to_payload()
+            decision_payload["message"] = safe_decision_message
+            self.memory.append_event(
+                self.session_id, "agent_decision", self.role.value,
+                content=safe_decision_message,
+                metadata={
+                    "request_id": request_id,
+                    "step": step,
+                    "decision": decision_payload,
+                },
+            )
+            if not decision.tool_calls:
+                self._advance_successful_chat(
+                    snapshot, user_message, decision.message, input_kind,
+                )
+                return self._finish_public_response(decision, snapshot, request_id)
+            batch_size = len(decision.tool_calls)
+            if (
+                batch_size > self.config.max_tool_calls_per_decision
+                or total_tool_calls + batch_size > self.config.max_tool_calls_per_request
+            ):
+                return self._failure("TOOL_CALL_LIMIT", request_id)
+            total_tool_calls += batch_size
+
+            for call in decision.tool_calls:
+                executions = self._execute_tool(call, context, request_id)
+                for index, execution in enumerate(executions):
+                    result = execution.result
+                    terminal_failure = not result.ok and index == len(executions) - 1
+                    if execution.persist:
+                        if not result.ok:
+                            self._persist_tool_result(call, result, request_id, terminal=terminal_failure)
+                        if not result.ok:
+                            if terminal_failure:
+                                return self._failure(result.error_code or "TOOL_EXECUTION_FAILED", request_id)
+                            continue
+                    patch = self._validated_state_patch(call, result.state_patch)
+                    if patch is None:
+                        invalid = ToolResult(
+                            ok=False,
+                            error_code="INVALID_STATE_PATCH",
+                            memory_events=list(result.memory_events),
+                        )
+                        if execution.persist:
+                            self._persist_tool_result(call, invalid, request_id, terminal=True)
+                        return self._failure("INVALID_STATE_PATCH", request_id)
+                    self._apply_state_patch(snapshot, patch)
+                    terminal_kind = _terminal_tool_kind(call, result)
+                    terminal_success = terminal_kind is not None
+                    if execution.persist:
+                        self._persist_tool_result(call, result, request_id, patch=patch, terminal=terminal_success)
+                    if patch and not terminal_success:
+                        self._persist_state_checkpoint(snapshot, request_id)
+                    tool_results.append(_tool_result_for_model(call, result))
+                    if terminal_kind == "code_review":
+                        self._advance_successful_chat(
+                            snapshot, user_message, call.name, input_kind,
+                        )
+                        return self._finish_code_review(result, snapshot, request_id)
+                    if terminal_kind == "complete_goal":
+                        self._advance_successful_chat(
+                            snapshot, user_message, call.name, input_kind,
+                        )
+                        return self._finish_goal(result, snapshot, request_id)
+                    if terminal_kind == "fix_passed":
+                        self._advance_successful_chat(
+                            snapshot, user_message, call.name, input_kind,
+                        )
+                        return self._finish_fix(result, snapshot, request_id)
+
+        return self._failure("MAX_AGENT_STEPS", request_id)
+
+    def _decide(
+        self,
+        input_kind: str,
+        tool_results: List[Dict[str, Any]],
+        request_id: str,
+        snapshot: MemorySnapshot,
+        step: int,
+    ) -> AgentDecision | AgentResult:
+        try:
+            decision = self.model.decide(
+                system_prompt=self.spec.system_prompt,
+                context=self._build_context(snapshot, input_kind=input_kind),
+                tool_specs=self.tools.specs_for(self.role),
+                tool_results=tool_results,
+            )
+        except ModelError as error:
+            return self._decision_failure(error.code, request_id, step)
+        except Exception:
+            return self._decision_failure("MODEL_ERROR", request_id, step)
+        error = getattr(self.model, "last_error", None)
+        if isinstance(error, ModelError):
+            return self._decision_failure(error.code, request_id, step)
+        if not isinstance(decision, AgentDecision):
+            return self._decision_failure("INVALID_DECISION", request_id, step)
+        return decision
+
+    def _decision_failure(
+        self, error_code: str, request_id: str, step: int,
+    ) -> AgentResult:
+        safe_code = _safe_error_code(error_code)
+        self.memory.append_event(
+            self.session_id,
+            "agent_decision_error",
+            self.role.value,
+            metadata={
+                "request_id": str(request_id)[:80],
+                "role": self.role.value,
+                "step": int(step),
+                "error_code": safe_code,
+            },
+        )
+        return self._failure(safe_code, request_id=request_id)
+
+    def _build_context(self, snapshot: MemorySnapshot, *, input_kind: str) -> str:
+        prompt = self.memory.view_for(snapshot, self.role).to_prompt_dict()
+        prompt["input_kind"] = input_kind
+        return json.dumps(prompt, ensure_ascii=False)
+
+    def _tool_context(self, snapshot: MemorySnapshot, request_id: str) -> ToolContext:
+        return ToolContext(
+            session_id=self.session_id,
+            request_id=request_id,
+            role=self.role,
+            memory=snapshot,
+            assignment_title=self.spec.assignment_title,
+            key_concepts=list(self.spec.key_concepts),
+            reference_code=self.spec.reference_code,
+        )
+
+    def _execute_tool(
+        self, call: ToolCall, context: ToolContext, request_id: str,
+    ) -> List["_ToolExecution"]:
+        side_effect = self.tools.is_side_effect(call.name)
+        if side_effect:
+            stored = self.memory.find_tool_result(
+                self.session_id, request_id, call.call_id,
+            )
+            if stored is not None:
+                context.executed_results[call.call_id] = stored
+                return [_ToolExecution(stored, persist=False)]
+            if self.memory.has_tool_call_claim(
+                self.session_id, request_id, call.call_id,
+            ):
+                return [_ToolExecution(
+                    ToolResult(ok=False, error_code="TOOL_CALL_UNFINISHED"),
+                    persist=True,
+                )]
+
+        self.memory.append_event(
+            self.session_id,
+            "tool_call",
+            self.role.value,
+            metadata={
+                "request_id": request_id,
+                "tool_call": call.to_payload(),
+                "claim": side_effect,
+                "side_effect": side_effect,
+            },
+        )
+        result = self.tools.execute(self.role, call, context)
+        if result.ok or not result.retryable or call.name not in _READ_ONLY_TOOLS:
+            return [_ToolExecution(result, persist=True)]
+        retry = self.tools.execute(self.role, call, context)
+        return [
+            _ToolExecution(result, persist=True),
+            _ToolExecution(retry, persist=True),
+        ]
+
+    def _persist_tool_result(
+        self, call: ToolCall, result: ToolResult, request_id: str, *,
+        patch: Optional[Dict[str, Any]] = None, terminal: bool = False,
+    ) -> None:
+        metadata = {
+            "request_id": request_id,
+            "tool_call": call.to_payload(),
+            "ok": result.ok,
+            "error_code": result.error_code,
+            "terminal": terminal,
+            "ui_action": result.public_content.get("ui_action"),
+            "model_content": dict(result.model_content),
+            "public_content": dict(result.public_content),
+            "state_patch": dict(patch or {}),
+        }
+        if not result.ok:
+            metadata["agent_result"] = _result_payload(
+                AgentResult(success=False, agent=self.role, error_code=result.error_code)
+            )
+        self.memory.append_event(self.session_id, "tool_result", self.role.value, metadata=metadata)
+        for event in result.memory_events:
+            if not isinstance(event, Mapping) or not isinstance(event.get("event_type"), str):
+                continue
+            event_metadata = event.get("metadata")
+            self.memory.append_event(
+                self.session_id,
+                event["event_type"],
+                self.role.value,
+                content=str(event.get("content", "")),
+                metadata={
+                    "request_id": request_id,
+                    **(dict(event_metadata) if isinstance(event_metadata, Mapping) else {}),
+                },
+            )
+
+    def _validated_state_patch(self, call: ToolCall, patch: Any) -> Optional[Dict[str, Any]]:
+        if not isinstance(patch, Mapping):
+            return None
+        clean = dict(patch)
+        if any(name not in _PATCHABLE_STATE_FIELDS for name in clean):
+            return None
+        for name, value in clean.items():
+            if name == "phase" and (
+                not isinstance(value, str) or value not in _VALID_PHASES
+            ):
+                return None
+            if name == "learning_evidence" and not _valid_entries(value, {"concept", "evidence"}):
+                return None
+            if name == "code_review_status" and (
+                not isinstance(value, str) or value not in _VALID_CODE_REVIEW_STATUSES
+            ):
+                return None
+            if name == "status" and (
+                not isinstance(value, str)
+                or call.name != "complete_goal"
+                or value != "complete"
+            ):
+                return None
+        return clean
+
+    @staticmethod
+    def _apply_state_patch(snapshot: MemorySnapshot, patch: Mapping[str, Any]) -> None:
+        for name, value in patch.items():
+            setattr(snapshot.state, name, value)
+
+    def _persist_state_checkpoint(self, snapshot: MemorySnapshot, request_id: str) -> None:
+        self.memory.append_event(
+            self.session_id, "state_snapshot", self.role.value,
+            metadata={
+                "request_id": request_id,
+                "terminal": False,
+                "state": asdict(snapshot.state),
+                "agent_states": {role.value: asdict(state) for role, state in snapshot.agent_states.items()},
+            },
+        )
+
+    def _finish_public_response(
+        self, decision: AgentDecision, snapshot: MemorySnapshot, request_id: str,
+    ) -> AgentResult:
+        state = snapshot.agent_states.setdefault(self.role, AgentState())
+        response = _sanitize_public_response(
+            decision.message, self.spec.max_output_chars,
+        )
+        state.last_decision = response
+        state.goal_status = GoalStatus.COMPLETE if snapshot.state.status == "complete" else GoalStatus.IN_PROGRESS
+        result = AgentResult(
+            success=True, agent=self.role, response=response,
+            ui_action=UIAction.CONTINUE_CHAT,
+            ready_for_code=False,
+            state=self._public_state(snapshot),
+        )
+        self._persist_completion(result, snapshot, request_id)
+        return result
+
+    def _advance_successful_chat(
+        self,
+        snapshot: MemorySnapshot,
+        user_message: str,
+        last_decision: str,
+        input_kind: str,
+    ) -> None:
+        if input_kind != "chat":
+            return
+        if self.role is AgentRole.TEACHER_AGENT:
+            snapshot.state.teacher_rounds += 1
+        else:
+            snapshot.state.student_rounds += 1
+        state = snapshot.agent_states.setdefault(self.role, AgentState())
+        state.agent_id = self.role.value
+        state.turn_index += 1
+        state.last_user_message = user_message
+        state.last_decision = _sanitize_public_response(
+            last_decision, self.spec.max_output_chars,
+        )
+        evidence = snapshot.state.learning_evidence
+        state.current_focus = (
+            str(evidence[-1].get("concept") or snapshot.state.phase)
+            if evidence and isinstance(evidence[-1], Mapping)
+            else snapshot.state.phase
+        )
+        state.goal_status = (
+            GoalStatus.COMPLETE
+            if snapshot.state.status == "complete"
+            else GoalStatus.IN_PROGRESS
+        )
+
+    def _finish_code_review(
+        self, tool_result: ToolResult, snapshot: MemorySnapshot, request_id: str,
+    ) -> AgentResult:
+        public_content = dict(tool_result.public_content)
+        response = str(public_content.pop("message", ""))
+        result = AgentResult(
+            success=True, agent=self.role, response=response,
+            ui_action=UIAction.SHOW_CODE_REVIEW, ready_for_code=True,
+            state=self._public_state(snapshot), public_content=public_content,
+        )
+        self._persist_completion(result, snapshot, request_id)
+        return result
+
+    def _finish_goal(
+        self, tool_result: ToolResult, snapshot: MemorySnapshot, request_id: str,
+    ) -> AgentResult:
+        result = AgentResult(
+            success=True,
+            agent=self.role,
+            response=str(tool_result.public_content.get("message", "")),
+            state=self._public_state(snapshot),
+            public_content={"goal_status": "complete"},
+        )
+        self._persist_completion(result, snapshot, request_id)
+        return result
+
+    def _finish_fix(
+        self, tool_result: ToolResult, snapshot: MemorySnapshot, request_id: str,
+    ) -> AgentResult:
+        public_content = dict(tool_result.public_content)
+        feedback = _sanitize_public_response(
+            str(public_content.get("feedback", "")), self.spec.max_output_chars,
+        )
+        public_content["feedback"] = feedback
+        result = AgentResult(
+            success=True,
+            agent=self.role,
+            response=feedback,
+            state=self._public_state(snapshot),
+            public_content=public_content,
+        )
+        self._persist_completion(result, snapshot, request_id)
+        return result
+
+    def _persist_completion(self, result: AgentResult, snapshot: MemorySnapshot, request_id: str) -> None:
+        payload = _result_payload(result)
+        events = [
+            EventRecord(
+                session_id=self.session_id,
+                stage=3,
+                event_type="agent_message",
+                role=self.role.value,
+                content=result.response,
+                metadata={
+                    "request_id": request_id,
+                    "terminal": False,
+                    "agent_result": payload,
+                    "ready_for_code": result.ready_for_code,
+                },
+            ),
+            EventRecord(
+                session_id=self.session_id,
+                stage=3,
+                event_type="state_snapshot",
+                role=self.role.value,
+                metadata={
+                    "request_id": request_id,
+                    "terminal": True,
+                    "state": asdict(snapshot.state),
+                    "agent_states": {
+                        role.value: asdict(state)
+                        for role, state in snapshot.agent_states.items()
+                    },
+                    "agent_result": payload,
+                },
+            ),
+        ]
+        append_events = getattr(self.memory, "append_events", None)
+        if callable(append_events):
+            append_events(events)
+            return
+        for event in events:
+            self.memory.append_event(
+                event.session_id,
+                event.event_type,
+                event.role,
+                content=event.content,
+                metadata=event.metadata,
+            )
+
+    def _failure(self, error_code: str, request_id: Optional[str]) -> AgentResult:
+        result = AgentResult(success=False, agent=self.role, error_code=error_code)
+        if request_id is not None:
+            self.memory.append_event(
+                self.session_id, "agent_result", self.role.value,
+                metadata={"request_id": request_id, "agent_result": _result_payload(result)},
+            )
+        return result
+
+    @staticmethod
+    def _public_state(snapshot: MemorySnapshot) -> Dict[str, Any]:
+        state = asdict(snapshot.state)
+        return {name: value for name, value in state.items() if name in _PUBLIC_STATE_FIELDS}
+
+
+def _session_lock(session_id: int) -> threading.RLock:
+    with _SESSION_LOCKS_GUARD:
+        return _SESSION_LOCKS.setdefault(session_id, threading.RLock())
+
+
+@contextmanager
+def _distributed_session_lock(session_id: int) -> Iterator[bool]:
+    try:
+        from flask import current_app, has_app_context
+
+        redis_client = (
+            current_app.config.get("SESSION_REDIS")
+            if has_app_context()
+            else None
+        )
+    except (ImportError, RuntimeError):
+        redis_client = None
+    if redis_client is None:
+        yield True
+        return
+
+    redis_lock = None
+    acquired = False
+    try:
+        redis_lock = redis_client.lock(
+            f"stage3-agent-session:{session_id}",
+            timeout=_REDIS_LOCK_TTL_SECONDS,
+            blocking_timeout=_REDIS_LOCK_BLOCKING_SECONDS,
+        )
+        acquired = bool(redis_lock.acquire(blocking=True))
+    except Exception:
+        yield False
+        return
+    try:
+        yield acquired
+    finally:
+        if acquired and redis_lock is not None:
+            try:
+                redis_lock.release()
+            except Exception:
+                pass
+
+
+@dataclass(frozen=True)
+class _ToolExecution:
+    result: ToolResult
+    persist: bool
+
+
+def _sanitize_public_response(value: Any, maximum: int) -> str:
+    from utils.thinking_ai import sanitize_response
+
+    safe = sanitize_response(str(value or ""))
+    return safe[:maximum]
+
+
+def _safe_error_code(value: Any) -> str:
+    text = str(value or "MODEL_ERROR")[:80]
+    return text if text.replace("_", "").isalnum() else "MODEL_ERROR"
+
+
+def _result_payload(result: AgentResult) -> Dict[str, Any]:
+    return {
+        "success": result.success,
+        "agent": result.agent.value,
+        "response": result.response,
+        "ui_action": result.ui_action.value,
+        "ready_for_code": result.ready_for_code,
+        "state": dict(result.state),
+        "public_content": dict(result.public_content),
+        "error_code": result.error_code,
+    }
+
+
+def _tool_result_for_model(call: ToolCall, result: ToolResult) -> Dict[str, Any]:
+    return {
+        "tool_call_id": call.call_id,
+        "name": call.name,
+        "ok": result.ok,
+        "content": dict(result.model_content),
+    }
+
+
+def _terminal_tool_kind(call: ToolCall, result: ToolResult) -> Optional[str]:
+    """Only server-recognized tool outcomes may end an AgentLoop turn."""
+    if not result.ok:
+        return None
+    if (
+        call.name == "generate_buggy_attempt"
+        and result.public_content.get("ui_action") == UIAction.SHOW_CODE_REVIEW.value
+    ):
+        return "code_review"
+    if call.name == "complete_goal" and result.state_patch.get("status") == "complete":
+        return "complete_goal"
+    if (
+        call.name == "evaluate_fix"
+        and result.public_content.get("correct") is True
+        and result.state_patch.get("code_review_status") == "passed"
+    ):
+        return "fix_passed"
+    return None
+
+
+def _valid_entries(value: Any, required_keys: set[str]) -> bool:
+    return (
+        isinstance(value, list)
+        and all(
+            isinstance(item, Mapping)
+            and required_keys.issubset(item)
+            and all(isinstance(item[key], str) and item[key].strip() for key in required_keys)
+            for item in value
+        )
+    )
