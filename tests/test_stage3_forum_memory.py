@@ -195,7 +195,8 @@ def test_teacher_answer_does_not_become_student_agent_evidence():
         ),
         event(
             "state_snapshot",
-            metadata={"state": {
+            role="student_agent",
+            metadata={"target_role": "student_agent", "source_role": "student_agent", "state": {
                 "learning_evidence": [{"concept": "循环边界", "evidence": "来自学生自己的解释"}],
             }},
         ),
@@ -207,6 +208,32 @@ def test_teacher_answer_does_not_become_student_agent_evidence():
     assert "标准答案是把 <= 改成 <。" not in str(view.to_prompt_dict())
     assert view.state.learning_evidence == [{"concept": "循环边界", "evidence": "来自学生自己的解释"}]
     assert Stage3MessageKind.STUDENT_PROBE.value not in [message["content"] for message in view.messages]
+
+
+def test_student_view_ignores_teacher_state_snapshot_learning_evidence():
+    store = MemoryStore(FakeEventStore([
+        event(
+            "agent_user_message",
+            role="student",
+            content="我已经解释过为什么最后一个索引是 n - 1。",
+            metadata={"target_role": "student_agent", "message_kind": "user_message"},
+        ),
+        event(
+            "state_snapshot",
+            role="teacher_agent",
+            metadata={"state": {
+                "learning_evidence": [{"concept": "循环边界", "evidence": "老师总结的证据"}],
+            }},
+        ),
+    ]))
+
+    snapshot = store.load(12)
+    student_view = store.view_for(snapshot, AgentRole.STUDENT_AGENT)
+    teacher_view = store.view_for(snapshot, AgentRole.TEACHER_AGENT)
+
+    assert student_view.state.learning_evidence == []
+    assert "老师总结的证据" not in str(student_view.to_prompt_dict())
+    assert teacher_view.state.learning_evidence == [{"concept": "循环边界", "evidence": "老师总结的证据"}]
 
 
 def test_student_view_ignores_teacher_tool_result_learning_evidence_patch():

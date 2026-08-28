@@ -161,14 +161,17 @@ class MemoryStore:
 
     def load(self, session_id: int) -> MemorySnapshot:
         snapshot = MemorySnapshot(state=FeynmanState(session_id=session_id))
-        snapshot.student_learning_evidence = list(snapshot.state.learning_evidence)
         for record in self.event_store.list_events(session_id, stage=3):
             if record.event_type == "state_snapshot":
                 raw_state = record.metadata.get("state")
                 if isinstance(raw_state, Mapping):
                     snapshot.state = _feynman_state(raw_state, session_id)
                     snapshot.agent_states = _agent_states(record.metadata.get("agent_states"))
-                    snapshot.student_learning_evidence = list(snapshot.state.learning_evidence)
+                    snapshot.student_learning_evidence = _project_student_snapshot_learning_evidence(
+                        snapshot.student_learning_evidence,
+                        record,
+                        snapshot.state.learning_evidence,
+                    )
             elif record.event_type == "tool_result":
                 _apply_replayable_state_patch(snapshot.state, record.metadata.get("state_patch"))
                 snapshot.student_learning_evidence = _project_student_learning_evidence(
@@ -424,7 +427,17 @@ def _project_student_learning_evidence(
 ) -> List[Dict[str, Any]]:
     if "learning_evidence" not in record.metadata.get("state_patch", {}):
         return current
-    if _agent_role(record.role) is not AgentRole.STUDENT_AGENT:
+    if not _has_student_learning_evidence_provenance(record):
+        return current
+    return _normalized_learning_evidence(candidate)
+
+
+def _project_student_snapshot_learning_evidence(
+    current: List[Dict[str, Any]],
+    record: EventRecord,
+    candidate: Any,
+) -> List[Dict[str, Any]]:
+    if not _has_student_learning_evidence_provenance(record):
         return current
     return _normalized_learning_evidence(candidate)
 
@@ -524,6 +537,16 @@ def _normalized_learning_evidence(value: Any) -> List[Dict[str, Any]]:
         if isinstance(item, Mapping):
             normalized.append(dict(item))
     return normalized
+
+
+def _has_student_learning_evidence_provenance(record: EventRecord) -> bool:
+    if _agent_role(record.role) is AgentRole.STUDENT_AGENT:
+        return True
+    raw_source = record.metadata.get("source_role")
+    if raw_source == AgentRole.STUDENT_AGENT.value:
+        return True
+    raw_target = record.metadata.get("target_role")
+    return raw_target == AgentRole.STUDENT_AGENT.value
 
 
 def _student_safe_artifact(item: Dict[str, Any]) -> Dict[str, Any]:

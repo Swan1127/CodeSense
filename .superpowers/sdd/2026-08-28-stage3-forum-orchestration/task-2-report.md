@@ -298,3 +298,140 @@ Output:
 ### Fix round 1 commit SHA
 
 - `9718e86cf01e0a57e92e8edff06b3a15a7038b7f` (`fix: isolate student memory replay projection`)
+
+## Fix round 2
+
+### Changed files
+
+- `tests/test_stage3_forum_memory.py`
+- `utils/agents/memory.py`
+
+### Root cause notes
+
+- `student_learning_evidence` was still initialized from shared `snapshot.state.learning_evidence` when replaying `state_snapshot`.
+- That meant any teacher-originated or unlabelled shared checkpoint could preload Student Agent evidence before the later `tool_result` guard ran.
+- The real boundary has to be provenance-based from the start: Student Agent projection must default to empty and only accept explicitly student-originated replay sources.
+
+### Red phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_forum_memory.py -q
+```
+
+Output:
+
+```text
+....F..                                                                  [100%]
+================================== FAILURES ===================================
+_____ test_student_view_ignores_teacher_state_snapshot_learning_evidence ______
+
+E       AssertionError: assert [{'concept': ..., 'evidence': '老师总结的证据'}] == []
+
+=========================== short test summary info ============================
+FAILED tests/test_stage3_forum_memory.py::test_student_view_ignores_teacher_state_snapshot_learning_evidence
+1 failed, 6 passed in 0.16s
+```
+
+### Green phase
+
+Targeted command:
+
+```powershell
+py -m pytest tests/test_stage3_forum_memory.py -q
+```
+
+Output:
+
+```text
+.......                                                                  [100%]
+7 passed in 0.09s
+```
+
+Required regression command:
+
+```powershell
+py -m pytest tests/test_stage3_forum_memory.py tests/test_stage3_agent_memory.py tests/test_stage3_agent_loop.py -q
+```
+
+Output:
+
+```text
+.............................................................            [100%]
+============================== warnings summary ===============================
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:751: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    parts = parts or [ast.Str("")]
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:748: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    _convert(elem) if is_dynamic else ast.Str(s=elem)
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\ast.py:602: DeprecationWarning: Constant.__init__ got an unexpected keyword argument 's'. Support for arbitrary keyword arguments is deprecated and will be removed in Python 3.15.
+    return Constant(*args, **kwargs)
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\ast.py:602: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    return Constant(*args, **kwargs)
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\ast.py:602: DeprecationWarning: Constant.__init__ missing 1 required positional argument: 'value'. This will become an error in Python 3.15.
+    return Constant(*args, **kwargs)
+
+tests/test_stage3_agent_loop.py: 20 warnings
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:755: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    if isinstance(p, ast.Str) and isinstance(ret[-1], ast.Str):
+
+tests/test_stage3_agent_loop.py: 16 warnings
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:756: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    ret[-1] = ast.Str(ret[-1].s + p.s)
+
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:756: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    ret[-1] = ast.Str(ret[-1].s + p.s)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+61 passed, 97 warnings in 0.65s
+```
+
+Formatting check:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+[no output]
+```
+
+### Fix details
+
+- Student evidence projection now starts empty and only updates from replay records with explicit student provenance.
+- `state_snapshot` replay no longer seeds Student Agent evidence from arbitrary shared state.
+- Legitimate student evidence fixtures now carry explicit student provenance metadata.
+- Teacher `state_snapshot` and teacher `tool_result` evidence remain visible in teacher view while staying out of `student_view.to_prompt_dict()`.
+
+### Self-review notes
+
+- Teacher-facing shared state behavior is unchanged.
+- Legacy chat normalization from fix round 1 remains intact.
+- The change is local to memory replay/projection and does not touch routes, templates, tools, or loop code.
+
+### Fix round 2 commit SHA
+
+- Pending commit in this section at the time of append; updated after commit.
