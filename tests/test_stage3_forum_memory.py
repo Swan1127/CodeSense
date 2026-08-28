@@ -272,6 +272,42 @@ def test_student_view_ignores_teacher_tool_result_learning_evidence_patch():
     }]
 
 
+def test_student_view_ignores_teacher_targeted_replay_evidence_without_student_source():
+    store = MemoryStore(FakeEventStore([
+        event(
+            "agent_user_message",
+            role="student",
+            content="我能解释为什么数组最后一个合法位置是 n - 1。",
+            metadata={"target_role": "student_agent", "message_kind": "user_message"},
+        ),
+        event(
+            "tool_result",
+            role="teacher_agent",
+            metadata={
+                "source_role": "teacher_agent",
+                "target_role": "student_agent",
+                "state_patch": {
+                    "learning_evidence": [{
+                        "concept": "循环边界",
+                        "evidence": "老师定向发给学生的结论",
+                    }],
+                },
+            },
+        ),
+    ]))
+
+    snapshot = store.load(12)
+    student_view = store.view_for(snapshot, AgentRole.STUDENT_AGENT)
+    teacher_view = store.view_for(snapshot, AgentRole.TEACHER_AGENT)
+
+    assert student_view.state.learning_evidence == []
+    assert "老师定向发给学生的结论" not in str(student_view.to_prompt_dict())
+    assert teacher_view.state.learning_evidence == [{
+        "concept": "循环边界",
+        "evidence": "老师定向发给学生的结论",
+    }]
+
+
 def test_legacy_chat_events_recover_in_view_for_and_forum_events():
     store = MemoryStore(FakeEventStore([
         event(

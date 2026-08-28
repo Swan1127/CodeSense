@@ -543,10 +543,7 @@ def _has_student_learning_evidence_provenance(record: EventRecord) -> bool:
     if _agent_role(record.role) is AgentRole.STUDENT_AGENT:
         return True
     raw_source = record.metadata.get("source_role")
-    if raw_source == AgentRole.STUDENT_AGENT.value:
-        return True
-    raw_target = record.metadata.get("target_role")
-    return raw_target == AgentRole.STUDENT_AGENT.value
+    return raw_source == AgentRole.STUDENT_AGENT.value
 
 
 def _student_safe_artifact(item: Dict[str, Any]) -> Dict[str, Any]:

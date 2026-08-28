@@ -435,3 +435,139 @@ Output:
 ### Fix round 2 commit SHA
 
 - `16120801ff1d5df3f6a5c85787aa2d57ce77b757` (`fix: require student provenance for replayed evidence`)
+
+## Fix round 3
+
+### Changed files
+
+- `tests/test_stage3_forum_memory.py`
+- `utils/agents/memory.py`
+
+### Root cause notes
+
+- The provenance helper still accepted `target_role=student_agent` as sufficient evidence of Student Agent ownership.
+- That allowed teacher-originated replay records to contaminate Student Agent evidence if they were merely routed toward the student.
+- The boundary is stricter than routing: Student Agent evidence must come only from explicit student provenance (`role=student_agent` or `source_role=student_agent`).
+
+### Red phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_forum_memory.py -q
+```
+
+Output:
+
+```text
+......F.                                                                 [100%]
+================================== FAILURES ===================================
+_ test_student_view_ignores_teacher_targeted_replay_evidence_without_student_source _
+
+E       AssertionError: assert [{'concept': ..., 'evidence': '老师定向发给学生的结论'}] == []
+
+=========================== short test summary info ============================
+FAILED tests/test_stage3_forum_memory.py::test_student_view_ignores_teacher_targeted_replay_evidence_without_student_source
+1 failed, 7 passed in 0.19s
+```
+
+### Green phase
+
+Targeted command:
+
+```powershell
+py -m pytest tests/test_stage3_forum_memory.py -q
+```
+
+Output:
+
+```text
+........                                                                 [100%]
+8 passed in 0.11s
+```
+
+Required regression command:
+
+```powershell
+py -m pytest tests/test_stage3_forum_memory.py tests/test_stage3_agent_memory.py tests/test_stage3_agent_loop.py -q
+```
+
+Output:
+
+```text
+..............................................................           [100%]
+============================== warnings summary ===============================
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:751: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    parts = parts or [ast.Str("")]
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:748: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    _convert(elem) if is_dynamic else ast.Str(s=elem)
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\ast.py:602: DeprecationWarning: Constant.__init__ got an unexpected keyword argument 's'. Support for arbitrary keyword arguments is deprecated and will be removed in Python 3.15.
+    return Constant(*args, **kwargs)
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\ast.py:602: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    return Constant(*args, **kwargs)
+
+tests/test_stage3_agent_loop.py: 12 warnings
+  E:\anaconda\Lib\ast.py:602: DeprecationWarning: Constant.__init__ missing 1 required positional argument: 'value'. This will become an error in Python 3.15.
+    return Constant(*args, **kwargs)
+
+tests/test_stage3_agent_loop.py: 20 warnings
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:755: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    if isinstance(p, ast.Str) and isinstance(ret[-1], ast.Str):
+
+tests/test_stage3_agent_loop.py: 16 warnings
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:756: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    ret[-1] = ast.Str(ret[-1].s + p.s)
+
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_agent_loop_uses_configured_redis_lock_with_ttl
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+tests/test_stage3_agent_loop.py::test_redis_lock_releases_and_preserves_body_exception
+  E:\anaconda\Lib\site-packages\werkzeug\routing\rules.py:756: DeprecationWarning: ast.Str is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    ret[-1] = ast.Str(ret[-1].s + p.s)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+62 passed, 97 warnings in 0.75s
+```
+
+Formatting check:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+[no output]
+```
+
+### Fix details
+
+- Removed `target_role`-only acceptance from Student Agent evidence provenance.
+- Added a regression proving that teacher-originated replay targeted at `student_agent` does not appear in `student_view.to_prompt_dict()`.
+- Kept explicit student-provenance acceptance and legacy chat normalization unchanged.
+
+### Self-review notes
+
+- The evidence boundary is now aligned with ownership rather than routing.
+- Teacher view still sees replayed shared evidence.
+- No route, template, tool, or loop code changed.
+
+### Fix round 3 commit SHA
+
+- Pending commit in this section at the time of append; updated after commit.
