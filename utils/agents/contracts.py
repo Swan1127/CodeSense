@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Mapping, Optional
 MAX_TOOL_CALLS_PER_DECISION = 4
 MAX_TOOL_CALL_ID_CHARS = 128
 MAX_TOOL_NAME_CHARS = 80
+_INTERNAL_PUBLIC_CONTENT_KEYS = frozenset({"internal_signals"})
 
 
 class AgentRole(str, Enum):
@@ -203,6 +204,11 @@ class AgentResult:
     error_code: Optional[str] = None
 
     def to_public_dict(self) -> Dict[str, Any]:
+        safe_public_content = {
+            key: value
+            for key, value in self.public_content.items()
+            if key not in _INTERNAL_PUBLIC_CONTENT_KEYS
+        }
         result = {
             "success": self.success,
             "response": self.response,
@@ -210,7 +216,7 @@ class AgentResult:
             "ui_action": self.ui_action.value,
             "ready_for_code": self.ready_for_code,
             "state": self.state,
-            **self.public_content,
+            **safe_public_content,
         }
         if self.error_code:
             result["error_code"] = self.error_code

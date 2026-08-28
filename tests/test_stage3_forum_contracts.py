@@ -64,7 +64,10 @@ def test_agent_result_to_public_dict_filters_internal_signals():
         agent=Stage3Target.STUDENT_AGENT,
         response="继续。",
         state={"phase": "student_dialogue"},
-        public_content={"message": "visible"},
+        public_content={
+            "message": "visible",
+            "internal_signals": {"secret": True},
+        },
         internal_signals={"next_actor": "teacher_agent"},
     )
 
