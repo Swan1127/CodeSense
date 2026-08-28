@@ -16,7 +16,10 @@ from .contracts import (
     AgentRole,
     AgentState,
     FeynmanState,
+    ForumEnvelope,
     GoalStatus,
+    Stage3MessageKind,
+    Stage3Target,
     ToolResult,
     UIAction,
 )
@@ -169,13 +172,16 @@ class MemoryStore:
                 message = _message(record)
                 snapshot.student_messages.append(message)
                 for agent_role in AgentRole:
-                    snapshot.visible_messages[agent_role].append(message)
+                    if _message_visible_to_role(record, agent_role):
+                        snapshot.visible_messages[agent_role].append(message)
             elif record.event_type == "agent_message":
                 role = _agent_role(record.role)
                 if role is not None:
                     message = _message(record)
                     snapshot.agent_messages[role].append(message)
-                    snapshot.visible_messages[role].append(message)
+                    for agent_role in AgentRole:
+                        if _message_visible_to_role(record, agent_role):
+                            snapshot.visible_messages[agent_role].append(message)
 
             artifact = record.metadata.get("artifact")
             if isinstance(artifact, Mapping):
@@ -191,6 +197,14 @@ class MemoryStore:
             snapshot.agent_messages[role] = snapshot.agent_messages[role][-_MAX_MESSAGES:]
             snapshot.visible_messages[role] = snapshot.visible_messages[role][-_MAX_MESSAGES:]
         return snapshot
+
+    def forum_events(self, session_id: int) -> List[Dict[str, Any]]:
+        projected: List[Dict[str, Any]] = []
+        for record in self.event_store.list_events(session_id, stage=3):
+            event = _forum_event(record)
+            if event is not None:
+                projected.append(event)
+        return projected
 
     def view_for(self, snapshot: MemorySnapshot, role: AgentRole) -> MemoryView:
         agent_state = snapshot.agent_states.get(role, AgentState())
@@ -375,6 +389,109 @@ def _agent_role(value: Any) -> Optional[AgentRole]:
 
 def _message(record: EventRecord) -> Dict[str, str]:
     return {"role": record.role, "content": record.content, "event_type": record.event_type}
+
+
+def _message_visible_to_role(record: EventRecord, viewer_role: AgentRole) -> bool:
+    target_role = _target_role(record)
+    if record.event_type == "agent_user_message":
+        if target_role is None:
+            return True
+        return target_role == viewer_role.value
+    if record.event_type == "agent_message":
+        source_role = _source_role(record)
+        if source_role == viewer_role.value:
+            return True
+        if target_role is None:
+            return _agent_role(record.role) == viewer_role
+        return target_role == viewer_role.value
+    return False
+
+
+def _forum_event(record: EventRecord) -> Optional[Dict[str, Any]]:
+    message_kind = _message_kind(record)
+    target_role = _target_role(record)
+    if message_kind is None or target_role is None:
+        return None
+    visibility = _visibility(record)
+    if visibility != "public":
+        return None
+    if record.event_type not in {"agent_user_message", "agent_message", "chat"}:
+        return None
+    return {
+        "event_id": record.event_id,
+        "event_type": record.event_type,
+        "role": record.role,
+        "source_role": _source_role(record),
+        "target_role": target_role,
+        "message_kind": message_kind,
+        "visibility": visibility,
+        "content": record.content,
+        "request_id": _string_metadata(record, "request_id"),
+        "reply_to_event_id": _string_metadata(record, "reply_to_event_id"),
+        "parent_request_id": _string_metadata(record, "parent_request_id"),
+    }
+
+
+def _message_kind(record: EventRecord) -> Optional[str]:
+    raw_value = record.metadata.get("message_kind")
+    if raw_value is not None:
+        try:
+            return Stage3MessageKind(raw_value).value
+        except ValueError:
+            return None
+    if record.event_type in {"agent_user_message", "chat"} and record.role == "student":
+        return Stage3MessageKind.USER_MESSAGE.value
+    if record.event_type == "agent_message":
+        return Stage3MessageKind.AGENT_MESSAGE.value
+    return None
+
+
+def _target_role(record: EventRecord) -> Optional[str]:
+    raw_value = record.metadata.get("target_role")
+    if raw_value is not None:
+        try:
+            return Stage3Target(raw_value).value
+        except ValueError:
+            return None
+    panel = record.metadata.get("panel")
+    if panel in {AgentRole.TEACHER_AGENT.value, AgentRole.STUDENT_AGENT.value}:
+        return str(panel)
+    if record.event_type == "agent_message":
+        return Stage3Target.USER.value
+    return None
+
+
+def _source_role(record: EventRecord) -> str:
+    raw_value = record.metadata.get("source_role")
+    if raw_value is not None:
+        try:
+            return Stage3Target(raw_value).value
+        except ValueError:
+            pass
+    if record.role == "student":
+        return Stage3Target.USER.value
+    if record.role == "system":
+        return Stage3Target.SYSTEM.value
+    target = _target_role(record)
+    if target in {Stage3Target.USER.value, Stage3Target.SYSTEM.value}:
+        role = _agent_role(record.role)
+        if role is not None:
+            return role.value
+    return record.role
+
+
+def _visibility(record: EventRecord) -> str:
+    raw_value = record.metadata.get("visibility")
+    if isinstance(raw_value, str) and raw_value:
+        return raw_value
+    if _message_kind(record) is not None and _target_role(record) is not None:
+        return ForumEnvelope.visibility
+    return "private"
+
+
+def _string_metadata(record: EventRecord, key: str) -> Optional[str]:
+    value = record.metadata.get(key)
+    return str(value) if value else None
 
 
 def _student_safe_artifact(item: Dict[str, Any]) -> Dict[str, Any]:
