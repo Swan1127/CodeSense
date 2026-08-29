@@ -870,3 +870,100 @@ Output:
 ```text
 0110794c1eb89fd0115744c9b4dd675aac6a5b6a
 ```
+
+## Fix Round 5
+
+### Reviewer Finding Addressed
+
+Removed the unbounded Chinese relationship markers `前` and `后` and replaced them with the bounded phrases `前一格`, `后一位`, and `前后关系`. The structural validator is otherwise unchanged. Added a regression proving that `前端按钮颜色更亮，页面布局也更整齐` is rejected for both covered and partial assessments while the existing varied Chinese and English explanations remain accepted.
+
+### Red Phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py::test_unrelated_ui_description_with_bare_position_characters_is_rejected -q
+```
+
+Output:
+
+```text
+FF                                                                       [100%]
+================================== FAILURES ===================================
+_ test_unrelated_ui_description_with_bare_position_characters_is_rejected[covered] _
+
+assessment = 'covered'
+
+    @pytest.mark.parametrize("assessment", ["covered", "partial"])
+    def test_unrelated_ui_description_with_bare_position_characters_is_rejected(assessment):
+        state = FeynmanState(session_id=12)
+
+>       with pytest.raises(ValueError, match="concrete evidence"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:274: Failed
+_ test_unrelated_ui_description_with_bare_position_characters_is_rejected[partial] _
+
+assessment = 'partial'
+
+    @pytest.mark.parametrize("assessment", ["covered", "partial"])
+    def test_unrelated_ui_description_with_bare_position_characters_is_rejected(assessment):
+        state = FeynmanState(session_id=12)
+
+>       with pytest.raises(ValueError, match="concrete evidence"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:274: Failed
+=========================== short test summary info ===========================
+FAILED tests/test_stage3_coverage.py::test_unrelated_ui_description_with_bare_position_characters_is_rejected[covered]
+FAILED tests/test_stage3_coverage.py::test_unrelated_ui_description_with_bare_position_characters_is_rejected[partial]
+2 failed in 0.20s
+```
+
+### Focused Green Verification
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py::test_unrelated_ui_description_with_bare_position_characters_is_rejected tests/test_stage3_coverage.py::test_valid_paraphrase_without_old_marker_vocabulary_is_accepted tests/test_stage3_coverage.py::test_valid_causal_or_conditional_explanation_outside_current_regex_lists_is_accepted -q
+```
+
+Output:
+
+```text
+......                                                                   [100%]
+6 passed in 0.12s
+```
+
+### Required Verification
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py -q
+```
+
+Output:
+
+```text
+..............................................                           [100%]
+46 passed in 0.15s
+```
+
+Command:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+<no output>
+```
+
+### Fix Round 5 Commit SHA
+
+```text
+ab478aa713382b95be0693a12b0a003f709632ac
+```
