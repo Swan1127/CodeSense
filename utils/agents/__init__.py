@@ -13,6 +13,7 @@ from .contracts import (
     UIAction,
 )
 from .feynman import AgentSpec, DualFeynmanRuntime, FeynmanCallbacks, build_feynman_runtime
+from .orchestrator import ForumTurnResult, Stage3Orchestrator
 
 __all__ = [
     "AgentDecision",
@@ -23,9 +24,11 @@ __all__ = [
     "FeynmanState",
     "FeynmanCallbacks",
     "ForumEnvelope",
+    "ForumTurnResult",
     "GoalStatus",
     "Stage3MessageKind",
     "Stage3Target",
+    "Stage3Orchestrator",
     "ToolCall",
     "ToolResult",
     "UIAction",
