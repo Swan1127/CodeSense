@@ -20,10 +20,11 @@ _GENERIC_NON_EXPLANATORY_TOKENS = frozenset({
 })
 _EN_STOPWORDS = frozenset({
     "a", "an", "and", "are", "as", "at", "be", "before", "by", "for", "from", "in", "into",
-    "is", "it", "of", "on", "or", "so", "the", "to", "too", "was", "will", "with",
+    "is", "it", "of", "on", "or", "so", "the", "to", "too", "was", "will", "with", "when",
+    "while", "would",
 })
 _NON_SUBSTANTIVE_ENGLISH_TOKENS = frozenset({
-    "because", "if", "then", "this", "that", "these", "those", "cause", "causes", "means", "shows",
+    "because", "therefore", "if", "then", "this", "that", "these", "those", "cause", "causes", "means", "shows",
     "explain", "explains", "explained", "use", "uses", "used", "stop", "stops", "stayed", "stays",
     "keep", "keeps", "turn", "turns", "read", "reads", "safe", "cell", "slot", "final", "extra",
     "step", "important", "detail", "sense", "understand", "understood", "got", "okay", "ok", "yes",
@@ -37,19 +38,16 @@ _GENERIC_FILLER_PATTERNS = (
     re.compile(r"^(?:这个|这题|这个知识点).{0,8}(?:很重要|有关|要注意|需要注意).{0,4}$"),
     re.compile(r"^(?:it|this).{0,12}(?:makes sense|is important).{0,4}$", re.IGNORECASE),
 )
-_REASONING_PATTERNS = (
-    re.compile(r"(为什么|说明|意味着|表明|用来|这样写|不完整|说不清|讲不清|解释)"),
-    re.compile(r"\b(means|shows|explains?|uses?|stops?|keeps?|reads?|causes?|turns?)\b", re.IGNORECASE),
+_RELATIONSHIP_PATTERNS = (
+    re.compile(r"(因为|所以|如果|那么|导致|造成|避免|防止|否则|才|从而|意味着|表明|说明|原因|有关|成立|上界|开区间|有效|索引|范围|访问|元素|迁移|一般情况|前|后|越界|保持|停在)"),
+    re.compile(
+        r"\b(because|so|since|therefore|if|when|then|before|after|otherwise|"
+        r"would|means|shows|causes?|prevents?|avoids?|compares?|halts?|exits?|reaches?)\b",
+        re.IGNORECASE,
+    ),
 )
-_CLAUSE_RELATION_PATTERNS = (
-    re.compile(r"(再.{0,8}就|多.{0,8}就|少.{0,8}就|前一.{0,4}后一|停在.{0,8}前)"),
-    re.compile(r"\b(one more|extra pass|past the array|last valid|stops before|ends at)\b", re.IGNORECASE),
-)
-_CODE_RELATION_PATTERN = re.compile(
-    r"(?<!\w)([A-Za-z_][A-Za-z0-9_\[\]\.\-\+\s]*|\d+\s*[\+\-]\s*\d+|\d+)\s*"
-    r"(<=|>=|==|!=|<|>|=|\+|-)\s*"
-    r"([A-Za-z_][A-Za-z0-9_\[\]\.\-\+\s]*|\d+\s*[\+\-]\s*\d+|\d+)(?!\w)"
-)
+_CODE_OPERAND = r"(?:[A-Za-z_][A-Za-z0-9_]*(?:\[[A-Za-z0-9_\s+\-]+\]|\.[A-Za-z_][A-Za-z0-9_]*)*(?:\s*[\+\-]\s*\d+)?|\d+(?:\s*[\+\-]\s*\d+)?)"
+_CODE_RELATION_PATTERN = re.compile(rf"(?<!\w)({_CODE_OPERAND})\s*(<=|>=|==|!=|<|>|=)\s*({_CODE_OPERAND})(?!\w)")
 
 
 @dataclass(frozen=True)
@@ -243,8 +241,6 @@ def _is_concrete_explanation(text: str) -> bool:
         return True
     if _has_explanatory_structure(text):
         return True
-    if _has_multiclause_relation(text):
-        return True
     return False
 
 
@@ -300,31 +296,17 @@ def _has_complete_code_relation(text: str) -> bool:
 
 
 def _has_substantive_detail(text: str) -> bool:
-    return bool(_has_rich_clause_detail(text) or _has_multiclause_relation(text))
+    without_relations = _CODE_RELATION_PATTERN.sub(" ", text)
+    return _has_relationship(text) and _substantive_unit_count(without_relations) >= 2
 
 
 def _has_explanatory_structure(text: str) -> bool:
     stripped = text.strip()
-    if _has_complete_code_relation(stripped) and len(_split_clauses(stripped)) >= 2:
-        return True
-    if any(pattern.search(stripped) for pattern in _REASONING_PATTERNS) and _has_rich_clause_detail(stripped):
-        return True
-    return False
+    return _has_relationship(stripped) and _substantive_unit_count(stripped) >= 2
 
 
-def _has_multiclause_relation(text: str) -> bool:
-    clauses = [clause for clause in _split_clauses(text) if _is_rich_clause(clause)]
-    if len(clauses) < 2:
-        return False
-    if any(pattern.search(text) for pattern in _CLAUSE_RELATION_PATTERNS) and _has_clause_detail(text):
-        return True
-
-    repeated_terms = _repeated_substantive_terms(clauses)
-    if repeated_terms and any(_has_rich_clause_detail(clause) for clause in clauses):
-        return True
-    if len(_substantive_terms(text)) >= 4:
-        return True
-    return False
+def _has_relationship(text: str) -> bool:
+    return any(pattern.search(text) for pattern in _RELATIONSHIP_PATTERNS)
 
 
 def _has_clause_detail(text: str) -> bool:
@@ -337,18 +319,6 @@ def _has_clause_detail(text: str) -> bool:
     )
 
 
-def _has_rich_clause_detail(text: str) -> bool:
-    return any(_is_rich_clause(clause) for clause in _split_clauses(text))
-
-
-def _is_rich_clause(clause: str) -> bool:
-    if _has_complete_code_relation(clause):
-        return True
-    if len(_substantive_english_tokens(clause)) >= 2:
-        return True
-    return any(len(phrase) >= 8 for phrase in _substantive_cjk_phrases(clause))
-
-
 def _split_clauses(text: str) -> List[str]:
     return [
         part.strip()
@@ -357,21 +327,16 @@ def _split_clauses(text: str) -> List[str]:
     ]
 
 
-def _repeated_substantive_terms(clauses: List[str]) -> set[str]:
-    clause_terms: List[set[str]] = []
-    for clause in clauses:
-        terms = set(_substantive_english_tokens(clause))
-        terms.update(_substantive_cjk_phrases(clause))
-        clause_terms.append(terms)
-    repeated: set[str] = set()
-    for index, terms in enumerate(clause_terms):
-        for other in clause_terms[index + 1:]:
-            repeated.update(terms & other)
-    return repeated
-
-
-def _substantive_terms(text: str) -> set[str]:
-    return set(_substantive_english_tokens(text)) | set(_substantive_cjk_phrases(text))
+def _substantive_unit_count(text: str) -> int:
+    english_units = len(set(_substantive_english_tokens(text)))
+    cjk_units = 0
+    for phrase in _substantive_cjk_phrases(text):
+        compact = _strip_cjk_non_substantive_terms(phrase)
+        if len(compact) >= 6:
+            cjk_units += 2
+        elif len(compact) >= 2:
+            cjk_units += 1
+    return english_units + cjk_units
 
 
 def _substantive_english_tokens(text: str) -> List[str]:
@@ -400,6 +365,14 @@ def _word_tokens(text: str) -> List[str]:
 
 def _cjk_phrases(text: str) -> List[str]:
     return re.findall(r"[\u4e00-\u9fff]{2,}", text)
+
+
+def _strip_cjk_non_substantive_terms(text: str) -> str:
+    return re.sub(
+        r"(因为|所以|如果|那么|导致|造成|避免|防止|否则|才|从而|为什么|说明|意味着|表明|用来|这样写|解释|不完整|说不清|讲不清)",
+        "",
+        text,
+    )
 
 
 def _normalize_free_text(value: str) -> str:

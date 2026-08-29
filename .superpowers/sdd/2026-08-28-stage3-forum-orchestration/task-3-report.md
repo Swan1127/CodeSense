@@ -765,5 +765,108 @@ Output:
 ### Fix Round 3 Commit SHA
 
 ```text
-PENDING
+bf601a0
+```
+
+## Fix Round 4
+
+### Reviewer Finding Addressed
+
+The structural validator no longer lets connective words, generic filler, numeric/symbol input, or a short code-looking relation pass as concrete covered/partial evidence. The concrete-evidence rule now requires a relationship plus at least two substantive explanatory units, and code relations must use real operands with separate meaningful explanatory detail.
+
+### Changed Files
+
+- `utils/agents/coverage.py`
+- `tests/test_stage3_coverage.py`
+- `.superpowers/sdd/2026-08-28-stage3-forum-orchestration/task-3-report.md`
+
+### Red Phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py -q
+```
+
+Output:
+
+```text
+................................F...........                             [100%]
+================================== FAILURES ===================================
+_ test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[because 1 = 1] _
+
+text = 'because 1 = 1'
+
+    @pytest.mark.parametrize("text", [
+        "if",
+        "because",
+        "1",
+        "=",
+        "ok because",
+        "谢谢，因为",
+        "I understand if",
+        "because this causes",
+        "因为因为因为",
+        "if if if",
+        "because because therefore if then",
+        "12345",
+        "!!! === +++",
+        "causes",
+        "because 1 = 1",
+        "if x = y",
+        "this causes 2 changes",
+    ])
+    def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
+        state = FeynmanState(session_id=12)
+
+        for assessment in ("covered", "partial"):
+>           with pytest.raises(ValueError, match="concrete evidence"):
+E           Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_stage3_coverage.py:257: Failed
+=========================== short test summary info ===========================
+FAILED tests/test_stage3_coverage.py::test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence[because 1 = 1]
+1 failed, 43 passed in 0.22s
+```
+
+### Green Phase
+
+Command:
+
+```powershell
+py -m pytest tests/test_stage3_coverage.py -q
+```
+
+Output:
+
+```text
+............................................                             [100%]
+44 passed in 0.10s
+```
+
+### Verification
+
+Command:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+<no output>
+```
+
+### Self-Review
+
+- Added regressions for repeated connectives, digit-only input, symbol-only input, `because this causes`, short marker phrases, and code-looking filler such as `because 1 = 1` and `if x = y`.
+- Preserved the controller behavior: `off_topic` remains valid and consumes an attempt, while empty or invalid covered/partial evidence raises before the reducer changes state.
+- Preserved deterministic scoring, pure reducer behavior, config dimension invariant, and all existing valid evidence tests.
+- Removed the old unused multi-clause acceptance helpers so the concrete-evidence predicate is easier to audit.
+
+### Fix Round 4 Commit SHA
+
+```text
+06018f027b02905c30166a2dcbfce9a50cb5d472
 ```

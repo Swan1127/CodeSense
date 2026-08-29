@@ -242,6 +242,13 @@ def test_non_explanatory_statements_cannot_mark_concept_as_covered(text):
     "because this causes",
     "因为因为因为",
     "if if if",
+    "because because therefore if then",
+    "12345",
+    "!!! === +++",
+    "causes",
+    "because 1 = 1",
+    "if x = y",
+    "this causes 2 changes",
 ])
 def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(text):
     state = FeynmanState(session_id=12)
@@ -318,6 +325,29 @@ def test_valid_causal_or_conditional_explanation_outside_current_regex_lists_is_
     assert decision.concept_status == assessment
     assert decision.attempts == 1
     assert decision.coverage_score == (1.0 if assessment == "covered" else pytest.approx(0.5))
+
+
+@pytest.mark.parametrize("text", [
+    "The boundary guard compares index with length, so the loop exits before the first invalid address.",
+    "When the pointer reaches the limit, the loop stops; the prior position is the final readable slot.",
+])
+def test_valid_structural_explanation_does_not_depend_on_old_marker_vocabulary(text):
+    state = FeynmanState(session_id=12)
+
+    decision = apply_coverage_assessment(
+        state,
+        ["循环边界"],
+        config=CoverageConfig(min_coverage=1.0),
+        concept="循环边界",
+        dimension="core",
+        assessment="covered",
+        evidence=text,
+        event_id="evt-1",
+    )
+
+    assert decision.concept_status == "covered"
+    assert decision.attempts == 1
+    assert decision.coverage_score == 1.0
 
 
 def test_ready_for_code_requires_minimum_score_and_no_pending_probe():
