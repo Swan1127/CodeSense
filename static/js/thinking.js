@@ -9,6 +9,8 @@
     // ============================================================
     // State Management
     // ============================================================
+    const MAX_PUBLIC_FORUM_EVENTS = 80;
+
     const state = {
         sessionId: null,
         assignmentId: null,
@@ -24,10 +26,13 @@
         poolSortable: null,
         solutionSortable: null,
         // Stage 3
-        teacherMessages: [],
-        studentMessages: [],
+        forumHistory: [],
+        forumTargetRole: 'teacher_agent',
+        forumReplyContext: null,
+        pendingForumRequestId: null,
         feynmanPhase: 'chat', // 'chat' | 'code_review' | 'completed'
         buggyCode: null,
+        buggyCodeInfo: null,
         // Flags
         isLoading: false,
     };
@@ -88,6 +93,7 @@
                     state.stage1Score = data.stage1_score || null;
                     state.stage2BlockOrder = data.stage2_block_order || null;
                     state.companionHistory = data.companion_history || [];
+                    state.forumHistory = sanitizePublicForumHistory(data.forum_history || []);
                     state.teacherHistory = data.teacher_history || [];
                     state.studentHistory = data.student_history || [];
                     state.buggyCodeInfo = data.buggy_code_info || null;
@@ -98,6 +104,12 @@
                     }
                     state.startTime = Date.now() - state.elapsedSeconds * 1000;
                     startTimer();
+                } else {
+                    state.isResumed = false;
+                    state.forumHistory = [];
+                    state.teacherHistory = [];
+                    state.studentHistory = [];
+                    state.buggyCodeInfo = null;
                 }
 
                 initStage(state.currentStage);
@@ -993,48 +1005,16 @@
     }
 
     // ============================================================
-    // Stage 3: Feynman Teaching (Dual Agent)
+    // Stage 3: Feynman Teaching (Target-aware Forum)
     // ============================================================
     function initStage3() {
-        state.teacherMessages = [];
-        state.studentMessages = [];
         state.feynmanPhase = 'chat';
-
-        // 恢复老师辅导对话
-        let restoredTeacher = false;
-        if (state.isResumed && state.teacherHistory && state.teacherHistory.length > 0) {
-            const container = document.getElementById('teacher-messages');
-            if (container) {
-                container.innerHTML = '';
-                state.teacherHistory.forEach(msg => {
-                    addChatMessage('teacher', msg.role, msg.content);
-                    state.teacherMessages.push({ role: msg.role, content: msg.content });
-                });
-                restoredTeacher = true;
-            }
-        }
-        if (!restoredTeacher) {
-            addChatMessage('teacher', 'assistant',
-                '你好！你已经完成了积木编程挑战，说明你对这道题有了不错的理解。现在我们来做一个更有趣的练习——你需要把你学到的东西教给你的同学小明（他刚开始学编程）。准备好了吗？');
-        }
-
-        // 恢复教学生（小明）对话
-        let restoredStudent = false;
-        if (state.isResumed && state.studentHistory && state.studentHistory.length > 0) {
-            const container = document.getElementById('student-messages');
-            if (container) {
-                container.innerHTML = '';
-                state.studentHistory.forEach(msg => {
-                    addChatMessage('student', msg.role, msg.content);
-                    state.studentMessages.push({ role: msg.role, content: msg.content });
-                });
-                restoredStudent = true;
-            }
-        }
-        if (!restoredStudent) {
-            addChatMessage('student', 'assistant',
-                '嗨！听说你这道题做得很好，老师让你教教我😅 我刚开始学编程，你能给我讲讲这道题要怎么做吗？');
-        }
+        state.pendingForumRequestId = null;
+        bindForumControls();
+        clearForumReplyContext();
+        renderForumFeed();
+        updateForumTargetControls();
+        updateForumComposerState();
 
         // 恢复代码修复面板
         if (state.isResumed && state.buggyCodeInfo) {
@@ -1051,83 +1031,81 @@
         return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     }
 
-    function sendTeacherChat() {
-        const input = document.getElementById('teacher-chat-input');
-        const message = input ? input.value.trim() : '';
-        if (!message || state.isLoading) return;
+    function sendForumMessage(options = {}) {
+        const input = document.getElementById('forum-input');
+        const message = options.message ? String(options.message).trim() : (input ? input.value.trim() : '');
+        const targetRole = normalizeForumTargetRole(options.targetRole || state.forumTargetRole);
+        const replyToEventId = state.forumReplyContext ? state.forumReplyContext.event_id : null;
+        if (!message || state.isLoading || state.pendingForumRequestId) return;
 
-        // Add user message to UI
-        addChatMessage('teacher', 'user', message);
-        state.teacherMessages.push({ role: 'user', content: message });
-        input.value = '';
+        const requestId = newAgentRequestId('forum');
+        const requestPayload = {
+            session_id: state.sessionId,
+            message: message,
+            target_role: targetRole,
+            reply_to_event_id: replyToEventId,
+            request_id: requestId
+        };
+        const userEvent = sanitizeForumEvent({
+            event_id: `local-user-${requestId}`,
+            event_type: 'agent_user_message',
+            role: 'student',
+            source_role: 'user',
+            target_role: targetRole,
+            message_kind: 'user_message',
+            visibility: 'public',
+            content: message,
+            request_id: requestId,
+            reply_to_event_id: replyToEventId,
+            parent_request_id: state.forumReplyContext
+                ? (state.forumReplyContext.parent_request_id || state.forumReplyContext.request_id || null)
+                : null,
+        });
+        if (!userEvent) return;
 
-        // Show typing indicator
-        showTypingIndicator('teacher');
+        state.pendingForumRequestId = requestId;
+        appendForumEvent(userEvent);
+        if (input) {
+            input.value = '';
+        }
+        clearForumReplyContext();
+        updateForumComposerState();
+        showTypingIndicator('forum');
 
-        fetchJSON('/thinking/api/stage3/chat', {
+        fetchJSON('/thinking/api/stage3/forum/message', {
             method: 'POST',
-            body: JSON.stringify({
-                session_id: state.sessionId,
-                message: message,
-                request_id: newAgentRequestId('teacher')
-            })
+            body: JSON.stringify(requestPayload)
         }).then(data => {
-            hideTypingIndicator('teacher');
-            if (data.success) {
-                addChatMessage('teacher', 'assistant', data.response);
-                state.teacherMessages.push({ role: 'assistant', content: data.response });
-            }
+            hideTypingIndicator('forum');
+            applyForumTurnPayload(data, {
+                requestId,
+                targetRole,
+                userEvent,
+            });
         }).catch(err => {
-            hideTypingIndicator('teacher');
+            hideTypingIndicator('forum');
+            removeForumEventsByRequestId(requestId);
             showError(err.message);
+        }).finally(() => {
+            state.pendingForumRequestId = null;
+            updateForumComposerState();
         });
     }
 
+    function sendTeacherChat() {
+        setForumTarget('teacher_agent');
+        sendForumMessage({ targetRole: 'teacher_agent' });
+    }
+
     function sendStudentChat() {
-        const input = document.getElementById('student-chat-input');
-        const message = input ? input.value.trim() : '';
-        if (!message || state.isLoading) return;
-
-        addChatMessage('student', 'user', message);
-        state.studentMessages.push({ role: 'user', content: message });
-        input.value = '';
-
-        showTypingIndicator('student');
-
-        fetchJSON('/thinking/api/stage3/teach', {
-            method: 'POST',
-            body: JSON.stringify({
-                session_id: state.sessionId,
-                message: message,
-                request_id: newAgentRequestId('student')
-            })
-        }).then(data => {
-            hideTypingIndicator('student');
-            if (data.success) {
-                addChatMessage('student', 'assistant', data.response);
-                state.studentMessages.push({ role: 'assistant', content: data.response });
-
-                // Check if ready for code writing phase
-                if ((data.ui_action === 'show_code_review' || data.ready_for_code) && state.feynmanPhase === 'chat') {
-                    if (typeof data.buggy_code === 'string' && data.buggy_code.trim()) {
-                        state.feynmanPhase = 'code_review';
-                        state.buggyCode = data.buggy_code;
-                        showCodeReviewPanel(data.buggy_code);
-                    } else {
-                        setTimeout(() => triggerCodeWritingPhase(), 2000);
-                    }
-                }
-            }
-        }).catch(err => {
-            hideTypingIndicator('student');
-            showError(err.message);
-        });
+        setForumTarget('student_agent');
+        sendForumMessage({ targetRole: 'student_agent' });
     }
 
     function triggerCodeWritingPhase() {
         state.feynmanPhase = 'code_review';
 
-        showTypingIndicator('student');
+        showTypingIndicator('forum');
 
         fetchJSON('/thinking/api/stage3/write_code', {
             method: 'POST',
@@ -1136,19 +1114,26 @@
                 request_id: newAgentRequestId('write')
             })
         }).then(data => {
-            hideTypingIndicator('student');
+            hideTypingIndicator('forum');
             if (data.success) {
                 state.buggyCode = data.buggy_code;
-
-                // Show the "bad student" message
-                addChatMessage('student', 'assistant', data.message);
-                state.studentMessages.push({ role: 'assistant', content: data.message });
+                appendForumEvent({
+                    event_id: `local-write-${data.request_id || newAgentRequestId('write-result')}`,
+                    event_type: 'agent_message',
+                    role: 'student_agent',
+                    source_role: 'student_agent',
+                    target_role: 'user',
+                    message_kind: 'agent_message',
+                    visibility: 'public',
+                    content: safeForumText(data, '我写了一版代码，请帮我检查。'),
+                    request_id: data.request_id || null,
+                });
 
                 // Show code review panel
                 showCodeReviewPanel(data.buggy_code);
             }
         }).catch(err => {
-            hideTypingIndicator('student');
+            hideTypingIndicator('forum');
             showError(err.message);
         });
     }
@@ -1217,14 +1202,30 @@
             if (data.success) {
                 if (data.correct) {
                     state.feynmanPhase = 'completed';
-                    addChatMessage('student', 'assistant',
-                        '哦！原来是这样！谢谢你帮我找出来了，我以后会注意的！🎉');
+                    appendForumEvent({
+                        event_id: `local-fix-ok-${newAgentRequestId('fix-result')}`,
+                        event_type: 'agent_message',
+                        role: 'student_agent',
+                        source_role: 'student_agent',
+                        target_role: 'user',
+                        message_kind: 'agent_message',
+                        visibility: 'public',
+                        content: '哦！原来是这样！谢谢你帮我找出来了，我以后会注意的！🎉',
+                    });
                     setTimeout(() => showCelebration(), 1000);
                     completeSession();
                 } else {
                     showNotification(data.feedback || '修复不太对，再看看？', 'warning');
-                    addChatMessage('student', 'assistant',
-                        '嗯...我觉得好像还是不太对。你再帮我看看？' + (data.feedback ? '\n（' + data.feedback + '）' : ''));
+                    appendForumEvent({
+                        event_id: `local-fix-retry-${newAgentRequestId('fix-result')}`,
+                        event_type: 'agent_message',
+                        role: 'student_agent',
+                        source_role: 'student_agent',
+                        target_role: 'user',
+                        message_kind: 'agent_message',
+                        visibility: 'public',
+                        content: '嗯...我觉得好像还是不太对。你再帮我看看？' + (data.feedback ? '\n（' + data.feedback + '）' : ''),
+                    });
                 }
             }
         }).catch(err => showError(err.message))
@@ -1245,8 +1246,15 @@
     // ============================================================
     // Chat UI Helpers
     // ============================================================
+    function getMessageContainer(panel) {
+        if (panel === 'forum') {
+            return document.getElementById('forum-feed');
+        }
+        return document.getElementById(`${panel}-messages`);
+    }
+
     function addChatMessage(panel, role, content) {
-        const container = document.getElementById(`${panel}-messages`);
+        const container = getMessageContainer(panel);
         if (!container) return;
 
         const isUser = role === 'user';
@@ -1263,8 +1271,438 @@
         container.scrollTop = container.scrollHeight;
     }
 
+    function bindForumControls() {
+        const teacherBtn = document.getElementById('forum-target-teacher');
+        const studentBtn = document.getElementById('forum-target-student');
+        const clearReplyBtn = document.getElementById('forum-reply-clear');
+        const input = document.getElementById('forum-input');
+
+        if (teacherBtn && !teacherBtn.dataset.bound) {
+            teacherBtn.dataset.bound = 'true';
+            teacherBtn.addEventListener('click', () => setForumTarget('teacher_agent'));
+        }
+        if (studentBtn && !studentBtn.dataset.bound) {
+            studentBtn.dataset.bound = 'true';
+            studentBtn.addEventListener('click', () => setForumTarget('student_agent'));
+        }
+        if (clearReplyBtn && !clearReplyBtn.dataset.bound) {
+            clearReplyBtn.dataset.bound = 'true';
+            clearReplyBtn.addEventListener('click', clearForumReplyContext);
+        }
+        if (input && !input.dataset.bound) {
+            input.dataset.bound = 'true';
+            input.addEventListener('input', updateForumComposerState);
+        }
+    }
+
+    function renderForumFeed() {
+        const container = getMessageContainer('forum');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (state.forumHistory.length === 0) {
+            appendForumEvent({
+                event_id: 'forum-welcome-teacher',
+                event_type: 'agent_message',
+                role: 'teacher_agent',
+                source_role: 'teacher_agent',
+                target_role: 'user',
+                message_kind: 'agent_message',
+                visibility: 'public',
+                content: '老师会在这里公开解释你的问题，并在需要时引导出新的追问。',
+            }, { persist: false });
+            appendForumEvent({
+                event_id: 'forum-welcome-student',
+                event_type: 'agent_message',
+                role: 'student_agent',
+                source_role: 'student_agent',
+                target_role: 'user',
+                message_kind: 'agent_message',
+                visibility: 'public',
+                content: '小明会在这里公开提问、追问，并在理解达标后给出需要你修复的错误代码。',
+            }, { persist: false });
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        state.forumHistory.forEach(event => {
+            const node = createForumEventNode(event);
+            if (node) {
+                fragment.appendChild(node);
+            }
+        });
+        container.appendChild(fragment);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function appendForumEvent(event, options = {}) {
+        const { persist = true } = options;
+        const sanitized = sanitizeForumEvent(event);
+        if (!sanitized) return null;
+        if (persist) {
+            state.forumHistory = [...state.forumHistory, sanitized].slice(-MAX_PUBLIC_FORUM_EVENTS);
+        }
+        const container = getMessageContainer('forum');
+        if (!container) return sanitized;
+        const node = createForumEventNode(sanitized);
+        if (node) {
+            container.appendChild(node);
+            container.scrollTop = container.scrollHeight;
+        }
+        return sanitized;
+    }
+
+    function createForumEventNode(event) {
+        const sanitized = sanitizeForumEvent(event);
+        if (!sanitized) return null;
+
+        const wrapper = document.createElement('article');
+        wrapper.className = 'forum-event';
+        if (sanitized.source_role === 'user') {
+            wrapper.classList.add('is-user');
+        }
+        if (sanitized.event_id) {
+            wrapper.dataset.eventId = sanitized.event_id;
+        }
+
+        const avatar = document.createElement('div');
+        const avatarInfo = forumAvatar(sanitized.source_role);
+        avatar.className = `forum-avatar role-${sanitized.source_role}`;
+        avatar.setAttribute('aria-hidden', 'true');
+        avatar.textContent = avatarInfo.icon;
+
+        const card = document.createElement('div');
+        card.className = 'forum-card';
+
+        const meta = document.createElement('div');
+        meta.className = 'forum-meta';
+
+        const metaMain = document.createElement('div');
+        metaMain.className = 'forum-meta-main';
+
+        const role = document.createElement('span');
+        role.className = 'forum-role';
+        role.textContent = avatarInfo.label;
+
+        const kind = document.createElement('span');
+        kind.className = `forum-kind kind-${sanitized.message_kind}`;
+        kind.textContent = forumKindLabel(sanitized.message_kind);
+
+        const relation = document.createElement('div');
+        relation.className = 'forum-relation';
+        relation.textContent = forumRelationLabel(sanitized);
+
+        metaMain.appendChild(role);
+        metaMain.appendChild(kind);
+        metaMain.appendChild(relation);
+        meta.appendChild(metaMain);
+
+        const content = document.createElement('div');
+        content.className = 'forum-content';
+        content.textContent = sanitized.content;
+
+        const actions = document.createElement('div');
+        actions.className = 'forum-actions';
+
+        const replyAction = document.createElement('button');
+        replyAction.type = 'button';
+        replyAction.className = 'forum-reply-action';
+        replyAction.textContent = '回复';
+        replyAction.addEventListener('click', () => {
+            setForumTarget(replyTargetRoleForEvent(sanitized));
+            setForumReplyContext(sanitized);
+            const input = document.getElementById('forum-input');
+            if (input) {
+                input.focus();
+            }
+        });
+
+        actions.appendChild(replyAction);
+        card.appendChild(meta);
+        card.appendChild(content);
+        card.appendChild(actions);
+        wrapper.appendChild(avatar);
+        wrapper.appendChild(card);
+        return wrapper;
+    }
+
+    function applyForumTurnPayload(rawPayload, context) {
+        const payload = normalizeForumTurnPayload(rawPayload);
+        if (!payload || !payload.primary) return;
+
+        const parentRequestId = context.userEvent.parent_request_id || context.requestId;
+        const primaryEvent = appendForumEvent({
+            event_id: `local-primary-${context.requestId}`,
+            event_type: 'agent_message',
+            role: payload.primary.agent || context.targetRole,
+            source_role: payload.primary.agent || context.targetRole,
+            target_role: 'user',
+            message_kind: forumMessageKindFromPayload(payload.primary),
+            visibility: 'public',
+            content: safeForumText(payload.primary),
+            request_id: context.requestId,
+            reply_to_event_id: context.userEvent.event_id,
+            parent_request_id: parentRequestId,
+        });
+
+        handleForumAdvancement(payload.primary);
+        if (primaryEvent && primaryEvent.message_kind === 'student_probe') {
+            setForumTarget('student_agent');
+        }
+
+        const interventions = Array.isArray(payload.interventions) ? payload.interventions : [];
+        interventions.forEach((item, index) => {
+            const requestId = `${context.requestId}:intervention:${index}`;
+            const interventionEvent = appendForumEvent({
+                event_id: `local-intervention-${requestId}`,
+                event_type: 'agent_message',
+                role: item.agent || 'student_agent',
+                source_role: item.agent || 'student_agent',
+                target_role: 'user',
+                message_kind: forumMessageKindFromPayload(item),
+                visibility: 'public',
+                content: safeForumText(item),
+                request_id: requestId,
+                reply_to_event_id: primaryEvent ? primaryEvent.event_id : context.userEvent.event_id,
+                parent_request_id: context.requestId,
+            });
+            handleForumAdvancement(item);
+            if (interventionEvent && interventionEvent.message_kind === 'student_probe') {
+                setForumTarget('student_agent');
+            }
+        });
+    }
+
+    function handleForumAdvancement(payload) {
+        if (!payload) return;
+        const shouldShowCodeReview = payload.ui_action === 'show_code_review' || payload.ready_for_code === true;
+        if (typeof payload.buggy_code === 'string' && payload.buggy_code.trim()) {
+            state.feynmanPhase = 'code_review';
+            state.buggyCode = payload.buggy_code;
+            state.buggyCodeInfo = { buggy_code: payload.buggy_code, message: safeForumText(payload) };
+            showCodeReviewPanel(payload.buggy_code);
+            return;
+        }
+        if (shouldShowCodeReview && state.feynmanPhase === 'chat') {
+            triggerCodeWritingPhase();
+        }
+    }
+
+    function normalizeForumTurnPayload(payload) {
+        if (!payload || typeof payload !== 'object') return null;
+        if (payload.primary && typeof payload.primary === 'object') {
+            return payload;
+        }
+        if (typeof payload.response === 'string') {
+            return {
+                primary: payload,
+                interventions: [],
+            };
+        }
+        return null;
+    }
+
+    function sanitizePublicForumHistory(history) {
+        if (!Array.isArray(history)) return [];
+        return history
+            .map(item => sanitizeForumEvent(item))
+            .filter(Boolean)
+            .slice(-MAX_PUBLIC_FORUM_EVENTS);
+    }
+
+    function sanitizeForumEvent(rawEvent) {
+        if (!rawEvent || typeof rawEvent !== 'object') return null;
+        const sourceRole = normalizePublicRole(rawEvent.source_role || rawEvent.role);
+        const targetRole = normalizePublicRole(rawEvent.target_role || 'user');
+        const messageKind = normalizeForumMessageKind(rawEvent.message_kind || inferForumMessageKind(sourceRole));
+        const content = safeString(rawEvent.content);
+        if (!sourceRole || !targetRole || !messageKind || !content) return null;
+        return {
+            event_id: optionalString(rawEvent.event_id),
+            event_type: optionalString(rawEvent.event_type) || (sourceRole === 'user' ? 'agent_user_message' : 'agent_message'),
+            role: optionalString(rawEvent.role) || (sourceRole === 'user' ? 'student' : sourceRole),
+            source_role: sourceRole,
+            target_role: targetRole,
+            message_kind: messageKind,
+            visibility: 'public',
+            content,
+            request_id: optionalString(rawEvent.request_id),
+            reply_to_event_id: optionalString(rawEvent.reply_to_event_id),
+            parent_request_id: optionalString(rawEvent.parent_request_id),
+        };
+    }
+
+    function normalizeForumTargetRole(role) {
+        return role === 'student_agent' ? 'student_agent' : 'teacher_agent';
+    }
+
+    function normalizePublicRole(role) {
+        if (role === 'teacher_agent' || role === 'student_agent' || role === 'user' || role === 'system') {
+            return role;
+        }
+        if (role === 'student') {
+            return 'user';
+        }
+        return null;
+    }
+
+    function normalizeForumMessageKind(kind) {
+        if (kind === 'user_message' || kind === 'agent_message' || kind === 'student_probe') {
+            return kind;
+        }
+        return null;
+    }
+
+    function inferForumMessageKind(sourceRole) {
+        return sourceRole === 'user' ? 'user_message' : 'agent_message';
+    }
+
+    function forumMessageKindFromPayload(payload) {
+        if (payload && payload.message_kind) {
+            const normalized = normalizeForumMessageKind(payload.message_kind);
+            if (normalized) return normalized;
+        }
+        if (payload && payload.agent === 'student_agent' && payload.ui_action !== 'show_code_review') {
+            return 'student_probe';
+        }
+        return 'agent_message';
+    }
+
+    function safeForumText(payload, fallbackText = '') {
+        if (!payload || typeof payload !== 'object') return fallbackText;
+        if (typeof payload.message === 'string' && payload.message.trim()) {
+            return payload.message.trim();
+        }
+        if (typeof payload.response === 'string' && payload.response.trim()) {
+            return payload.response.trim();
+        }
+        return fallbackText;
+    }
+
+    function safeString(value) {
+        return typeof value === 'string' ? value.trim() : '';
+    }
+
+    function optionalString(value) {
+        return typeof value === 'string' && value.trim() ? value.trim() : null;
+    }
+
+    function forumAvatar(role) {
+        if (role === 'teacher_agent') {
+            return { label: 'Teacher Agent', icon: '👨‍🏫' };
+        }
+        if (role === 'student_agent') {
+            return { label: 'Student Agent', icon: '🧑‍🎓' };
+        }
+        if (role === 'system') {
+            return { label: 'System', icon: '🛠️' };
+        }
+        return { label: '用户', icon: '👤' };
+    }
+
+    function forumKindLabel(messageKind) {
+        if (messageKind === 'student_probe') return '追问';
+        if (messageKind === 'user_message') return '公开发言';
+        return '回复';
+    }
+
+    function forumRelationLabel(event) {
+        const targetLabel = forumAvatar(event.target_role).label;
+        if (event.reply_to_event_id) {
+            const replyTarget = findForumEventById(event.reply_to_event_id);
+            if (replyTarget) {
+                return `回复 ${forumAvatar(replyTarget.source_role).label}`;
+            }
+        }
+        if (event.source_role === 'user') {
+            return `发给 ${targetLabel}`;
+        }
+        return `面向 ${targetLabel}`;
+    }
+
+    function findForumEventById(eventId) {
+        if (!eventId) return null;
+        return state.forumHistory.find(item => item.event_id === eventId) || null;
+    }
+
+    function replyTargetRoleForEvent(event) {
+        if (event.source_role === 'teacher_agent' || event.source_role === 'student_agent') {
+            return event.source_role;
+        }
+        return normalizeForumTargetRole(event.target_role);
+    }
+
+    function setForumTarget(targetRole) {
+        state.forumTargetRole = normalizeForumTargetRole(targetRole);
+        updateForumTargetControls();
+        updateForumComposerState();
+    }
+
+    function updateForumTargetControls() {
+        const teacherBtn = document.getElementById('forum-target-teacher');
+        const studentBtn = document.getElementById('forum-target-student');
+        const isTeacherSelected = state.forumTargetRole !== 'student_agent';
+        if (teacherBtn) {
+            teacherBtn.classList.toggle('is-selected', isTeacherSelected);
+            teacherBtn.setAttribute('aria-pressed', String(isTeacherSelected));
+        }
+        if (studentBtn) {
+            studentBtn.classList.toggle('is-selected', !isTeacherSelected);
+            studentBtn.setAttribute('aria-pressed', String(!isTeacherSelected));
+        }
+    }
+
+    function setForumReplyContext(event) {
+        const sanitized = sanitizeForumEvent(event);
+        const container = document.getElementById('forum-reply-context');
+        const label = container ? container.querySelector('.forum-reply-context-label') : null;
+        if (!sanitized || !container || !label) return;
+        state.forumReplyContext = sanitized;
+        container.hidden = false;
+        label.textContent = `正在回复 ${forumAvatar(sanitized.source_role).label}：${truncateText(sanitized.content, 48)}`;
+    }
+
+    function clearForumReplyContext() {
+        const container = document.getElementById('forum-reply-context');
+        const label = container ? container.querySelector('.forum-reply-context-label') : null;
+        state.forumReplyContext = null;
+        if (container) {
+            container.hidden = true;
+        }
+        if (label) {
+            label.textContent = '未选择回复对象';
+        }
+    }
+
+    function updateForumComposerState() {
+        const input = document.getElementById('forum-input');
+        const sendBtn = document.getElementById('forum-send');
+        const pending = Boolean(state.pendingForumRequestId);
+        const hasText = Boolean(input && input.value.trim());
+        if (input) {
+            input.disabled = pending;
+            input.setAttribute('aria-busy', String(pending));
+        }
+        if (sendBtn) {
+            sendBtn.disabled = pending || !hasText;
+            sendBtn.setAttribute('aria-busy', String(pending));
+        }
+    }
+
+    function removeForumEventsByRequestId(requestId) {
+        state.forumHistory = state.forumHistory.filter(item => item.request_id !== requestId);
+        renderForumFeed();
+    }
+
+    function truncateText(text, maxLength) {
+        if (typeof text !== 'string' || text.length <= maxLength) {
+            return text || '';
+        }
+        return `${text.slice(0, maxLength - 1)}…`;
+    }
+
     function showTypingIndicator(panel) {
-        const container = document.getElementById(`${panel}-messages`);
+        const container = getMessageContainer(panel);
         if (!container) return;
 
         const existing = container.querySelector('.typing-indicator');
@@ -1278,7 +1716,7 @@
     }
 
     function hideTypingIndicator(panel) {
-        const container = document.getElementById(`${panel}-messages`);
+        const container = getMessageContainer(panel);
         if (!container) return;
         const indicator = container.querySelector('.typing-indicator');
         if (indicator) indicator.remove();
@@ -2016,6 +2454,7 @@
         onQuizFillInput,
         requestStage2Hint,
         sendCompanionChat,
+        sendForumMessage,
         sendTeacherChat,
         sendStudentChat,
         submitCodeFix,
