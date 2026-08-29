@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from utils.agents.contracts import AgentDecision, AgentRole, Stage3Target, ToolCall, UIAction
+from utils.agents.contracts import AgentDecision, AgentRole, Stage3Target, ToolCall, ToolResult, UIAction
 from utils.agents.feynman import FeynmanCallbacks, build_feynman_runtime
 from utils.agents.memory import EventRecord
 from utils.agents.orchestrator import ForumTurnResult, Stage3Orchestrator
@@ -236,6 +236,14 @@ def test_student_targeted_explanation_enters_student_context_with_server_side_pr
     assert user_event["target_role"] == "student_agent"
     assert user_event["reply_to_event_id"] == probe_event_id
     assert user_event["parent_request_id"] == "teacher-1"
+    student_reply_event = next(
+        item
+        for item in forum_events
+        if item["request_id"] == "student-1"
+        and item["source_role"] == "student_agent"
+    )
+    assert student_reply_event["reply_to_event_id"] == user_event["event_id"]
+    assert student_reply_event["parent_request_id"] == "teacher-1"
 
     state = runtime.memory.load(runtime.session.id).state
     assert state.concept_coverage[0]["concept"] == "循环边界"
@@ -289,13 +297,12 @@ def test_student_text_response_does_not_generate_code_before_coverage_is_ready()
 
 
 def test_student_ready_state_auto_generates_buggy_attempt_from_same_request_flow():
-    runtime, _, event_store = make_runtime(
+    runtime, model, event_store = make_runtime(
         decisions=[
             AgentDecision(tool_calls=[ToolCall("assess-1", "assess_teaching_progress", {
                 "assessment": "covered",
                 "evidence": "每轮循环都先检查索引是否小于长度，所以到达 length 时就会停下，最后一个合法位置只能是 length - 1。",
             })]),
-            AgentDecision(message="我现在可以继续写代码了。"),
         ],
         buggy_code_generator=lambda context: {
             "buggy_code": "int main() { return 1; }",
@@ -342,7 +349,75 @@ def test_student_ready_state_auto_generates_buggy_attempt_from_same_request_flow
     assert result.primary.public_content["buggy_code"] == "int main() { return 1; }"
     assert result.interventions == []
     assert [event.event_type for event in event_store.events].count("buggy_attempt") == 1
-    assert all(event.content != "我现在可以继续写代码了。" for event in event_store.events if event.event_type == "agent_message")
+    assert len(model.calls) == 1
+    triggering_event = next(
+        item
+        for item in runtime.memory.forum_events(runtime.session.id)
+        if item["request_id"] == "student-ready-1" and item["source_role"] == "user"
+    )
+    code_review_event = next(
+        item
+        for item in runtime.memory.forum_events(runtime.session.id)
+        if item["request_id"] == "student-ready-1:generate_buggy_attempt"
+        and item["source_role"] == "student_agent"
+    )
+    assert code_review_event["target_role"] == "user"
+    assert code_review_event["reply_to_event_id"] == triggering_event["event_id"]
+    assert code_review_event["parent_request_id"] == "student-ready-1"
+
+
+def test_runtime_signal_boundary_discards_extra_private_signal_keys():
+    runtime, _, _ = make_runtime(
+        decisions=[
+            AgentDecision(tool_calls=[ToolCall("probe-1", "request_student_probe", {
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "检查用户能否解释边界情况",
+            })]),
+            AgentDecision(message="请继续解释。"),
+        ],
+    )
+    original_execute = runtime.tools.execute
+
+    def leaky_execute(role, call, context):
+        result = original_execute(role, call, context)
+        if call.name != "request_student_probe" or not result.ok:
+            return result
+        return ToolResult(
+            ok=result.ok,
+            model_content=dict(result.model_content),
+            public_content=dict(result.public_content),
+            internal_content={
+                **result.internal_content,
+                "reference_code": "int secret() { return 1; }",
+                "hidden_code": "return 1;",
+                "tool_arguments": {"secret": True},
+            },
+            state_patch=dict(result.state_patch),
+            memory_events=list(result.memory_events),
+            error_code=result.error_code,
+            signal_type=result.signal_type,
+            retryable=result.retryable,
+        )
+
+    runtime.tools.execute = leaky_execute
+    result = runtime.handle_chat(
+        AgentRole.TEACHER_AGENT,
+        "请继续。",
+        request_id="signal-boundary-1",
+    )
+
+    assert result.internal_signals == {
+        "student_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "检查用户能否解释边界情况",
+        }
+    }
+    dumped = json.dumps(result.internal_signals, ensure_ascii=False)
+    assert "reference_code" not in dumped
+    assert "hidden_code" not in dumped
+    assert "tool_arguments" not in dumped
 
 
 def test_forum_turn_result_public_dict_omits_internal_and_private_fields():

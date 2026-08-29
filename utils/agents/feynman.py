@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from .contracts import (
     AgentDecision,
@@ -19,6 +19,7 @@ from .contracts import (
     Stage3MessageKind,
     Stage3Target,
     ToolCall,
+    ToolResult,
     UIAction,
 )
 from .coverage import load_coverage_config
@@ -27,6 +28,7 @@ from .loop import (
     AgentLoopSpec,
     _distributed_session_lock,
     _normalized_trigger,
+    _sanitized_signal_metadata,
     _session_lock,
 )
 from .memory import EventRecord, EventStore, MemorySnapshot, MemoryStore, SqlAlchemyEventStore
@@ -337,14 +339,11 @@ class _ForumRoleContextLoop(_RoleContextLoop):
                             self._persist_tool_result(call, invalid, request_id, terminal=True)
                         return self._failure("INVALID_STATE_PATCH", request_id)
                     self._apply_state_patch(snapshot, patch)
-                    if (
-                        input_kind != "intervention"
-                        and not internal_signals
-                        and isinstance(result.signal_type, str)
-                        and result.signal_type
-                        and isinstance(result.internal_content, Mapping)
-                    ):
-                        internal_signals[result.signal_type] = dict(result.internal_content)
+                    signal_metadata = _sanitized_signal_metadata(result)
+                    if input_kind != "intervention" and not internal_signals and signal_metadata:
+                        internal_signals[signal_metadata["signal_type"]] = dict(
+                            signal_metadata["internal_content"]
+                        )
                     terminal_kind = self._terminal_tool_kind(call, result)
                     terminal_success = terminal_kind is not None
                     if execution.persist:
@@ -352,6 +351,19 @@ class _ForumRoleContextLoop(_RoleContextLoop):
                     if patch and not terminal_success:
                         self._persist_state_checkpoint(snapshot, request_id)
                     tool_results.append(self._tool_result_for_model(call, result))
+                    if self._coverage_became_ready(call, patch, snapshot, input_kind):
+                        self._advance_successful_chat(
+                            snapshot,
+                            user_message,
+                            safe_decision_message or call.name,
+                            input_kind,
+                        )
+                        self._persist_state_checkpoint(snapshot, request_id)
+                        return AgentResult(
+                            success=False,
+                            agent=self.role,
+                            error_code="READY_FOR_CODE_REQUIRED",
+                        )
                     if terminal_kind == "code_review":
                         self._advance_successful_chat(
                             snapshot,
@@ -426,6 +438,22 @@ class _ForumRoleContextLoop(_RoleContextLoop):
             and bool(snapshot.state.ready_for_code)
         )
 
+    def _coverage_became_ready(
+        self,
+        call: ToolCall,
+        patch: Mapping[str, Any],
+        snapshot: MemorySnapshot,
+        input_kind: str,
+    ) -> bool:
+        return (
+            self.role is AgentRole.STUDENT_AGENT
+            and input_kind == "chat"
+            and call.name == "assess_teaching_progress"
+            and patch.get("ready_for_code") is True
+            and bool(snapshot.state.ready_for_code)
+            and snapshot.state.phase != "code_review"
+        )
+
     def _set_active_event_metadata(self, event_metadata: Optional[Mapping[str, Any]]) -> None:
         self._active_event_metadata = dict(event_metadata or {})
 
@@ -446,7 +474,9 @@ class _ForumRoleContextLoop(_RoleContextLoop):
 
     def _default_message_metadata(self, request_id: str) -> Dict[str, Any]:
         reply_to_event_id = self._active_user_event_id or self._active_event_metadata.get("reply_to_event_id")
-        parent_request_id = request_id if self._active_user_event_id else self._active_event_metadata.get("parent_request_id")
+        parent_request_id = self._active_event_metadata.get("parent_request_id")
+        if parent_request_id is None and self._active_user_event_id:
+            parent_request_id = request_id
         return {
             "source_role": self.role.value,
             "target_role": Stage3Target.USER.value,
@@ -455,6 +485,10 @@ class _ForumRoleContextLoop(_RoleContextLoop):
             "reply_to_event_id": reply_to_event_id,
             "parent_request_id": parent_request_id,
         }
+
+    @property
+    def last_user_event_id(self) -> Optional[str]:
+        return self._active_user_event_id
 
 
 class _ForcedToolModel:
@@ -501,13 +535,19 @@ class DualFeynmanRuntime:
     ) -> AgentResult:
         if role not in self.specs:
             raise ValueError("unsupported agent role")
-        result = self._loop_for(role, self.model).handle_turn(
+        loop = self._loop_for(role, self.model)
+        result = loop.handle_turn(
             message,
             request_id=request_id,
             event_metadata=event_metadata,
         )
         if role is AgentRole.STUDENT_AGENT and result.error_code == "READY_FOR_CODE_REQUIRED":
             auto_request_id = f"{request_id}:generate_buggy_attempt"
+            inbound_parent_request_id = (
+                event_metadata.get("parent_request_id")
+                if isinstance(event_metadata, Mapping)
+                else None
+            )
             result = self.generate_buggy_attempt(
                 request_id=auto_request_id,
                 event_metadata={
@@ -515,7 +555,12 @@ class DualFeynmanRuntime:
                     "target_role": Stage3Target.USER.value,
                     "message_kind": Stage3MessageKind.AGENT_MESSAGE.value,
                     "visibility": "public",
-                    "parent_request_id": request_id,
+                    "reply_to_event_id": loop.last_user_event_id,
+                    "parent_request_id": (
+                        inbound_parent_request_id
+                        if inbound_parent_request_id is not None
+                        else request_id
+                    ),
                 },
                 enforce_ready=True,
             )
