@@ -331,12 +331,15 @@ def _tool_result_from_event(record: EventRecord) -> ToolResult:
     public_content = metadata.get("public_content")
     model_content = metadata.get("model_content")
     state_patch = metadata.get("state_patch")
+    signal_metadata = _tool_signal_metadata(metadata)
     return ToolResult(
         ok=metadata.get("ok") is True,
         model_content=dict(model_content) if isinstance(model_content, Mapping) else {},
         public_content=dict(public_content) if isinstance(public_content, Mapping) else {},
+        internal_content=dict(signal_metadata.get("internal_content", {})),
         state_patch=dict(state_patch) if isinstance(state_patch, Mapping) else {},
         error_code=str(metadata["error_code"]) if metadata.get("error_code") else None,
+        signal_type=signal_metadata.get("signal_type"),
         retryable=False,
     )
 
@@ -665,3 +668,21 @@ def _ui_action(value: Any) -> UIAction:
         return UIAction(value or UIAction.CONTINUE_CHAT)
     except ValueError:
         return UIAction.CONTINUE_CHAT
+
+
+def _tool_signal_metadata(metadata: Mapping[str, Any]) -> Dict[str, Any]:
+    if metadata.get("signal_type") != "student_probe":
+        return {}
+    internal_content = metadata.get("internal_content")
+    if not isinstance(internal_content, Mapping):
+        return {}
+    allowed = {}
+    for key in ("concept", "dimension", "goal"):
+        value = internal_content.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return {}
+        allowed[key] = value.strip()
+    return {
+        "signal_type": "student_probe",
+        "internal_content": allowed,
+    }

@@ -9,6 +9,7 @@ from utils.agents.feynman import FeynmanCallbacks, build_feynman_runtime
 from utils.agents.memory import EventRecord, FeynmanState, MemorySnapshot, MemoryStore
 from utils.agents.model import ModelError
 from utils.agents.loop import AgentLoop, AgentLoopConfig, AgentLoopSpec
+from utils.agents.tools import build_feynman_tool_registry
 
 
 @dataclass
@@ -329,6 +330,50 @@ def test_agent_loop_collects_only_the_first_internal_probe_signal_per_request():
         }
     }
     assert "internal_signals" not in result.to_public_dict()
+
+
+def test_persisted_probe_tool_result_keeps_only_allowed_private_signal_keys():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("probe-1", "request_student_probe", {
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "先问边界条件",
+            })]),
+            AgentDecision(message="继续。"),
+        ]),
+        tools=FakeRegistry({"request_student_probe": ToolResult(
+            ok=True,
+            model_content={"accepted": True},
+            internal_content={
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "先问边界条件",
+                "hidden_answer": "i < n",
+            },
+            signal_type="student_probe",
+        )}),
+        memory=memory,
+    ).handle_turn("继续", request_id="persisted-probe")
+
+    tool_event = next(event for event in memory.events if event[0] == "tool_result")
+
+    assert result.success is True
+    assert result.internal_signals == {
+        "student_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "先问边界条件",
+        }
+    }
+    assert tool_event[3]["signal_type"] == "student_probe"
+    assert tool_event[3]["internal_content"] == {
+        "concept": "循环边界",
+        "dimension": "core",
+        "goal": "先问边界条件",
+    }
+    assert "hidden_answer" not in tool_event[3]["internal_content"]
 
 
 def test_agent_loop_forbidden_probe_tool_returns_stable_error_without_public_message():
@@ -902,6 +947,82 @@ def test_replayed_buggy_tool_result_without_artifact_recovers_public_result():
     assert result.response == "我写了一版代码，请帮我检查。"
     assert generator_calls == []
     assert [event for event in runtime.event_store.events if event.event_type == "buggy_attempt"] == []
+
+
+def test_replayed_probe_tool_result_preserves_private_signal_without_public_leak():
+    event_store = FakeEventStore()
+    request_id = "replay-probe-request"
+    call = ToolCall("probe-replay", "request_student_probe", {
+        "concept": "循环边界",
+        "dimension": "core",
+        "goal": "检查用户能否解释边界条件",
+    })
+    event_store.append(EventRecord(
+        session_id=12,
+        stage=3,
+        event_type="tool_call",
+        role="teacher_agent",
+        metadata={
+            "request_id": request_id,
+            "tool_call": call.to_payload(),
+            "claim": True,
+            "side_effect": True,
+        },
+    ))
+    event_store.append(EventRecord(
+        session_id=12,
+        stage=3,
+        event_type="tool_result",
+        role="teacher_agent",
+        metadata={
+            "request_id": request_id,
+            "tool_call": call.to_payload(),
+            "ok": True,
+            "terminal": False,
+            "model_content": {"accepted": True},
+            "public_content": {},
+            "state_patch": {},
+            "signal_type": "student_probe",
+            "internal_content": {
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "检查用户能否解释边界条件",
+            },
+        },
+    ))
+    memory = MemoryStore(event_store)
+    loop = AgentLoop(
+        session_id=12,
+        role=AgentRole.TEACHER_AGENT,
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[call]),
+            AgentDecision(message="先说明循环什么时候停止。"),
+        ]),
+        tools=build_feynman_tool_registry(),
+        memory=memory,
+        spec=AgentLoopSpec(
+            system_prompt="teach safely",
+            key_concepts=["循环边界", "不变量"],
+        ),
+        config=AgentLoopConfig(),
+    )
+
+    result = loop.handle_turn("继续", request_id=request_id)
+    projected = memory.forum_events(12)
+
+    assert result.success is True
+    assert result.internal_signals == {
+        "student_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "检查用户能否解释边界条件",
+        }
+    }
+    assert "internal_signals" not in result.to_public_dict()
+    assert "检查用户能否解释边界条件" not in str(result.to_public_dict())
+    assert len([event for event in event_store.events if event.event_type == "tool_result"]) == 1
+    assert all(item["event_type"] != "tool_result" for item in projected)
+    assert "检查用户能否解释边界条件" not in str(projected)
 
 
 def test_side_effect_tool_claim_is_persisted_before_callback_runs():

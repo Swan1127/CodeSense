@@ -245,14 +245,15 @@ class AgentLoop:
                             self._persist_tool_result(call, invalid, request_id, terminal=True)
                         return self._failure("INVALID_STATE_PATCH", request_id)
                     self._apply_state_patch(snapshot, patch)
+                    signal_metadata = _sanitized_signal_metadata(result)
                     if (
                         input_kind != "intervention"
                         and not internal_signals
-                        and isinstance(result.signal_type, str)
-                        and result.signal_type
-                        and isinstance(result.internal_content, Mapping)
+                        and signal_metadata
                     ):
-                        internal_signals[result.signal_type] = dict(result.internal_content)
+                        internal_signals[signal_metadata["signal_type"]] = dict(
+                            signal_metadata["internal_content"]
+                        )
                     terminal_kind = _terminal_tool_kind(call, result)
                     terminal_success = terminal_kind is not None
                     if execution.persist:
@@ -389,6 +390,7 @@ class AgentLoop:
         self, call: ToolCall, result: ToolResult, request_id: str, *,
         patch: Optional[Dict[str, Any]] = None, terminal: bool = False,
     ) -> None:
+        signal_metadata = _sanitized_signal_metadata(result)
         metadata = {
             "request_id": request_id,
             "tool_call": call.to_payload(),
@@ -400,6 +402,7 @@ class AgentLoop:
             "public_content": dict(result.public_content),
             "state_patch": dict(patch or {}),
         }
+        metadata.update(signal_metadata)
         if not result.ok:
             metadata["agent_result"] = _result_payload(
                 AgentResult(success=False, agent=self.role, error_code=result.error_code)
@@ -857,4 +860,19 @@ def _normalized_trigger(value: Mapping[str, Any]) -> Optional[Dict[str, str]]:
         "concept": concept.strip(),
         "dimension": dimension.strip(),
         "goal": goal.strip(),
+    }
+
+
+def _sanitized_signal_metadata(result: ToolResult) -> Dict[str, Any]:
+    if result.signal_type != "student_probe" or not isinstance(result.internal_content, Mapping):
+        return {}
+    internal_content = {}
+    for key in ("concept", "dimension", "goal"):
+        value = result.internal_content.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return {}
+        internal_content[key] = value.strip()
+    return {
+        "signal_type": "student_probe",
+        "internal_content": internal_content,
     }
