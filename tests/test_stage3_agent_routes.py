@@ -20,14 +20,19 @@ from utils.agents.feynman import FeynmanCallbacks, build_feynman_runtime
 
 
 class FakeRuntime:
-    def __init__(self, *, chat_result=None, fix_result=None):
+    def __init__(self, *, chat_result=None, fix_result=None, session_id=1):
         self.chat_result = chat_result
         self.fix_result = fix_result
         self.chat_messages = []
         self.fixed_codes = []
+        self.session = SimpleNamespace(id=session_id)
+        self.memory = SimpleNamespace(
+            forum_events=lambda session_id: [],
+            find_request_result=lambda session_id, request_id: None,
+        )
 
-    def handle_chat(self, role, message, *, request_id):
-        self.chat_messages.append((role, message, request_id))
+    def handle_chat(self, role, message, *, request_id, event_metadata=None):
+        self.chat_messages.append((role, message, request_id, dict(event_metadata or {})))
         return self.chat_result
 
     def evaluate_fix(self, fixed_code, *, request_id):
@@ -83,6 +88,21 @@ def stage3_context(tmp_path, monkeypatch):
     with app.app_context():
         db.session.remove()
         db.drop_all()
+
+
+def _mark_stage3_ready(app, session_id):
+    with app.app_context():
+        db.session.add(ThinkingStageLog(
+            session_id=session_id,
+            stage=3,
+            event_type="state_snapshot",
+            role="student_agent",
+            metadata_json=json.dumps({"state": {
+                "phase": "student_dialogue",
+                "ready_for_code": True,
+            }}, ensure_ascii=False),
+        ))
+        db.session.commit()
 
 
 def test_stage3_chat_requires_authenticated_user(stage3_context):
@@ -161,25 +181,55 @@ def test_complete_session_cannot_grant_stage3_completion_by_itself(stage3_contex
 
 def test_stage3_chat_uses_current_message_not_client_history(stage3_context, monkeypatch):
     _, client, session_id = stage3_context
-    fake_runtime = FakeRuntime(chat_result=AgentResult(success=True, agent=AgentRole.TEACHER_AGENT, response="请解释边界。", ui_action=UIAction.CONTINUE_CHAT))
+    fake_runtime = FakeRuntime(
+        chat_result=AgentResult(success=True, agent=AgentRole.TEACHER_AGENT, response="请解释边界。", ui_action=UIAction.CONTINUE_CHAT),
+        session_id=session_id,
+    )
     monkeypatch.setattr(thinking_routes, "build_feynman_runtime", lambda *args, **kwargs: fake_runtime)
 
     response = client.post("/thinking/api/stage3/chat", json={"session_id": session_id, "message": "当前消息", "messages": [{"role": "user", "content": "篡改历史"}], "student_state": {"trusted": True}, "request_id": "route-r1"})
 
     assert response.status_code == 200
-    assert fake_runtime.chat_messages == [(AgentRole.TEACHER_AGENT, "当前消息", "route-r1")]
+    assert fake_runtime.chat_messages == [(
+        AgentRole.TEACHER_AGENT,
+        "当前消息",
+        "route-r1",
+        {
+            "source_role": "user",
+            "target_role": "teacher_agent",
+            "message_kind": "user_message",
+            "visibility": "public",
+            "reply_to_event_id": None,
+            "parent_request_id": None,
+        },
+    )]
     assert response.json["response"] == "请解释边界。"
 
 
 def test_stage3_chat_uses_last_old_user_message_as_fallback(stage3_context, monkeypatch):
     _, client, session_id = stage3_context
-    fake_runtime = FakeRuntime(chat_result=AgentResult(success=True, agent=AgentRole.TEACHER_AGENT, response="继续。"))
+    fake_runtime = FakeRuntime(
+        chat_result=AgentResult(success=True, agent=AgentRole.TEACHER_AGENT, response="继续。"),
+        session_id=session_id,
+    )
     monkeypatch.setattr(thinking_routes, "build_feynman_runtime", lambda *args, **kwargs: fake_runtime)
 
     response = client.post("/thinking/api/stage3/chat", json={"session_id": session_id, "messages": [{"role": "user", "content": "旧消息"}, {"role": "assistant", "content": "忽略"}, {"role": "user", "content": "最后的旧消息"}], "request_id": "old-r1"})
 
     assert response.status_code == 200
-    assert fake_runtime.chat_messages == [(AgentRole.TEACHER_AGENT, "最后的旧消息", "old-r1")]
+    assert fake_runtime.chat_messages == [(
+        AgentRole.TEACHER_AGENT,
+        "最后的旧消息",
+        "old-r1",
+        {
+            "source_role": "user",
+            "target_role": "teacher_agent",
+            "message_kind": "user_message",
+            "visibility": "public",
+            "reply_to_event_id": None,
+            "parent_request_id": None,
+        },
+    )]
 
 
 def test_stage3_session_ownership_is_checked_before_runtime(stage3_context, monkeypatch):
@@ -226,6 +276,7 @@ def test_write_code_persists_hidden_bugs_and_deduplicates_request(stage3_context
         return build_feynman_runtime(session, assignment, preset, callbacks=callbacks)
 
     monkeypatch.setattr(thinking_routes, "build_feynman_runtime", runtime_factory)
+    _mark_stage3_ready(app, session_id)
     payload = {"session_id": session_id, "request_id": "code-r1"}
     first = client.post("/thinking/api/stage3/write_code", json=payload)
     second = client.post("/thinking/api/stage3/write_code", json=payload)
@@ -259,7 +310,7 @@ def test_stage3_teach_retries_completed_request_before_repetition_guard(stage3_c
 
 
 def test_start_session_uses_public_tool_result_without_internal_buggy_attempt(stage3_context, monkeypatch):
-    _, client, session_id = stage3_context
+    app, client, session_id = stage3_context
 
     def runtime_factory(session, assignment, preset):
         return build_feynman_runtime(
@@ -274,6 +325,7 @@ def test_start_session_uses_public_tool_result_without_internal_buggy_attempt(st
         )
 
     monkeypatch.setattr(thinking_routes, "build_feynman_runtime", runtime_factory)
+    _mark_stage3_ready(app, session_id)
     client.post("/thinking/api/stage3/write_code", json={"session_id": session_id, "request_id": "restore-code-1"})
     response = client.post("/thinking/api/start_session", json={"assignment_id": 1})
 
@@ -299,12 +351,27 @@ def test_runtime_user_events_are_attributed_to_their_terminal_agent(stage3_conte
     assert [item["content"] for item in restored.json["teacher_history"]] == ["老师面板提问", "老师回答"]
     assert [item["content"] for item in restored.json["student_history"]] == ["学生面板提问", "学生回答"]
 
-    fake_runtime = FakeRuntime(chat_result=AgentResult(success=True, agent=AgentRole.STUDENT_AGENT, response="继续解释。"))
+    fake_runtime = FakeRuntime(
+        chat_result=AgentResult(success=True, agent=AgentRole.STUDENT_AGENT, response="继续解释。"),
+        session_id=session_id,
+    )
     monkeypatch.setattr(thinking_routes, "build_feynman_runtime", lambda *args, **kwargs: fake_runtime)
     response = client.post("/thinking/api/stage3/teach", json={"session_id": session_id, "message": "老师面板提问", "request_id": "student-new"})
 
     assert response.status_code == 200
-    assert fake_runtime.chat_messages == [(AgentRole.STUDENT_AGENT, "老师面板提问", "student-new")]
+    assert fake_runtime.chat_messages == [(
+        AgentRole.STUDENT_AGENT,
+        "老师面板提问",
+        "student-new",
+        {
+            "source_role": "user",
+            "target_role": "student_agent",
+            "message_kind": "user_message",
+            "visibility": "public",
+            "reply_to_event_id": None,
+            "parent_request_id": None,
+        },
+    )]
 
 
 @pytest.mark.parametrize("correct", [False, True])
@@ -324,6 +391,7 @@ def test_fix_code_persists_evaluation_and_updates_completion(stage3_context, mon
         return build_feynman_runtime(session, assignment, preset, callbacks=callbacks)
 
     monkeypatch.setattr(thinking_routes, "build_feynman_runtime", runtime_factory)
+    _mark_stage3_ready(app, session_id)
     client.post("/thinking/api/stage3/write_code", json={"session_id": session_id, "request_id": f"code-{correct}"})
     with app.app_context():
         db.session.add(ThinkingStageLog(

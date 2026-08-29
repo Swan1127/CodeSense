@@ -20,6 +20,7 @@ from utils.thinking_ai import (
 from utils.agents.contracts import AgentRole
 from utils.agents.feynman import build_feynman_runtime
 from utils.agents.memory import MemoryStore, SqlAlchemyEventStore
+from utils.agents.orchestrator import Stage3Orchestrator
 
 thinking = Blueprint('thinking', __name__, url_prefix='/thinking')
 
@@ -37,6 +38,46 @@ def _extract_stage3_message(data: dict) -> str:
 def _request_id(data: dict) -> str:
     value = str(data.get('request_id') or '').strip()
     return value[:80] if value else uuid.uuid4().hex
+
+
+def _stage3_forum_history(session_id: int):
+    return MemoryStore(SqlAlchemyEventStore()).forum_events(session_id)
+
+
+def _stage3_target_role(data: dict, *, default_role: AgentRole | None = None, required: bool = False):
+    value = str(data.get('target_role') or '').strip()
+    if not value:
+        if required or default_role is None:
+            return None, 'TARGET_ROLE_REQUIRED'
+        return default_role, None
+    try:
+        return AgentRole(value), None
+    except ValueError:
+        return None, 'TARGET_ROLE_INVALID'
+
+
+def _reply_to_event_id(data: dict):
+    value = str(data.get('reply_to_event_id') or '').strip()
+    return value or None
+
+
+def _stage3_reply_event_exists(session_id: int, reply_to_event_id: str) -> bool:
+    return any(
+        str(item.get('event_id') or '') == str(reply_to_event_id)
+        for item in _stage3_forum_history(session_id)
+    )
+
+
+def _stage3_forum_validation_error_response(error_code: str):
+    messages = {
+        'TARGET_ROLE_REQUIRED': '缺少目标对象',
+        'TARGET_ROLE_INVALID': '目标对象无效',
+        'REPLY_EVENT_NOT_FOUND': '回复目标不存在',
+    }
+    return jsonify({
+        'error': messages.get(error_code, '请求无效'),
+        'error_code': error_code,
+    }), 400
 
 
 def _stage3_runtime(data: dict):
@@ -86,6 +127,95 @@ def _stage3_completion_is_verified(thinking_session) -> bool:
 
 def _stage3_request_result(session_id: int, request_id: str):
     return MemoryStore(SqlAlchemyEventStore()).find_request_result(session_id, request_id)
+
+
+def _stage3_student_message_guard(session_id: int, message: str, request_id: str):
+    completed = _stage3_request_result(session_id, request_id)
+    if completed is not None:
+        return completed
+    cleaned_current = "".join(message.split())
+    if len(cleaned_current) < 5:
+        return {
+            'success': True,
+            'response': '呃，你说的这也太简短了（需要5字以上），我感觉完全听不明白。能稍微详细一点解释吗？',
+            'ready_for_code': False,
+        }
+    import difflib
+
+    history_logs = ThinkingStageLog.query.filter_by(session_id=session_id, stage=3).all()
+    runtime_roles = _runtime_role_by_request(history_logs)
+    for log in history_logs:
+        if log.role != 'student':
+            continue
+        meta = log.get_metadata() or {}
+        if meta.get('request_id') == request_id:
+            continue
+        is_runtime_student_message = (
+            log.event_type == 'agent_user_message' and
+            runtime_roles.get(str(meta.get('request_id') or '')) == 'student_agent'
+        )
+        is_legacy_student_message = log.event_type == 'chat' and meta.get('panel') == 'student_agent'
+        if not (is_runtime_student_message or is_legacy_student_message):
+            continue
+        if difflib.SequenceMatcher(None, "".join(log.content.split()).lower(), cleaned_current.lower()).ratio() > 0.8:
+            return {
+                'success': True,
+                'response': '咦，这句话你刚才已经解释过一遍了呀！能不能换个思路，或者用别的话跟我说一下？',
+                'ready_for_code': False,
+            }
+    return None
+
+
+def _stage3_forum_payload(primary_payload: dict, interventions: list | None = None):
+    return {
+        'primary': dict(primary_payload),
+        'interventions': list(interventions or []),
+    }
+
+
+def _run_stage3_forum_turn(
+    data: dict,
+    *,
+    default_target_role: AgentRole | None = None,
+    require_target_role: bool = False,
+):
+    message = _extract_stage3_message(data)
+    if not message:
+        return None, None, (jsonify({'error': '缺少消息'}), 400)
+    ts, runtime, error_code = _stage3_runtime(data)
+    if error_code:
+        return None, None, _stage3_runtime_error_response(error_code)
+
+    target_role, target_error = _stage3_target_role(
+        data,
+        default_role=default_target_role,
+        required=require_target_role,
+    )
+    if target_error:
+        return None, None, _stage3_forum_validation_error_response(target_error)
+
+    request_id = _request_id(data)
+    reply_to_event_id = _reply_to_event_id(data)
+    if reply_to_event_id and not _stage3_reply_event_exists(ts.id, reply_to_event_id):
+        return None, None, _stage3_forum_validation_error_response('REPLY_EVENT_NOT_FOUND')
+
+    if target_role is AgentRole.STUDENT_AGENT:
+        guarded = _stage3_student_message_guard(ts.id, message, request_id)
+        if guarded is not None:
+            guarded_payload = guarded.to_public_dict() if hasattr(guarded, 'to_public_dict') else dict(guarded)
+            return ts, target_role, _stage3_forum_payload(guarded_payload)
+
+    orchestrator = Stage3Orchestrator(runtime)
+    try:
+        result = orchestrator.handle_user_message(
+            message,
+            target_role=target_role,
+            request_id=request_id,
+            reply_to_event_id=reply_to_event_id,
+        )
+    except ValueError:
+        return None, None, _stage3_forum_validation_error_response('REPLY_EVENT_NOT_FOUND')
+    return ts, target_role, result.to_public_dict()
 
 
 def _stable_event_order(logs):
@@ -375,6 +505,7 @@ def start_session():
                 'stage1_score': existing.stage1_score,
                 'stage2_block_order': stage2_block_order,
                 'companion_history': companion_history,
+                'forum_history': _stage3_forum_history(existing.id),
                 'teacher_history': teacher_history,
                 'student_history': student_history,
                 'buggy_code_info': buggy_code_info,
@@ -398,6 +529,7 @@ def start_session():
             'session_id': new_session.id,
             'current_stage': 1,
             'resumed': False,
+            'forum_history': [],
             'preset': _serialize_preset(preset)
         })
 
@@ -838,17 +970,35 @@ def stage3_teacher_chat():
     """费曼阶段 — 老师Agent对话"""
     try:
         data = request.get_json() or {}
-        message = _extract_stage3_message(data)
-        if not message:
-            return jsonify({'error': '缺少消息'}), 400
-        ts, runtime, error_code = _stage3_runtime(data)
-        if error_code:
-            return _stage3_runtime_error_response(error_code)
-        result = runtime.handle_chat(AgentRole.TEACHER_AGENT, message, request_id=_request_id(data))
-        return jsonify(result.to_public_dict())
+        _, _, payload = _run_stage3_forum_turn(
+            data,
+            default_target_role=AgentRole.TEACHER_AGENT,
+        )
+        if isinstance(payload, tuple):
+            return payload
+        return jsonify(payload['primary'])
     except Exception:
         db.session.rollback()
         current_app.logger.exception('阶段3老师Agent对话失败')
+        return jsonify({'error': '服务暂时不可用'}), 500
+
+
+@thinking.route('/api/stage3/forum/message', methods=['POST'])
+@login_required
+def stage3_forum_message():
+    """费曼阶段 — 论坛式显式目标对话"""
+    try:
+        data = request.get_json() or {}
+        _, _, payload = _run_stage3_forum_turn(
+            data,
+            require_target_role=True,
+        )
+        if isinstance(payload, tuple):
+            return payload
+        return jsonify(payload)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('阶段3论坛对话失败')
         return jsonify({'error': '服务暂时不可用'}), 500
 
 
@@ -858,41 +1008,13 @@ def stage3_student_teach():
     """费曼阶段 — 教坏学生对话"""
     try:
         data = request.get_json() or {}
-        message = _extract_stage3_message(data)
-        if not message:
-            return jsonify({'error': '缺少消息'}), 400
-        ts, runtime, error_code = _stage3_runtime(data)
-        if error_code:
-            return _stage3_runtime_error_response(error_code)
-
-        # 验证学生发给小明的解答质量（防止刷屏/复读绕过）
-        request_id = _request_id(data)
-        completed = _stage3_request_result(ts.id, request_id)
-        if completed is not None:
-            return jsonify(completed.to_public_dict())
-        cleaned_current = "".join(message.split())
-        if len(cleaned_current) < 5:
-            return jsonify({'success': True, 'response': '呃，你说的这也太简短了（需要5字以上），我感觉完全听不明白。能稍微详细一点解释吗？', 'ready_for_code': False})
-        import difflib
-        history_logs = ThinkingStageLog.query.filter_by(session_id=ts.id, stage=3).all()
-        runtime_roles = _runtime_role_by_request(history_logs)
-        for log in history_logs:
-            if log.role != 'student':
-                continue
-            meta = log.get_metadata() or {}
-            if meta.get('request_id') == request_id:
-                continue
-            is_runtime_student_message = (
-                log.event_type == 'agent_user_message' and
-                runtime_roles.get(str(meta.get('request_id') or '')) == 'student_agent'
-            )
-            is_legacy_student_message = log.event_type == 'chat' and meta.get('panel') == 'student_agent'
-            if not (is_runtime_student_message or is_legacy_student_message):
-                continue
-            if difflib.SequenceMatcher(None, "".join(log.content.split()).lower(), cleaned_current.lower()).ratio() > 0.8:
-                return jsonify({'success': True, 'response': '咦，这句话你刚才已经解释过一遍了呀！能不能换个思路，或者用别的话跟我说一下？', 'ready_for_code': False})
-        result = runtime.handle_chat(AgentRole.STUDENT_AGENT, message, request_id=request_id)
-        return jsonify(result.to_public_dict())
+        _, _, payload = _run_stage3_forum_turn(
+            data,
+            default_target_role=AgentRole.STUDENT_AGENT,
+        )
+        if isinstance(payload, tuple):
+            return payload
+        return jsonify(payload['primary'])
     except Exception:
         db.session.rollback()
         current_app.logger.exception('阶段3学生Agent对话失败')
@@ -908,7 +1030,18 @@ def stage3_write_code():
         ts, runtime, error_code = _stage3_runtime(data)
         if error_code:
             return _stage3_runtime_error_response(error_code)
-        result = runtime.generate_buggy_attempt(request_id=_request_id(data))
+        request_id = _request_id(data)
+        completed = _stage3_request_result(ts.id, request_id)
+        if completed is not None:
+            return jsonify(completed.to_public_dict())
+        result = runtime.generate_buggy_attempt(
+            request_id=request_id,
+            enforce_ready=True,
+        )
+        if result.success:
+            completed = _stage3_request_result(ts.id, request_id)
+            if completed is not None:
+                return jsonify(completed.to_public_dict())
         return jsonify(result.to_public_dict())
     except Exception:
         db.session.rollback()

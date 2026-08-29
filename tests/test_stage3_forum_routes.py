@@ -1,0 +1,463 @@
+import json
+from types import SimpleNamespace
+
+import pytest
+
+from app import create_app
+from config import TestingConfig as _TestingConfig
+from models import (
+    Assignment,
+    AssignmentThinkingPreset,
+    ThinkingSession,
+    ThinkingStageLog,
+    User,
+    db,
+)
+from routes import thinking as thinking_routes
+from utils.agents.contracts import AgentResult, AgentRole
+from utils.agents.feynman import FeynmanCallbacks, build_feynman_runtime
+from utils.agents.orchestrator import ForumTurnResult
+
+
+@pytest.fixture
+def stage3_forum_context(tmp_path, monkeypatch):
+    database_path = tmp_path / "stage3_forum_routes.db"
+    monkeypatch.setattr(_TestingConfig, "SQLALCHEMY_DATABASE_URI", f"sqlite:///{database_path}")
+    app = create_app("testing")
+    with app.app_context():
+        assert db.engine.url.database == str(database_path)
+        db.create_all()
+        student = User(student_id="student-1", username="student-1", usertype="学生")
+        student.password = "password"
+        assignment = Assignment(
+            title="循环练习",
+            description="解释循环边界并修复错误代码",
+            creator_id="student-1",
+        )
+        preset = AssignmentThinkingPreset(
+            assignment=assignment,
+            reference_code="int main() { return 0; }",
+            key_steps=json.dumps(["输入", "循环边界", "输出"], ensure_ascii=False),
+            difficulty_config=json.dumps({
+                "feynman_coverage": {
+                    "min_coverage": 0.8,
+                    "max_probes_per_concept": 2,
+                    "probe_dimensions": ["core", "edge_case", "application"],
+                }
+            }, ensure_ascii=False),
+            quiz_steps='[{"step": "循环边界"}]',
+            status="ready",
+        )
+        session = ThinkingSession(
+            student=student,
+            assignment=assignment,
+            current_stage=3,
+            stage2_completed=True,
+        )
+        db.session.add_all([student, assignment, preset, session])
+        db.session.commit()
+        session_id = session.id
+        assignment_id = assignment.id
+    client = app.test_client()
+    client.post("/login", data={"username": "student-1", "password": "password"})
+    yield app, client, session_id, assignment_id
+    with app.app_context():
+        db.session.remove()
+        db.drop_all()
+
+
+def _stub_runtime_factory():
+    def factory(session, assignment, preset):
+        return SimpleNamespace(session=SimpleNamespace(id=session.id))
+
+    return factory
+
+
+def test_stage3_forum_message_requires_authenticated_user(stage3_forum_context):
+    app, _, session_id, _ = stage3_forum_context
+
+    response = app.test_client().post(
+        "/thinking/api/stage3/forum/message",
+        json={
+            "session_id": session_id,
+            "message": "请解释循环边界。",
+            "target_role": "teacher_agent",
+        },
+    )
+
+    assert response.status_code in {302, 401}
+
+
+@pytest.mark.parametrize(
+    ("payload", "error_code"),
+    [
+        ({"message": "请解释循环边界。"}, "TARGET_ROLE_REQUIRED"),
+        ({"message": "请解释循环边界。", "target_role": "grader_agent"}, "TARGET_ROLE_INVALID"),
+    ],
+)
+def test_stage3_forum_message_validates_target_role(stage3_forum_context, monkeypatch, payload, error_code):
+    _, client, session_id, _ = stage3_forum_context
+    monkeypatch.setattr(thinking_routes, "build_feynman_runtime", _stub_runtime_factory())
+
+    response = client.post(
+        "/thinking/api/stage3/forum/message",
+        json={"session_id": session_id, "request_id": "forum-target-1", **payload},
+    )
+
+    assert response.status_code == 400
+    assert response.json["error_code"] == error_code
+
+
+def test_stage3_forum_message_rejects_cross_session_reply_event(stage3_forum_context, monkeypatch):
+    app, client, session_id, assignment_id = stage3_forum_context
+    with app.app_context():
+        other_session = ThinkingSession(
+            student_id="student-1",
+            assignment_id=assignment_id,
+            current_stage=3,
+            stage2_completed=True,
+        )
+        db.session.add(other_session)
+        db.session.commit()
+        db.session.add(ThinkingStageLog(
+            session_id=other_session.id,
+            stage=3,
+            event_type="agent_message",
+            role="teacher_agent",
+            content="另一个会话里的消息",
+            metadata_json=json.dumps({
+                "request_id": "other-forum-1",
+                "source_role": "teacher_agent",
+                "target_role": "user",
+                "message_kind": "agent_message",
+                "visibility": "public",
+            }, ensure_ascii=False),
+        ))
+        db.session.commit()
+        reply_to_event_id = str(
+            ThinkingStageLog.query.filter_by(session_id=other_session.id, event_type="agent_message").first().id
+        )
+
+    monkeypatch.setattr(thinking_routes, "build_feynman_runtime", _stub_runtime_factory())
+    monkeypatch.setattr(
+        thinking_routes,
+        "Stage3Orchestrator",
+        lambda runtime: pytest.fail("orchestrator must not run for a cross-session reply target"),
+    )
+
+    response = client.post(
+        "/thinking/api/stage3/forum/message",
+        json={
+            "session_id": session_id,
+            "message": "回复当前会话外的消息。",
+            "target_role": "teacher_agent",
+            "reply_to_event_id": reply_to_event_id,
+            "request_id": "forum-reply-miss-1",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json["error_code"] == "REPLY_EVENT_NOT_FOUND"
+
+
+def test_stage3_forum_message_forwards_routing_metadata_and_filters_private_fields(stage3_forum_context, monkeypatch):
+    app, client, session_id, _ = stage3_forum_context
+    with app.app_context():
+        db.session.add(ThinkingStageLog(
+            session_id=session_id,
+            stage=3,
+            event_type="agent_message",
+            role="teacher_agent",
+            content="现有公开消息",
+            metadata_json=json.dumps({
+                "request_id": "existing-1",
+                "source_role": "teacher_agent",
+                "target_role": "user",
+                "message_kind": "agent_message",
+                "visibility": "public",
+            }, ensure_ascii=False),
+        ))
+        db.session.commit()
+        reply_to_event_id = str(
+            ThinkingStageLog.query.filter_by(session_id=session_id, event_type="agent_message").first().id
+        )
+
+    recorded = {}
+
+    class FakeOrchestrator:
+        def __init__(self, runtime):
+            recorded["session_id"] = runtime.session.id
+
+        def handle_user_message(self, message, *, target_role, request_id, reply_to_event_id=None):
+            recorded["message"] = message
+            recorded["target_role"] = target_role
+            recorded["request_id"] = request_id
+            recorded["reply_to_event_id"] = reply_to_event_id
+            primary = AgentResult(
+                success=True,
+                agent=AgentRole.TEACHER_AGENT,
+                response="老师回答",
+                public_content={
+                    "message": "公开主回复",
+                    "tool_call": {"id": "secret-call", "arguments": {"hidden": True}},
+                    "trigger": {"concept": "循环边界"},
+                    "artifact": {"hidden_bug": "secret"},
+                    "decision": {"next": "private"},
+                },
+                internal_signals={"student_probe": {"concept": "循环边界"}},
+            )
+            intervention = AgentResult(
+                success=True,
+                agent=AgentRole.STUDENT_AGENT,
+                response="再解释一下为什么最后一个索引不是 n。",
+                public_content={"tool_arguments": {"hidden": True}},
+            )
+            return ForumTurnResult(primary=primary, interventions=[intervention])
+
+    monkeypatch.setattr(thinking_routes, "build_feynman_runtime", _stub_runtime_factory())
+    monkeypatch.setattr(thinking_routes, "Stage3Orchestrator", FakeOrchestrator)
+
+    response = client.post(
+        "/thinking/api/stage3/forum/message",
+        json={
+            "session_id": session_id,
+            "message": "为什么这里会越界？",
+            "target_role": "teacher_agent",
+            "reply_to_event_id": reply_to_event_id,
+            "request_id": "forum-route-1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert recorded == {
+        "session_id": session_id,
+        "message": "为什么这里会越界？",
+        "target_role": AgentRole.TEACHER_AGENT,
+        "request_id": "forum-route-1",
+        "reply_to_event_id": reply_to_event_id,
+    }
+    assert response.json["primary"]["response"] == "老师回答"
+    assert response.json["primary"]["message"] == "公开主回复"
+    assert response.json["interventions"] == [{
+        "success": True,
+        "response": "再解释一下为什么最后一个索引不是 n。",
+        "agent": "student_agent",
+        "ui_action": "continue_chat",
+        "ready_for_code": False,
+        "state": {},
+    }]
+    dumped = json.dumps(response.json, ensure_ascii=False)
+    assert "internal_signals" not in dumped
+    assert "tool_call" not in dumped
+    assert "tool_arguments" not in dumped
+    assert "trigger" not in dumped
+    assert "artifact" not in dumped
+    assert "decision" not in dumped
+
+
+def test_legacy_stage3_routes_default_targets_and_keep_flat_shape(stage3_forum_context, monkeypatch):
+    _, client, session_id, _ = stage3_forum_context
+    calls = []
+
+    class FakeOrchestrator:
+        def __init__(self, runtime):
+            self.runtime = runtime
+
+        def handle_user_message(self, message, *, target_role, request_id, reply_to_event_id=None):
+            calls.append((message, target_role, request_id, reply_to_event_id, self.runtime.session.id))
+            return ForumTurnResult(
+                primary=AgentResult(
+                    success=True,
+                    agent=target_role,
+                    response=f"{target_role.value}: {message}",
+                ),
+                interventions=[
+                    AgentResult(
+                        success=True,
+                        agent=AgentRole.STUDENT_AGENT,
+                        response="不会出现在旧接口里。",
+                    )
+                ],
+            )
+
+    monkeypatch.setattr(thinking_routes, "build_feynman_runtime", _stub_runtime_factory())
+    monkeypatch.setattr(thinking_routes, "Stage3Orchestrator", FakeOrchestrator)
+
+    teacher_response = client.post(
+        "/thinking/api/stage3/chat",
+        json={"session_id": session_id, "message": "老师端当前消息", "request_id": "legacy-chat-1"},
+    )
+    student_response = client.post(
+        "/thinking/api/stage3/teach",
+        json={"session_id": session_id, "message": "学生端解释循环边界。", "request_id": "legacy-teach-1"},
+    )
+
+    assert teacher_response.status_code == 200
+    assert student_response.status_code == 200
+    assert teacher_response.json == {
+        "success": True,
+        "response": "teacher_agent: 老师端当前消息",
+        "agent": "teacher_agent",
+        "ui_action": "continue_chat",
+        "ready_for_code": False,
+        "state": {},
+    }
+    assert student_response.json == {
+        "success": True,
+        "response": "student_agent: 学生端解释循环边界。",
+        "agent": "student_agent",
+        "ui_action": "continue_chat",
+        "ready_for_code": False,
+        "state": {},
+    }
+    assert calls == [
+        ("老师端当前消息", AgentRole.TEACHER_AGENT, "legacy-chat-1", None, session_id),
+        ("学生端解释循环边界。", AgentRole.STUDENT_AGENT, "legacy-teach-1", None, session_id),
+    ]
+
+
+def test_start_session_returns_sanitized_forum_history_and_recovery_fields(stage3_forum_context):
+    app, client, session_id, assignment_id = stage3_forum_context
+    with app.app_context():
+        db.session.add_all([
+            ThinkingStageLog(
+                session_id=session_id,
+                stage=3,
+                event_type="chat",
+                role="student",
+                content="旧老师提问",
+                metadata_json=json.dumps({"panel": "teacher_agent"}, ensure_ascii=False),
+            ),
+            ThinkingStageLog(
+                session_id=session_id,
+                stage=3,
+                event_type="agent_user_message",
+                role="student",
+                content="论坛提问",
+                metadata_json=json.dumps({
+                    "request_id": "forum-1",
+                    "source_role": "user",
+                    "target_role": "teacher_agent",
+                    "message_kind": "user_message",
+                    "visibility": "public",
+                }, ensure_ascii=False),
+            ),
+            ThinkingStageLog(
+                session_id=session_id,
+                stage=3,
+                event_type="agent_message",
+                role="teacher_agent",
+                content="论坛回答",
+                metadata_json=json.dumps({
+                    "request_id": "forum-1",
+                    "source_role": "teacher_agent",
+                    "target_role": "user",
+                    "message_kind": "agent_message",
+                    "visibility": "public",
+                }, ensure_ascii=False),
+            ),
+            ThinkingStageLog(
+                session_id=session_id,
+                stage=3,
+                event_type="tool_result",
+                role="teacher_agent",
+                content="不会出现在论坛里",
+                metadata_json=json.dumps({
+                    "request_id": "forum-1",
+                    "public_content": {"message": "公开提示"},
+                    "artifact": {"standard_answer": "secret", "public_hint": "检查边界"},
+                }, ensure_ascii=False),
+            ),
+            ThinkingStageLog(
+                session_id=session_id,
+                stage=3,
+                event_type="tool_result",
+                role="student_agent",
+                content="代码说明",
+                metadata_json=json.dumps({
+                    "request_id": "code-1",
+                    "public_content": {"buggy_code": "buggy", "message": "代码说明"},
+                }, ensure_ascii=False),
+            ),
+            ThinkingStageLog(
+                session_id=session_id,
+                stage=3,
+                event_type="fix_code",
+                role="student",
+                content="修复代码",
+                metadata_json="{}",
+            ),
+        ])
+        db.session.commit()
+
+    response = client.post("/thinking/api/start_session", json={"assignment_id": assignment_id})
+
+    assert response.status_code == 200
+    assert response.json["resumed"] is True
+    assert [item["content"] for item in response.json["forum_history"]] == [
+        "旧老师提问",
+        "论坛提问",
+        "论坛回答",
+    ]
+    assert {item["content"] for item in response.json["teacher_history"]} >= {"旧老师提问", "论坛提问", "论坛回答"}
+    assert {item["content"] for item in response.json["student_history"]} >= {"代码说明", "【提交代码修复】\n修复代码"}
+    assert response.json["buggy_code_info"] == {"buggy_code": "buggy", "message": "代码说明"}
+    assert "standard_answer" not in json.dumps(response.json["forum_history"], ensure_ascii=False)
+    assert "secret" not in json.dumps(response.json["forum_history"], ensure_ascii=False)
+
+
+def test_write_code_still_enforces_coverage_gate(stage3_forum_context, monkeypatch):
+    _, client, session_id, _ = stage3_forum_context
+    calls = []
+
+    def runtime_factory(session, assignment, preset):
+        callbacks = FeynmanCallbacks(
+            buggy_code_generator=lambda context: calls.append(context) or {
+                "buggy_code": "int main() { return 1; }",
+                "bugs": [{"description": "隐藏 Bug", "fix": "return 0;"}],
+                "message": "不应在未就绪时调用。",
+            },
+        )
+        return build_feynman_runtime(session, assignment, preset, callbacks=callbacks)
+
+    monkeypatch.setattr(thinking_routes, "build_feynman_runtime", runtime_factory)
+
+    response = client.post(
+        "/thinking/api/stage3/write_code",
+        json={"session_id": session_id, "request_id": "write-gate-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json["success"] is False
+    assert response.json["error_code"] == "CODE_REVIEW_NOT_READY"
+    assert response.json["ready_for_code"] is False
+    assert calls == []
+
+
+def test_stage3_forum_message_checks_session_ownership_before_runtime(stage3_forum_context, monkeypatch):
+    app, _, session_id, _ = stage3_forum_context
+    with app.app_context():
+        other = User(student_id="student-2", username="student-2", usertype="学生")
+        other.password = "password"
+        db.session.add(other)
+        db.session.commit()
+
+    other_client = app.test_client()
+    other_client.post("/login", data={"username": "student-2", "password": "password"})
+    monkeypatch.setattr(
+        thinking_routes,
+        "build_feynman_runtime",
+        lambda *args, **kwargs: pytest.fail("runtime must not be constructed for a non-owner"),
+    )
+
+    response = other_client.post(
+        "/thinking/api/stage3/forum/message",
+        json={
+            "session_id": session_id,
+            "message": "无权访问",
+            "target_role": "teacher_agent",
+            "request_id": "owner-forum-1",
+        },
+    )
+
+    assert response.status_code == 403
