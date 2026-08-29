@@ -46,14 +46,14 @@ class ToolContext:
     request_id: str
     role: AgentRole
     memory: MemorySnapshot
-    input_kind: str = "chat"
-    target_role: str = ""
     assignment_title: str = ""
     key_concepts: List[str] = field(default_factory=list)
     reference_code: str = ""
+    executed_results: Dict[str, ToolResult] = field(default_factory=dict)
+    input_kind: str = "chat"
+    target_role: str = ""
     coverage_config: CoverageConfig = field(default_factory=CoverageConfig)
     trigger: Optional[Dict[str, Any]] = None
-    executed_results: Dict[str, ToolResult] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

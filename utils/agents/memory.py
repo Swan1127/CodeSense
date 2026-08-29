@@ -596,6 +596,7 @@ def _result_from_event(record: EventRecord) -> Optional[AgentResult]:
         ),
         state=dict(record.metadata.get("state", {})) if isinstance(record.metadata.get("state"), Mapping) else {},
         public_content=dict(public_content),
+        internal_signals=_internal_signals_from_metadata(_result_signal_metadata({}, record.metadata)),
         error_code=record.metadata.get("error_code"),
     )
 
@@ -615,6 +616,7 @@ def _agent_result_from_payload(payload: Mapping[str, Any], record: EventRecord) 
             public_content=public_content,
             error_code=payload.get("error_code") or record.metadata.get("error_code"),
         )
+    signal_metadata = _result_signal_metadata(payload, record.metadata)
     return AgentResult(
         success=True,
         agent=role,
@@ -623,6 +625,7 @@ def _agent_result_from_payload(payload: Mapping[str, Any], record: EventRecord) 
         ready_for_code=bool(payload.get("ready_for_code", False)),
         state=dict(payload.get("state", {})) if isinstance(payload.get("state"), Mapping) else {},
         public_content=dict(public_content),
+        internal_signals=_internal_signals_from_metadata(signal_metadata),
         error_code=payload.get("error_code"),
     )
 
@@ -671,10 +674,29 @@ def _ui_action(value: Any) -> UIAction:
 
 
 def _tool_signal_metadata(metadata: Mapping[str, Any]) -> Dict[str, Any]:
-    if metadata.get("signal_type") != "student_probe":
-        return {}
+    return _signal_metadata(metadata.get("signal_type"), metadata.get("internal_content"))
+
+
+def _result_signal_metadata(
+    payload: Mapping[str, Any], record_metadata: Mapping[str, Any],
+) -> Dict[str, Any]:
+    for metadata in (payload, record_metadata):
+        signal_metadata = _tool_signal_metadata(metadata)
+        if signal_metadata:
+            return signal_metadata
+    return {}
+
+
+def _internal_signals_from_metadata(metadata: Mapping[str, Any]) -> Dict[str, Any]:
+    signal_type = metadata.get("signal_type")
     internal_content = metadata.get("internal_content")
-    if not isinstance(internal_content, Mapping):
+    if not signal_type or not isinstance(internal_content, Mapping):
+        return {}
+    return {str(signal_type): dict(internal_content)}
+
+
+def _signal_metadata(signal_type: Any, internal_content: Any) -> Dict[str, Any]:
+    if signal_type != "student_probe" or not isinstance(internal_content, Mapping):
         return {}
     allowed = {}
     for key in ("concept", "dimension", "goal"):

@@ -1025,6 +1025,66 @@ def test_replayed_probe_tool_result_preserves_private_signal_without_public_leak
     assert "检查用户能否解释边界条件" not in str(projected)
 
 
+def test_completed_probe_retry_replays_private_signal_without_public_leak():
+    event_store = FakeEventStore()
+    memory = MemoryStore(event_store)
+    request_id = "completed-probe-retry"
+    probe = ToolResult(
+        ok=True,
+        model_content={"accepted": True},
+        internal_content={
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "检查用户能否解释边界条件",
+            "hidden_answer": "i < n",
+        },
+        signal_type="student_probe",
+    )
+    loop = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall(
+                "probe-complete",
+                "request_student_probe",
+                {
+                    "concept": "循环边界",
+                    "dimension": "core",
+                    "goal": "检查用户能否解释边界条件",
+                },
+            )]),
+            AgentDecision(message="先说明循环什么时候停止。"),
+        ]),
+        tools=FakeRegistry({
+            "request_student_probe": probe,
+        }),
+        memory=memory,
+    )
+
+    first = loop.handle_turn("继续", request_id=request_id)
+    retry = loop.handle_turn("重复提交", request_id=request_id)
+    terminal = next(
+        event for event in reversed(event_store.events)
+        if event.event_type == "state_snapshot"
+        and event.metadata.get("request_id") == request_id
+    )
+    projected = memory.forum_events(12)
+
+    assert first.internal_signals == {
+        "student_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "检查用户能否解释边界条件",
+        }
+    }
+    assert retry.internal_signals == first.internal_signals
+    assert retry.to_public_dict() == first.to_public_dict()
+    assert len(loop.model.calls) == 2
+    assert terminal.metadata["signal_type"] == "student_probe"
+    assert terminal.metadata["internal_content"] == first.internal_signals["student_probe"]
+    assert "hidden_answer" not in terminal.metadata["internal_content"]
+    assert "internal_signals" not in retry.to_public_dict()
+    assert "检查用户能否解释边界条件" not in str(projected)
+
+
 def test_side_effect_tool_claim_is_persisted_before_callback_runs():
     observed_claims = []
     runtime = make_feynman_runtime(

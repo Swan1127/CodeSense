@@ -623,6 +623,7 @@ class AgentLoop:
         message_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         payload = _result_payload(result)
+        signal_metadata = _sanitized_result_signal_metadata(result)
         events = [
             EventRecord(
                 session_id=self.session_id,
@@ -652,6 +653,7 @@ class AgentLoop:
                         for role, state in snapshot.agent_states.items()
                     },
                     "agent_result": payload,
+                    **signal_metadata,
                 },
             ),
         ]
@@ -745,7 +747,7 @@ def _safe_error_code(value: Any) -> str:
 
 
 def _result_payload(result: AgentResult) -> Dict[str, Any]:
-    return {
+    payload = {
         "success": result.success,
         "agent": result.agent.value,
         "response": result.response,
@@ -755,6 +757,15 @@ def _result_payload(result: AgentResult) -> Dict[str, Any]:
         "public_content": dict(result.public_content),
         "error_code": result.error_code,
     }
+    payload.update(_sanitized_result_signal_metadata(result))
+    return payload
+
+
+def _sanitized_result_signal_metadata(result: AgentResult) -> Dict[str, Any]:
+    signals = result.internal_signals
+    if not isinstance(signals, Mapping):
+        return {}
+    return _sanitized_signal_parts("student_probe", signals.get("student_probe"))
 
 
 def _tool_result_for_model(call: ToolCall, result: ToolResult) -> Dict[str, Any]:
@@ -864,15 +875,19 @@ def _normalized_trigger(value: Mapping[str, Any]) -> Optional[Dict[str, str]]:
 
 
 def _sanitized_signal_metadata(result: ToolResult) -> Dict[str, Any]:
-    if result.signal_type != "student_probe" or not isinstance(result.internal_content, Mapping):
+    return _sanitized_signal_parts(result.signal_type, result.internal_content)
+
+
+def _sanitized_signal_parts(signal_type: Any, internal_content: Any) -> Dict[str, Any]:
+    if signal_type != "student_probe" or not isinstance(internal_content, Mapping):
         return {}
-    internal_content = {}
+    allowed = {}
     for key in ("concept", "dimension", "goal"):
-        value = result.internal_content.get(key)
+        value = internal_content.get(key)
         if not isinstance(value, str) or not value.strip():
             return {}
-        internal_content[key] = value.strip()
+        allowed[key] = value.strip()
     return {
         "signal_type": "student_probe",
-        "internal_content": internal_content,
+        "internal_content": allowed,
     }

@@ -19,6 +19,34 @@ def fake_tool_context(role, *, state=None):
     )
 
 
+def test_tool_context_preserves_legacy_positional_constructor_order():
+    snapshot = MemorySnapshot(state=FeynmanState(session_id=12))
+    executed_results = {"call-1": "stored"}
+
+    context = ToolContext(
+        12,
+        "request-1",
+        AgentRole.TEACHER_AGENT,
+        snapshot,
+        "循环练习",
+        ["循环边界"],
+        "reference code",
+        executed_results,
+    )
+
+    assert context.session_id == 12
+    assert context.request_id == "request-1"
+    assert context.role is AgentRole.TEACHER_AGENT
+    assert context.memory is snapshot
+    assert context.assignment_title == "循环练习"
+    assert context.key_concepts == ["循环边界"]
+    assert context.reference_code == "reference code"
+    assert context.executed_results is executed_results
+    assert context.input_kind == "chat"
+    assert context.target_role == ""
+    assert context.trigger is None
+
+
 def ready_fix_context():
     state = FeynmanState(
         session_id=12,
