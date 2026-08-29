@@ -259,29 +259,23 @@ def test_legacy_stage3_routes_default_targets_and_keep_flat_shape(stage3_forum_c
     _, client, session_id, _ = stage3_forum_context
     calls = []
 
-    class FakeOrchestrator:
-        def __init__(self, runtime):
-            self.runtime = runtime
+    class FakeRuntime:
+        def __init__(self, session_id):
+            self.session = SimpleNamespace(id=session_id)
 
-        def handle_user_message(self, message, *, target_role, request_id, reply_to_event_id=None):
-            calls.append((message, target_role, request_id, reply_to_event_id, self.runtime.session.id))
-            return ForumTurnResult(
-                primary=AgentResult(
-                    success=True,
-                    agent=target_role,
-                    response=f"{target_role.value}: {message}",
-                ),
-                interventions=[
-                    AgentResult(
-                        success=True,
-                        agent=AgentRole.STUDENT_AGENT,
-                        response="不会出现在旧接口里。",
-                    )
-                ],
+        def handle_chat(self, role, message, *, request_id, event_metadata=None):
+            calls.append((message, role, request_id, dict(event_metadata or {}), self.session.id))
+            return AgentResult(
+                success=True,
+                agent=role,
+                response=f"{role.value}: {message}",
             )
 
-    monkeypatch.setattr(thinking_routes, "build_feynman_runtime", _stub_runtime_factory())
-    monkeypatch.setattr(thinking_routes, "Stage3Orchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        thinking_routes,
+        "build_feynman_runtime",
+        lambda session, assignment, preset: FakeRuntime(session.id),
+    )
 
     teacher_response = client.post(
         "/thinking/api/stage3/chat",
@@ -311,9 +305,105 @@ def test_legacy_stage3_routes_default_targets_and_keep_flat_shape(stage3_forum_c
         "state": {},
     }
     assert calls == [
-        ("老师端当前消息", AgentRole.TEACHER_AGENT, "legacy-chat-1", None, session_id),
-        ("学生端解释循环边界。", AgentRole.STUDENT_AGENT, "legacy-teach-1", None, session_id),
+        (
+            "老师端当前消息",
+            AgentRole.TEACHER_AGENT,
+            "legacy-chat-1",
+            {
+                "source_role": "user",
+                "target_role": "teacher_agent",
+                "message_kind": "user_message",
+                "visibility": "public",
+            },
+            session_id,
+        ),
+        (
+            "学生端解释循环边界。",
+            AgentRole.STUDENT_AGENT,
+            "legacy-teach-1",
+            {
+                "source_role": "user",
+                "target_role": "student_agent",
+                "message_kind": "user_message",
+                "visibility": "public",
+            },
+            session_id,
+        ),
     ]
+
+
+def test_legacy_stage3_chat_does_not_trigger_student_intervention(stage3_forum_context, monkeypatch):
+    _, client, session_id, _ = stage3_forum_context
+
+    class FakeRuntime:
+        def __init__(self):
+            self.session = SimpleNamespace(id=session_id)
+            self.chat_calls = []
+            self.trigger_calls = []
+
+        def handle_chat(self, role, message, *, request_id, event_metadata=None):
+            self.chat_calls.append((role, message, request_id, dict(event_metadata or {})))
+            return AgentResult(
+                success=True,
+                agent=AgentRole.TEACHER_AGENT,
+                response="老师回答",
+                internal_signals={
+                    "student_probe": {
+                        "concept": "循环边界",
+                        "dimension": "edge_case",
+                        "goal": "检查边界解释",
+                    }
+                },
+            )
+
+        def handle_trigger(self, trigger, *, request_id, event_metadata=None):
+            self.trigger_calls.append((trigger, request_id, dict(event_metadata or {})))
+            raise AssertionError("legacy chat must not create a Student intervention")
+
+    fake_runtime = FakeRuntime()
+    monkeypatch.setattr(
+        thinking_routes,
+        "build_feynman_runtime",
+        lambda *args, **kwargs: fake_runtime,
+    )
+    monkeypatch.setattr(
+        thinking_routes,
+        "Stage3Orchestrator",
+        lambda *args, **kwargs: pytest.fail("legacy chat must not invoke Stage3Orchestrator"),
+    )
+
+    response = client.post(
+        "/thinking/api/stage3/chat",
+        json={
+            "session_id": session_id,
+            "message": "请解释循环边界。",
+            "request_id": "legacy-probe-1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json == {
+        "success": True,
+        "response": "老师回答",
+        "agent": "teacher_agent",
+        "ui_action": "continue_chat",
+        "ready_for_code": False,
+        "state": {},
+    }
+    assert response.json["agent"] == AgentRole.TEACHER_AGENT.value
+    assert "interventions" not in response.json
+    assert fake_runtime.chat_calls == [(
+        AgentRole.TEACHER_AGENT,
+        "请解释循环边界。",
+        "legacy-probe-1",
+        {
+            "source_role": "user",
+            "target_role": "teacher_agent",
+            "message_kind": "user_message",
+            "visibility": "public",
+        },
+    )]
+    assert fake_runtime.trigger_calls == []
 
 
 def test_start_session_returns_sanitized_forum_history_and_recovery_fields(stage3_forum_context):

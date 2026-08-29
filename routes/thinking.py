@@ -17,7 +17,7 @@ from utils.thinking_ai import (
     generate_preset, evaluate_description, generate_stage1_hint,
     generate_stage2_hint, companion_agent_chat, sanitize_response
 )
-from utils.agents.contracts import AgentRole
+from utils.agents.contracts import AgentRole, Stage3MessageKind, Stage3Target
 from utils.agents.feynman import build_feynman_runtime
 from utils.agents.memory import MemoryStore, SqlAlchemyEventStore
 from utils.agents.orchestrator import Stage3Orchestrator
@@ -171,6 +171,38 @@ def _stage3_forum_payload(primary_payload: dict, interventions: list | None = No
         'primary': dict(primary_payload),
         'interventions': list(interventions or []),
     }
+
+
+def _stage3_legacy_event_metadata(target_role: AgentRole):
+    return {
+        'source_role': Stage3Target.USER.value,
+        'target_role': target_role.value,
+        'message_kind': Stage3MessageKind.USER_MESSAGE.value,
+        'visibility': 'public',
+    }
+
+
+def _run_stage3_legacy_turn(data: dict, target_role: AgentRole):
+    message = _extract_stage3_message(data)
+    if not message:
+        return jsonify({'error': '缺少消息'}), 400
+    ts, runtime, error_code = _stage3_runtime(data)
+    if error_code:
+        return _stage3_runtime_error_response(error_code)
+
+    request_id = _request_id(data)
+    if target_role is AgentRole.STUDENT_AGENT:
+        guarded = _stage3_student_message_guard(ts.id, message, request_id)
+        if guarded is not None:
+            return guarded.to_public_dict() if hasattr(guarded, 'to_public_dict') else guarded
+
+    result = runtime.handle_chat(
+        target_role,
+        message,
+        request_id=request_id,
+        event_metadata=_stage3_legacy_event_metadata(target_role),
+    )
+    return result.to_public_dict()
 
 
 def _run_stage3_forum_turn(
@@ -970,13 +1002,10 @@ def stage3_teacher_chat():
     """费曼阶段 — 老师Agent对话"""
     try:
         data = request.get_json() or {}
-        _, _, payload = _run_stage3_forum_turn(
-            data,
-            default_target_role=AgentRole.TEACHER_AGENT,
-        )
+        payload = _run_stage3_legacy_turn(data, AgentRole.TEACHER_AGENT)
         if isinstance(payload, tuple):
             return payload
-        return jsonify(payload['primary'])
+        return jsonify(payload)
     except Exception:
         db.session.rollback()
         current_app.logger.exception('阶段3老师Agent对话失败')
@@ -1008,13 +1037,10 @@ def stage3_student_teach():
     """费曼阶段 — 教坏学生对话"""
     try:
         data = request.get_json() or {}
-        _, _, payload = _run_stage3_forum_turn(
-            data,
-            default_target_role=AgentRole.STUDENT_AGENT,
-        )
+        payload = _run_stage3_legacy_turn(data, AgentRole.STUDENT_AGENT)
         if isinstance(payload, tuple):
             return payload
-        return jsonify(payload['primary'])
+        return jsonify(payload)
     except Exception:
         db.session.rollback()
         current_app.logger.exception('阶段3学生Agent对话失败')

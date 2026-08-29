@@ -199,8 +199,6 @@ def test_stage3_chat_uses_current_message_not_client_history(stage3_context, mon
             "target_role": "teacher_agent",
             "message_kind": "user_message",
             "visibility": "public",
-            "reply_to_event_id": None,
-            "parent_request_id": None,
         },
     )]
     assert response.json["response"] == "请解释边界。"
@@ -226,8 +224,6 @@ def test_stage3_chat_uses_last_old_user_message_as_fallback(stage3_context, monk
             "target_role": "teacher_agent",
             "message_kind": "user_message",
             "visibility": "public",
-            "reply_to_event_id": None,
-            "parent_request_id": None,
         },
     )]
 
@@ -368,8 +364,6 @@ def test_runtime_user_events_are_attributed_to_their_terminal_agent(stage3_conte
             "target_role": "student_agent",
             "message_kind": "user_message",
             "visibility": "public",
-            "reply_to_event_id": None,
-            "parent_request_id": None,
         },
     )]
 
