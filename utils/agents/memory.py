@@ -30,7 +30,9 @@ _COMPLETED_RESULT_EVENTS = frozenset({
     "agent_message", "tool_result", "agent_result", "state_snapshot",
 })
 _REPLAYABLE_STATE_FIELDS = frozenset({
-    "phase", "learning_evidence", "code_review_status", "status",
+    "phase", "learning_evidence", "concept_coverage", "coverage_score",
+    "unresolved_concepts", "ready_for_code", "pending_probe",
+    "code_review_status", "status",
 })
 _STUDENT_SAFE_ARTIFACT_FIELDS = frozenset({"public_hint"})
 _ADVANCEMENT_RESULT_FIELDS = frozenset({

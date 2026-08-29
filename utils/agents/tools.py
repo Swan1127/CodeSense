@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, FrozenSet, List, Mapping, Optional
 
+from .coverage import CoverageConfig, apply_coverage_assessment
 from .contracts import AgentRole, ToolCall, ToolResult
 from .memory import MemorySnapshot
 
@@ -17,9 +18,22 @@ from .memory import MemorySnapshot
 MAX_CONCEPT_CHARS = 200
 MAX_EVIDENCE_CHARS = 2_000
 MAX_FIXED_CODE_CHARS = 8_000
+MAX_GOAL_CHARS = 300
+MAX_PROBE_DIMENSION_CHARS = 64
+MAX_PROBE_QUESTION_CHARS = 500
 _SAFE_CODE_REVIEW_MESSAGE = "我写了一版代码，请帮我检查。"
 _SAFE_PASSED_FEEDBACK = "修复已通过检查。"
 _SAFE_FAILED_FEEDBACK = "请继续检查代码逻辑。"
+_SELF_CONFIRMING_PROBE_PATTERNS = (
+    re.compile(r"我也(?:懂了|明白了|会了)"),
+    re.compile(r"我知道答案"),
+    re.compile(r"\b(?:i\s+also\s+understand|i\s+know\s+the\s+answer)\b", re.IGNORECASE),
+)
+_QUESTION_HINT_PATTERNS = (
+    re.compile(r"[?？]\s*$"),
+    re.compile(r"(为什么|怎么|如何|是否|能否|能不能|请问)"),
+    re.compile(r"\b(why|how|what|which|when|where|could|can|would|do|does|did|is|are)\b", re.IGNORECASE),
+)
 
 ToolHandler = Callable[["ToolContext", Dict[str, Any]], ToolResult]
 BuggyCodeGenerator = Callable[["ToolContext"], Mapping[str, Any]]
@@ -32,9 +46,13 @@ class ToolContext:
     request_id: str
     role: AgentRole
     memory: MemorySnapshot
+    input_kind: str = "chat"
+    target_role: str = ""
     assignment_title: str = ""
     key_concepts: List[str] = field(default_factory=list)
     reference_code: str = ""
+    coverage_config: CoverageConfig = field(default_factory=CoverageConfig)
+    trigger: Optional[Dict[str, Any]] = None
     executed_results: Dict[str, ToolResult] = field(default_factory=dict)
 
 
@@ -122,6 +140,7 @@ def build_feynman_tool_registry(
     evaluator = fix_evaluator or _default_fix_evaluator
     registry = ToolRegistry()
     both_roles = frozenset({AgentRole.TEACHER_AGENT, AgentRole.STUDENT_AGENT})
+    teacher_only = frozenset({AgentRole.TEACHER_AGENT})
     student_only = frozenset({AgentRole.STUDENT_AGENT})
 
     registry.register(ToolDefinition(
@@ -141,6 +160,34 @@ def build_feynman_tool_registry(
             },
             required=["concept", "evidence"],
         ), both_roles, _record_learning_evidence, side_effect=True,
+    ))
+    registry.register(ToolDefinition(
+        "request_student_probe", "Request one bounded student probe intervention.",
+        _object_schema(
+            properties={
+                "concept": _string_schema(MAX_CONCEPT_CHARS),
+                "dimension": _string_schema(MAX_PROBE_DIMENSION_CHARS),
+                "goal": _string_schema(MAX_GOAL_CHARS),
+            },
+            required=["concept", "dimension", "goal"],
+        ), teacher_only, _request_student_probe, side_effect=True,
+    ))
+    registry.register(ToolDefinition(
+        "ask_student_probe", "Ask the user one bounded probe question.",
+        _object_schema(
+            properties={"question": _string_schema(MAX_PROBE_QUESTION_CHARS)},
+            required=["question"],
+        ), student_only, _ask_student_probe, side_effect=True,
+    ))
+    registry.register(ToolDefinition(
+        "assess_teaching_progress", "Assess learning coverage from the current student explanation.",
+        _object_schema(
+            properties={
+                "assessment": _string_schema(32),
+                "evidence": _string_schema(MAX_EVIDENCE_CHARS),
+            },
+            required=["assessment", "evidence"],
+        ), student_only, _assess_teaching_progress, side_effect=True,
     ))
     registry.register(ToolDefinition(
         "generate_buggy_attempt", "Generate a student code attempt for review.",
@@ -210,6 +257,72 @@ def _record_learning_evidence(context: ToolContext, arguments: Dict[str, Any]) -
         public_content={"recorded": evidence},
         state_patch={"learning_evidence": all_evidence},
         memory_events=[{"event_type": "learning_evidence", "metadata": {"evidence": evidence}}],
+    )
+
+
+def _request_student_probe(context: ToolContext, arguments: Dict[str, Any]) -> ToolResult:
+    concept = arguments["concept"].strip()
+    dimension = arguments["dimension"].strip()
+    goal = arguments["goal"].strip()
+    if concept not in _allowed_concepts(context):
+        return _error("INVALID_STUDENT_PROBE")
+    if dimension not in context.coverage_config.probe_dimensions:
+        return _error("INVALID_STUDENT_PROBE")
+    if not goal:
+        return _error("INVALID_STUDENT_PROBE")
+    return ToolResult(
+        ok=True,
+        model_content={"accepted": True},
+        internal_content={
+            "concept": concept,
+            "dimension": dimension,
+            "goal": goal,
+        },
+        signal_type="student_probe",
+    )
+
+
+def _ask_student_probe(context: ToolContext, arguments: Dict[str, Any]) -> ToolResult:
+    target = _current_probe_target(context)
+    question = arguments["question"].strip()
+    if target is None or not _is_valid_probe_question(question):
+        return _error("INVALID_STUDENT_PROBE")
+    return ToolResult(
+        ok=True,
+        model_content={"accepted": True},
+        public_content={"message": question},
+        state_patch={"pending_probe": target},
+    )
+
+
+def _assess_teaching_progress(context: ToolContext, arguments: Dict[str, Any]) -> ToolResult:
+    target = _current_probe_target(context)
+    if target is None:
+        return _error("INVALID_TEACHING_ASSESSMENT")
+    try:
+        decision = apply_coverage_assessment(
+            context.memory.state,
+            context.key_concepts,
+            config=context.coverage_config,
+            concept=target["concept"],
+            dimension=target["dimension"],
+            assessment=arguments["assessment"],
+            evidence=arguments["evidence"],
+            event_id=context.request_id,
+        )
+    except ValueError:
+        return _error("INVALID_TEACHING_ASSESSMENT")
+    return ToolResult(
+        ok=True,
+        model_content={
+            "concept_status": decision.concept_status,
+            "attempts": decision.attempts,
+            "next_concept": decision.next_concept,
+            "next_dimension": decision.next_dimension,
+            "ready_for_code": decision.ready_for_code,
+            "coverage_score": decision.coverage_score,
+        },
+        state_patch=decision.state_patch,
     )
 
 
@@ -300,6 +413,25 @@ def _generated_code_is_safe(context: ToolContext, buggy_code: str, bugs: List[An
         sensitive in buggy_code
         for sensitive in _internal_artifact_strings(bugs)
     )
+
+
+def _current_probe_target(context: ToolContext) -> Optional[Dict[str, str]]:
+    for candidate in (context.trigger, getattr(context.memory.state, "pending_probe", None)):
+        if not isinstance(candidate, Mapping):
+            continue
+        concept = candidate.get("concept")
+        dimension = candidate.get("dimension")
+        if isinstance(concept, str) and concept.strip() and isinstance(dimension, str) and dimension.strip():
+            return {"concept": concept.strip(), "dimension": dimension.strip()}
+    return None
+
+
+def _is_valid_probe_question(question: str) -> bool:
+    if not question:
+        return False
+    if any(pattern.search(question) for pattern in _SELF_CONFIRMING_PROBE_PATTERNS):
+        return False
+    return any(pattern.search(question) for pattern in _QUESTION_HINT_PATTERNS)
 
 
 def _structured_bug(value: Any) -> bool:

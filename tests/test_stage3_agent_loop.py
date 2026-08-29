@@ -172,6 +172,18 @@ def make_loop(*, model, tools=None, memory=None):
     )
 
 
+def make_student_loop(*, model, tools=None, memory=None):
+    return AgentLoop(
+        session_id=12,
+        role=AgentRole.STUDENT_AGENT,
+        model=model,
+        tools=tools or FakeRegistry({"inspect_learning_state": ToolResult(ok=True)}),
+        memory=memory or FakeMemory(),
+        spec=AgentLoopSpec(system_prompt="study safely"),
+        config=AgentLoopConfig(),
+    )
+
+
 def test_agent_loop_sanitizes_code_before_public_response_and_persistence():
     memory = FakeMemory()
     result = AgentLoop(
@@ -262,6 +274,135 @@ def test_agent_loop_executes_tool_then_uses_result():
         "tool_call_id": "c1", "name": "inspect_learning_state", "ok": True,
         "content": {"focus": "循环边界"},
     }]
+
+
+def test_agent_loop_collects_only_the_first_internal_probe_signal_per_request():
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[
+                ToolCall("probe-1", "request_student_probe", {
+                    "concept": "循环边界",
+                    "dimension": "core",
+                    "goal": "先问边界条件",
+                }),
+                ToolCall("probe-2", "request_student_probe", {
+                    "concept": "不变量",
+                    "dimension": "edge_case",
+                    "goal": "再问边界情况",
+                }),
+            ]),
+            AgentDecision(message="先说明循环什么时候停止。"),
+        ]),
+        tools=FakeRegistry({
+            "request_student_probe": [
+                ToolResult(
+                    ok=True,
+                    model_content={"accepted": True},
+                    internal_content={
+                        "concept": "循环边界",
+                        "dimension": "core",
+                        "goal": "先问边界条件",
+                    },
+                    signal_type="student_probe",
+                ),
+                ToolResult(
+                    ok=True,
+                    model_content={"accepted": True},
+                    internal_content={
+                        "concept": "不变量",
+                        "dimension": "edge_case",
+                        "goal": "再问边界情况",
+                    },
+                    signal_type="student_probe",
+                ),
+            ],
+        }),
+    ).handle_turn("继续", request_id="teacher-probe")
+
+    assert result.success is True
+    assert result.response == "先说明循环什么时候停止。"
+    assert result.internal_signals == {
+        "student_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "先问边界条件",
+        }
+    }
+    assert "internal_signals" not in result.to_public_dict()
+
+
+def test_agent_loop_forbidden_probe_tool_returns_stable_error_without_public_message():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("forbidden", "ask_student_probe", {
+                "question": "你能解释一下为什么最后一个索引不是 n 吗？",
+            })]),
+        ]),
+        tools=FakeRegistry({"ask_student_probe": ToolResult(ok=False, error_code="TOOL_NOT_ALLOWED")}),
+        memory=memory,
+    ).handle_turn("继续", request_id="forbidden-probe")
+
+    assert (result.success, result.error_code) == (False, "TOOL_NOT_ALLOWED")
+    assert "agent_message" not in [event[0] for event in memory.events]
+
+
+def test_handle_trigger_persists_agent_trigger_without_blank_user_message():
+    memory = FakeMemory()
+    result = make_student_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("probe-ask", "ask_student_probe", {
+                "question": "你能解释一下为什么最后一个合法索引是 n - 1 吗？",
+            })]),
+        ]),
+        tools=FakeRegistry({"ask_student_probe": ToolResult(
+            ok=True,
+            public_content={"message": "你能解释一下为什么最后一个合法索引是 n - 1 吗？"},
+            state_patch={"pending_probe": {"concept": "循环边界", "dimension": "core"}},
+        )}),
+        memory=memory,
+    ).handle_trigger(
+        {"concept": "循环边界", "dimension": "core", "goal": "检查边界解释"},
+        request_id="trigger-1",
+    )
+
+    assert result.success is True
+    assert result.response == "你能解释一下为什么最后一个合法索引是 n - 1 吗？"
+    assert [event[0] for event in memory.events][:4] == [
+        "agent_trigger", "agent_decision", "tool_call", "tool_result",
+    ]
+    assert "agent_user_message" not in [event[0] for event in memory.events]
+    assert memory.events[0][3]["message_kind"] == "agent_trigger"
+    assert memory.events[0][3]["target_role"] == "student_agent"
+
+
+def test_handle_trigger_does_not_emit_recursive_intervention_signal():
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("probe-1", "request_student_probe", {
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "先问边界条件",
+            })]),
+            AgentDecision(message="继续。"),
+        ]),
+        tools=FakeRegistry({"request_student_probe": ToolResult(
+            ok=True,
+            model_content={"accepted": True},
+            internal_content={
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "先问边界条件",
+            },
+            signal_type="student_probe",
+        )}),
+    ).handle_trigger(
+        {"concept": "循环边界", "dimension": "edge_case", "goal": "外部触发"},
+        request_id="trigger-recursive",
+    )
+
+    assert result.success is True
+    assert result.internal_signals == {}
 
 
 def test_agent_loop_stops_after_four_model_decisions():

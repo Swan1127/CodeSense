@@ -131,9 +131,11 @@ class ToolResult:
     ok: bool
     model_content: Dict[str, Any] = field(default_factory=dict)
     public_content: Dict[str, Any] = field(default_factory=dict)
+    internal_content: Dict[str, Any] = field(default_factory=dict)
     state_patch: Dict[str, Any] = field(default_factory=dict)
     memory_events: List[Dict[str, Any]] = field(default_factory=list)
     error_code: Optional[str] = None
+    signal_type: Optional[str] = None
     retryable: bool = False
 
 

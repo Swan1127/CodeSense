@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Iterator, List, Mapping, Optional
 
+from .coverage import CoverageConfig
 from .contracts import (
     MAX_TOOL_CALLS_PER_DECISION,
     AgentDecision,
@@ -33,7 +34,11 @@ _PUBLIC_STATE_FIELDS = frozenset({
     "goal", "phase", "teacher_rounds", "student_rounds", "learning_evidence",
     "misconceptions", "code_review_status", "status",
 })
-_PATCHABLE_STATE_FIELDS = frozenset({"phase", "learning_evidence", "code_review_status", "status"})
+_PATCHABLE_STATE_FIELDS = frozenset({
+    "phase", "learning_evidence", "concept_coverage", "coverage_score",
+    "unresolved_concepts", "ready_for_code", "pending_probe",
+    "code_review_status", "status",
+})
 _VALID_PHASES = frozenset({"student_dialogue", "code_review"})
 _VALID_CODE_REVIEW_STATUSES = frozenset({"pending", "passed", "failed", "approved", "complete"})
 
@@ -63,6 +68,7 @@ class AgentLoopSpec:
     assignment_title: str = ""
     key_concepts: List[str] = field(default_factory=list)
     reference_code: str = ""
+    coverage_config: CoverageConfig = field(default_factory=CoverageConfig)
     max_output_chars: int = 1200
 
 
@@ -85,6 +91,8 @@ class AgentLoop:
         self.memory = memory
         self.spec = spec
         self.config = config or AgentLoopConfig()
+        self._active_trigger: Optional[Dict[str, Any]] = None
+        self._active_target_role = role.value
 
     def handle_turn(
         self,
@@ -103,23 +111,80 @@ class AgentLoop:
                         agent=self.role,
                         error_code="SESSION_LOCK_UNAVAILABLE",
                     )
-                return self._handle_turn_locked(user_message, request_id, input_kind)
+                return self._handle_turn_locked(
+                    user_message,
+                    request_id,
+                    input_kind,
+                    target_role=self.role.value,
+                    trigger=None,
+                    skip_user_message=False,
+                )
+
+    def handle_trigger(self, trigger: Mapping[str, Any], *, request_id: str) -> AgentResult:
+        lock = _session_lock(self.session_id)
+        with lock:
+            with _distributed_session_lock(self.session_id) as acquired:
+                if not acquired:
+                    return AgentResult(
+                        success=False,
+                        agent=self.role,
+                        error_code="SESSION_LOCK_UNAVAILABLE",
+                    )
+                existing = self.memory.find_request_result(self.session_id, request_id)
+                if existing is not None:
+                    return existing
+                normalized_trigger = _normalized_trigger(trigger)
+                if normalized_trigger is None:
+                    return self._failure("INVALID_AGENT_TRIGGER", request_id)
+                self.memory.append_event(
+                    self.session_id,
+                    "agent_trigger",
+                    "system",
+                    content=normalized_trigger["goal"],
+                    metadata={
+                        "request_id": request_id,
+                        "source_role": AgentRole.TEACHER_AGENT.value,
+                        "target_role": self.role.value,
+                        "message_kind": "agent_trigger",
+                        "visibility": "private",
+                        "trigger": dict(normalized_trigger),
+                    },
+                )
+                return self._handle_turn_locked(
+                    "",
+                    request_id,
+                    "intervention",
+                    target_role=self.role.value,
+                    trigger=normalized_trigger,
+                    skip_user_message=True,
+                )
 
     def _handle_turn_locked(
-        self, user_message: str, request_id: str, input_kind: str,
+        self,
+        user_message: str,
+        request_id: str,
+        input_kind: str,
+        *,
+        target_role: str,
+        trigger: Optional[Dict[str, Any]],
+        skip_user_message: bool,
     ) -> AgentResult:
         existing = self.memory.find_request_result(self.session_id, request_id)
         if existing is not None:
             return existing
 
-        self.memory.append_event(
-            self.session_id, "agent_user_message", "student", content=user_message,
-            metadata={"request_id": request_id, "input_kind": input_kind},
-        )
+        if not skip_user_message:
+            self.memory.append_event(
+                self.session_id, "agent_user_message", "student", content=user_message,
+                metadata={"request_id": request_id, "input_kind": input_kind},
+            )
         snapshot = self.memory.load(self.session_id)
-        context = self._tool_context(snapshot, request_id)
+        self._active_trigger = dict(trigger) if isinstance(trigger, Mapping) else None
+        self._active_target_role = target_role
+        context = self._tool_context(snapshot, request_id, input_kind)
         tool_results: List[Dict[str, Any]] = []
         total_tool_calls = 0
+        internal_signals: Dict[str, Any] = {}
 
         for step in range(self.config.max_model_steps):
             decision = self._decide(input_kind, tool_results, request_id, snapshot, step)
@@ -143,7 +208,12 @@ class AgentLoop:
                 self._advance_successful_chat(
                     snapshot, user_message, decision.message, input_kind,
                 )
-                return self._finish_public_response(decision, snapshot, request_id)
+                return self._finish_public_response(
+                    decision,
+                    snapshot,
+                    request_id,
+                    internal_signals,
+                )
             batch_size = len(decision.tool_calls)
             if (
                 batch_size > self.config.max_tool_calls_per_decision
@@ -175,6 +245,14 @@ class AgentLoop:
                             self._persist_tool_result(call, invalid, request_id, terminal=True)
                         return self._failure("INVALID_STATE_PATCH", request_id)
                     self._apply_state_patch(snapshot, patch)
+                    if (
+                        input_kind != "intervention"
+                        and not internal_signals
+                        and isinstance(result.signal_type, str)
+                        and result.signal_type
+                        and isinstance(result.internal_content, Mapping)
+                    ):
+                        internal_signals[result.signal_type] = dict(result.internal_content)
                     terminal_kind = _terminal_tool_kind(call, result)
                     terminal_success = terminal_kind is not None
                     if execution.persist:
@@ -186,17 +264,19 @@ class AgentLoop:
                         self._advance_successful_chat(
                             snapshot, user_message, call.name, input_kind,
                         )
-                        return self._finish_code_review(result, snapshot, request_id)
+                        return self._finish_code_review(result, snapshot, request_id, internal_signals)
                     if terminal_kind == "complete_goal":
                         self._advance_successful_chat(
                             snapshot, user_message, call.name, input_kind,
                         )
-                        return self._finish_goal(result, snapshot, request_id)
+                        return self._finish_goal(result, snapshot, request_id, internal_signals)
                     if terminal_kind == "fix_passed":
                         self._advance_successful_chat(
                             snapshot, user_message, call.name, input_kind,
                         )
-                        return self._finish_fix(result, snapshot, request_id)
+                        return self._finish_fix(result, snapshot, request_id, internal_signals)
+                    if terminal_kind == "student_probe":
+                        return self._finish_probe(result, snapshot, request_id)
 
         return self._failure("MAX_AGENT_STEPS", request_id)
 
@@ -246,17 +326,24 @@ class AgentLoop:
     def _build_context(self, snapshot: MemorySnapshot, *, input_kind: str) -> str:
         prompt = self.memory.view_for(snapshot, self.role).to_prompt_dict()
         prompt["input_kind"] = input_kind
+        prompt["target_role"] = self._active_target_role
+        if input_kind == "intervention" and isinstance(self._active_trigger, Mapping):
+            prompt["trigger"] = dict(self._active_trigger)
         return json.dumps(prompt, ensure_ascii=False)
 
-    def _tool_context(self, snapshot: MemorySnapshot, request_id: str) -> ToolContext:
+    def _tool_context(self, snapshot: MemorySnapshot, request_id: str, input_kind: str) -> ToolContext:
         return ToolContext(
             session_id=self.session_id,
             request_id=request_id,
             role=self.role,
             memory=snapshot,
+            input_kind=input_kind,
+            target_role=self._active_target_role,
             assignment_title=self.spec.assignment_title,
             key_concepts=list(self.spec.key_concepts),
             reference_code=self.spec.reference_code,
+            coverage_config=self.spec.coverage_config,
+            trigger=dict(self._active_trigger) if isinstance(self._active_trigger, Mapping) else None,
         )
 
     def _execute_tool(
@@ -346,6 +433,16 @@ class AgentLoop:
                 return None
             if name == "learning_evidence" and not _valid_entries(value, {"concept", "evidence"}):
                 return None
+            if name == "concept_coverage" and not _valid_concept_coverage(value):
+                return None
+            if name == "coverage_score" and not _valid_coverage_score(value):
+                return None
+            if name == "unresolved_concepts" and not _valid_string_list(value):
+                return None
+            if name == "ready_for_code" and type(value) is not bool:
+                return None
+            if name == "pending_probe" and not _valid_pending_probe(value):
+                return None
             if name == "code_review_status" and (
                 not isinstance(value, str) or value not in _VALID_CODE_REVIEW_STATUSES
             ):
@@ -375,7 +472,11 @@ class AgentLoop:
         )
 
     def _finish_public_response(
-        self, decision: AgentDecision, snapshot: MemorySnapshot, request_id: str,
+        self,
+        decision: AgentDecision,
+        snapshot: MemorySnapshot,
+        request_id: str,
+        internal_signals: Optional[Dict[str, Any]] = None,
     ) -> AgentResult:
         state = snapshot.agent_states.setdefault(self.role, AgentState())
         response = _sanitize_public_response(
@@ -388,6 +489,7 @@ class AgentLoop:
             ui_action=UIAction.CONTINUE_CHAT,
             ready_for_code=False,
             state=self._public_state(snapshot),
+            internal_signals=dict(internal_signals or {}),
         )
         self._persist_completion(result, snapshot, request_id)
         return result
@@ -425,7 +527,11 @@ class AgentLoop:
         )
 
     def _finish_code_review(
-        self, tool_result: ToolResult, snapshot: MemorySnapshot, request_id: str,
+        self,
+        tool_result: ToolResult,
+        snapshot: MemorySnapshot,
+        request_id: str,
+        internal_signals: Optional[Dict[str, Any]] = None,
     ) -> AgentResult:
         public_content = dict(tool_result.public_content)
         response = str(public_content.pop("message", ""))
@@ -433,12 +539,17 @@ class AgentLoop:
             success=True, agent=self.role, response=response,
             ui_action=UIAction.SHOW_CODE_REVIEW, ready_for_code=True,
             state=self._public_state(snapshot), public_content=public_content,
+            internal_signals=dict(internal_signals or {}),
         )
         self._persist_completion(result, snapshot, request_id)
         return result
 
     def _finish_goal(
-        self, tool_result: ToolResult, snapshot: MemorySnapshot, request_id: str,
+        self,
+        tool_result: ToolResult,
+        snapshot: MemorySnapshot,
+        request_id: str,
+        internal_signals: Optional[Dict[str, Any]] = None,
     ) -> AgentResult:
         result = AgentResult(
             success=True,
@@ -446,12 +557,17 @@ class AgentLoop:
             response=str(tool_result.public_content.get("message", "")),
             state=self._public_state(snapshot),
             public_content={"goal_status": "complete"},
+            internal_signals=dict(internal_signals or {}),
         )
         self._persist_completion(result, snapshot, request_id)
         return result
 
     def _finish_fix(
-        self, tool_result: ToolResult, snapshot: MemorySnapshot, request_id: str,
+        self,
+        tool_result: ToolResult,
+        snapshot: MemorySnapshot,
+        request_id: str,
+        internal_signals: Optional[Dict[str, Any]] = None,
     ) -> AgentResult:
         public_content = dict(tool_result.public_content)
         feedback = _sanitize_public_response(
@@ -464,11 +580,45 @@ class AgentLoop:
             response=feedback,
             state=self._public_state(snapshot),
             public_content=public_content,
+            internal_signals=dict(internal_signals or {}),
         )
         self._persist_completion(result, snapshot, request_id)
         return result
 
-    def _persist_completion(self, result: AgentResult, snapshot: MemorySnapshot, request_id: str) -> None:
+    def _finish_probe(
+        self, tool_result: ToolResult, snapshot: MemorySnapshot, request_id: str,
+    ) -> AgentResult:
+        message = _sanitize_public_response(
+            str(tool_result.public_content.get("message", "")), self.spec.max_output_chars,
+        )
+        result = AgentResult(
+            success=True,
+            agent=self.role,
+            response=message,
+            state=self._public_state(snapshot),
+            public_content={"message": message},
+        )
+        self._persist_completion(
+            result,
+            snapshot,
+            request_id,
+            message_metadata={
+                "source_role": self.role.value,
+                "target_role": "user",
+                "message_kind": "student_probe",
+                "visibility": "public",
+            },
+        )
+        return result
+
+    def _persist_completion(
+        self,
+        result: AgentResult,
+        snapshot: MemorySnapshot,
+        request_id: str,
+        *,
+        message_metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
         payload = _result_payload(result)
         events = [
             EventRecord(
@@ -482,6 +632,7 @@ class AgentLoop:
                     "terminal": False,
                     "agent_result": payload,
                     "ready_for_code": result.ready_for_code,
+                    **dict(message_metadata or {}),
                 },
             ),
             EventRecord(
@@ -629,6 +780,8 @@ def _terminal_tool_kind(call: ToolCall, result: ToolResult) -> Optional[str]:
         and result.state_patch.get("code_review_status") == "passed"
     ):
         return "fix_passed"
+    if call.name == "ask_student_probe" and isinstance(result.public_content.get("message"), str):
+        return "student_probe"
     return None
 
 
@@ -642,3 +795,66 @@ def _valid_entries(value: Any, required_keys: set[str]) -> bool:
             for item in value
         )
     )
+
+
+def _valid_string_list(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) and item.strip() for item in value)
+
+
+def _valid_pending_probe(value: Any) -> bool:
+    if value is None:
+        return True
+    return (
+        isinstance(value, Mapping)
+        and isinstance(value.get("concept"), str)
+        and bool(value["concept"].strip())
+        and isinstance(value.get("dimension"), str)
+        and bool(value["dimension"].strip())
+    )
+
+
+def _valid_coverage_score(value: Any) -> bool:
+    return isinstance(value, (int, float)) and 0.0 <= float(value) <= 1.0
+
+
+def _valid_concept_coverage(value: Any) -> bool:
+    required_keys = {
+        "concept", "status", "attempts", "used_dimensions",
+        "attempt_event_ids", "accepted_evidence_count",
+        "evidence_event_ids", "last_evidence_event_id",
+    }
+    return (
+        isinstance(value, list)
+        and all(
+            isinstance(item, Mapping)
+            and required_keys.issubset(item)
+            and isinstance(item["concept"], str)
+            and item["concept"].strip()
+            and isinstance(item["status"], str)
+            and item["status"].strip()
+            and type(item["attempts"]) is int
+            and item["attempts"] >= 0
+            and _valid_string_list(item["used_dimensions"])
+            and _valid_string_list(item["attempt_event_ids"])
+            and type(item["accepted_evidence_count"]) is int
+            and item["accepted_evidence_count"] >= 0
+            and _valid_string_list(item["evidence_event_ids"])
+            and (item["last_evidence_event_id"] is None or isinstance(item["last_evidence_event_id"], str))
+            for item in value
+        )
+    )
+
+
+def _normalized_trigger(value: Mapping[str, Any]) -> Optional[Dict[str, str]]:
+    if not isinstance(value, Mapping):
+        return None
+    concept = value.get("concept")
+    dimension = value.get("dimension")
+    goal = value.get("goal")
+    if not all(isinstance(item, str) and item.strip() for item in (concept, dimension, goal)):
+        return None
+    return {
+        "concept": concept.strip(),
+        "dimension": dimension.strip(),
+        "goal": goal.strip(),
+    }
