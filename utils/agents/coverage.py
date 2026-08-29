@@ -39,7 +39,7 @@ _GENERIC_FILLER_PATTERNS = (
     re.compile(r"^(?:it|this).{0,12}(?:makes sense|is important).{0,4}$", re.IGNORECASE),
 )
 _RELATIONSHIP_PATTERNS = (
-    re.compile(r"(因为|所以|如果|那么|导致|造成|避免|防止|否则|才|从而|意味着|表明|说明|原因|有关|成立|上界|开区间|有效|索引|范围|访问|元素|迁移|一般情况|前|后|越界|保持|停在)"),
+    re.compile(r"(因为|所以|如果|那么|导致|造成|避免|防止|否则|才|从而|意味着|表明|说明|原因|有关|成立|上界|开区间|有效|索引|范围|访问|元素|迁移|一般情况|前一格|后一位|前后关系|越界|保持|停在)"),
     re.compile(
         r"\b(because|so|since|therefore|if|when|then|before|after|otherwise|"
         r"would|means|shows|causes?|prevents?|avoids?|compares?|halts?|exits?|reaches?)\b",

@@ -267,6 +267,23 @@ def test_marker_only_digit_only_and_ack_with_marker_are_not_concrete_evidence(te
             )
 
 
+@pytest.mark.parametrize("assessment", ["covered", "partial"])
+def test_unrelated_ui_description_with_bare_position_characters_is_rejected(assessment):
+    state = FeynmanState(session_id=12)
+
+    with pytest.raises(ValueError, match="concrete evidence"):
+        apply_coverage_assessment(
+            state,
+            ["循环边界"],
+            config=CoverageConfig(),
+            concept="循环边界",
+            dimension="core",
+            assessment=assessment,
+            evidence="前端按钮颜色更亮，页面布局也更整齐",
+            event_id=f"evt-{assessment}",
+        )
+
+
 def test_concrete_boundary_explanation_is_accepted_for_covered():
     state = FeynmanState(session_id=12)
 
