@@ -30,13 +30,25 @@
         forumHistory: [],
         forumTargetRole: 'teacher_agent',
         forumReplyContext: null,
+        forumReplyEventId: null,
+        forumCoverageSummary: null,
         pendingForumRequestId: null,
         feynmanPhase: 'chat', // 'chat' | 'code_review' | 'completed'
         buggyCode: null,
         buggyCodeInfo: null,
+        devDebugTraceLoaded: false,
         // Flags
         isLoading: false,
     };
+
+    function defaultCoverageSummary() {
+        return {
+            coverage_score: 0,
+            ready_for_code: false,
+            unresolved_concepts: [],
+            concept_coverage: [],
+        };
+    }
 
     // ============================================================
     // Initialization
@@ -98,6 +110,7 @@
                     state.teacherHistory = data.teacher_history || [];
                     state.studentHistory = data.student_history || [];
                     state.buggyCodeInfo = data.buggy_code_info || null;
+                    applyRestoredForumState(data.forum_state || null);
 
                     // 同步并重新启动计时器
                     if (state.timerInterval) {
@@ -110,7 +123,9 @@
                     state.forumHistory = [];
                     state.teacherHistory = [];
                     state.studentHistory = [];
+                    state.buggyCode = null;
                     state.buggyCodeInfo = null;
+                    applyRestoredForumState(data.forum_state || null);
                 }
 
                 initStage(state.currentStage);
@@ -1012,8 +1027,8 @@
         state.feynmanPhase = 'chat';
         state.pendingForumRequestId = null;
         bindForumControls();
-        clearForumReplyContext();
         renderForumFeed();
+        restoreForumReplyContext();
         updateForumTargetControls();
         updateForumComposerState();
 
@@ -1329,7 +1344,10 @@
                 localHistory,
                 localRequestId
             );
+            applyRestoredForumState(data.forum_state || null);
+            state.buggyCodeInfo = data.buggy_code_info || state.buggyCodeInfo;
             renderForumFeed();
+            restoreForumReplyContext();
             return persistedHistory;
         });
     }
@@ -1660,6 +1678,55 @@
         return typeof value === 'string' && value.trim() ? value.trim() : null;
     }
 
+    function sanitizeCoverageSummary(rawSummary) {
+        const fallback = defaultCoverageSummary();
+        if (!rawSummary || typeof rawSummary !== 'object') return fallback;
+        const conceptCoverage = Array.isArray(rawSummary.concept_coverage)
+            ? rawSummary.concept_coverage
+                .map(item => sanitizeConceptCoverageItem(item))
+                .filter(Boolean)
+            : [];
+        return {
+            coverage_score: typeof rawSummary.coverage_score === 'number' ? rawSummary.coverage_score : 0,
+            ready_for_code: rawSummary.ready_for_code === true,
+            unresolved_concepts: Array.isArray(rawSummary.unresolved_concepts)
+                ? rawSummary.unresolved_concepts.map(item => safeString(item)).filter(Boolean)
+                : [],
+            concept_coverage: conceptCoverage,
+        };
+    }
+
+    function sanitizeConceptCoverageItem(rawItem) {
+        if (!rawItem || typeof rawItem !== 'object') return null;
+        const concept = safeString(rawItem.concept);
+        const status = safeString(rawItem.status);
+        if (!concept || !status) return null;
+        return {
+            concept,
+            status,
+            asked_dimensions: Array.isArray(rawItem.asked_dimensions)
+                ? rawItem.asked_dimensions.map(item => safeString(item)).filter(Boolean)
+                : [],
+            accepted_evidence_count: Number.isInteger(rawItem.accepted_evidence_count)
+                ? rawItem.accepted_evidence_count
+                : 0,
+            attempts: Number.isInteger(rawItem.attempts) ? rawItem.attempts : 0,
+        };
+    }
+
+    function applyRestoredForumState(rawState) {
+        const defaultState = {
+            target_role: 'teacher_agent',
+            reply_to_event_id: null,
+            coverage_summary: defaultCoverageSummary(),
+        };
+        const source = rawState && typeof rawState === 'object' ? rawState : defaultState;
+        state.forumTargetRole = normalizeForumTargetRole(source.target_role || defaultState.target_role);
+        state.forumReplyEventId = optionalString(source.reply_to_event_id);
+        state.forumCoverageSummary = sanitizeCoverageSummary(source.coverage_summary);
+        renderDevDebugCoverageSummary();
+    }
+
     function isSyntheticForumEventId(eventId) {
         const value = optionalString(eventId);
         return Boolean(value && SYNTHETIC_FORUM_EVENT_PREFIXES.some(prefix => value.indexOf(prefix) === 0));
@@ -1748,6 +1815,7 @@
             return;
         }
         state.forumReplyContext = sanitized;
+        state.forumReplyEventId = sanitized.event_id;
         container.hidden = false;
         label.textContent = `正在回复 ${forumAvatar(sanitized.source_role).label}：${truncateText(sanitized.content, 48)}`;
     }
@@ -1763,12 +1831,26 @@
         const container = document.getElementById('forum-reply-context');
         const label = container ? container.querySelector('.forum-reply-context-label') : null;
         state.forumReplyContext = null;
+        state.forumReplyEventId = null;
         if (container) {
             container.hidden = true;
         }
         if (label) {
             label.textContent = '未选择回复对象';
         }
+    }
+
+    function restoreForumReplyContext() {
+        if (!state.forumReplyEventId) {
+            clearForumReplyContext();
+            return;
+        }
+        const event = findForumEventById(state.forumReplyEventId);
+        if (!event) {
+            clearForumReplyContext();
+            return;
+        }
+        setForumReplyContext(event);
     }
 
     function updateForumComposerState() {
@@ -1901,11 +1983,21 @@
                     <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS1()">秒杀阶段一 (Auto S1)</button>
                     <button class="dev-debug-btn dev-debug-btn-primary dev-debug-btn-full" onclick="window.ThinkingArena.debugAutoS2()">秒杀阶段二 (Auto S2)</button>
                 </div>
+                <section class="dev-debug-trace" id="dev-debug-trace" aria-label="Stage 3 developer trace">
+                    <div class="dev-debug-trace-header">
+                        <span class="dev-debug-trace-title">Stage 3 Trace</span>
+                        <button type="button" class="dev-debug-btn" id="dev-debug-trace-refresh">刷新</button>
+                    </div>
+                    <div class="dev-debug-trace-summary" id="dev-debug-trace-summary"></div>
+                    <div class="dev-debug-trace-empty" id="dev-debug-trace-empty">展开后按需加载安全 Trace。</div>
+                    <div class="dev-debug-trace-list" id="dev-debug-trace-list" hidden></div>
+                </section>
             </div>
         `;
 
         const toggle = panel.querySelector('.dev-debug-toggle');
         const content = panel.querySelector('.dev-debug-content');
+        const traceRefresh = panel.querySelector('#dev-debug-trace-refresh');
         const storageKey = 'codesense-dev-debug-panel-collapsed';
         let storage = null;
         try {
@@ -1940,6 +2032,9 @@
 
         toggle.addEventListener('click', () => {
             setCollapsed(!panel.classList.contains('is-collapsed'));
+            if (!panel.classList.contains('is-collapsed') && !state.devDebugTraceLoaded) {
+                loadDevDebugTrace();
+            }
         });
         toggle.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') {
@@ -1947,8 +2042,116 @@
                 toggle.focus();
             }
         });
+        if (traceRefresh) {
+            traceRefresh.addEventListener('click', () => {
+                loadDevDebugTrace({ force: true });
+            });
+        }
 
         document.body.appendChild(panel);
+        renderDevDebugCoverageSummary();
+    }
+
+    function renderDevDebugCoverageSummary() {
+        const summaryEl = document.getElementById('dev-debug-trace-summary');
+        if (!summaryEl) return;
+        const summary = sanitizeCoverageSummary(state.forumCoverageSummary);
+        const unresolvedText = summary.unresolved_concepts.length
+            ? summary.unresolved_concepts.join('、')
+            : '无';
+        summaryEl.textContent = `coverage=${summary.coverage_score.toFixed(2)} | ready=${summary.ready_for_code ? 'yes' : 'no'} | unresolved=${unresolvedText}`;
+    }
+
+    function loadDevDebugTrace(options = {}) {
+        const traceEmpty = document.getElementById('dev-debug-trace-empty');
+        if (!state.sessionId) {
+            renderDevDebugTrace([], '会话未初始化，暂无 Trace。');
+            return Promise.resolve([]);
+        }
+        if (traceEmpty) {
+            traceEmpty.textContent = '正在加载安全 Trace...';
+        }
+        return fetchJSON('/thinking/api/stage3/forum/trace', {
+            method: 'POST',
+            body: JSON.stringify({ session_id: state.sessionId })
+        }).then(data => {
+            const trace = Array.isArray(data.trace) ? data.trace : [];
+            state.devDebugTraceLoaded = true;
+            renderDevDebugTrace(trace);
+            return trace;
+        }).catch(error => {
+            state.devDebugTraceLoaded = false;
+            const message = options.force ? `Trace 加载失败：${error.message}` : 'Trace 暂不可用。';
+            renderDevDebugTrace([], message);
+            return [];
+        });
+    }
+
+    function renderDevDebugTrace(rawTrace, emptyMessage) {
+        const traceList = document.getElementById('dev-debug-trace-list');
+        const traceEmpty = document.getElementById('dev-debug-trace-empty');
+        if (!traceList || !traceEmpty) return;
+
+        traceList.replaceChildren();
+        const items = Array.isArray(rawTrace)
+            ? rawTrace.map(item => sanitizeTraceEntry(item)).filter(Boolean)
+            : [];
+        if (!items.length) {
+            traceList.hidden = true;
+            traceEmpty.hidden = false;
+            traceEmpty.textContent = emptyMessage || '暂无安全 Trace。';
+            return;
+        }
+
+        const fields = [
+            'event_type',
+            'role',
+            'target_role',
+            'input_kind',
+            'tool_name',
+            'coverage_score',
+            'ui_action',
+        ];
+        items.forEach(item => {
+            const traceItem = document.createElement('article');
+            traceItem.className = 'dev-debug-trace-item';
+            fields.forEach(field => {
+                const traceRow = document.createElement('div');
+                traceRow.className = 'dev-debug-trace-row';
+
+                const traceKey = document.createElement('span');
+                traceKey.className = 'dev-debug-trace-key';
+                traceKey.textContent = field;
+
+                const traceValue = document.createElement('span');
+                traceValue.className = 'dev-debug-trace-value';
+                const value = item[field];
+                traceValue.textContent = value === null || value === undefined ? 'null' : String(value);
+
+                traceRow.appendChild(traceKey);
+                traceRow.appendChild(traceValue);
+                traceItem.appendChild(traceRow);
+            });
+            traceList.appendChild(traceItem);
+        });
+        traceEmpty.hidden = true;
+        traceList.hidden = false;
+    }
+
+    function sanitizeTraceEntry(rawEntry) {
+        if (!rawEntry || typeof rawEntry !== 'object') return null;
+        const eventType = safeString(rawEntry.event_type);
+        const role = safeString(rawEntry.role);
+        if (!eventType || !role) return null;
+        return {
+            event_type: eventType,
+            role,
+            target_role: optionalString(rawEntry.target_role),
+            input_kind: optionalString(rawEntry.input_kind),
+            tool_name: optionalString(rawEntry.tool_name),
+            coverage_score: typeof rawEntry.coverage_score === 'number' ? rawEntry.coverage_score : null,
+            ui_action: optionalString(rawEntry.ui_action),
+        };
     }
 
     function debugJumpStage(stage) {

@@ -1254,6 +1254,60 @@
 .dev-debug-btn-full {
     grid-column: span 2;
 }
+.dev-debug-trace {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #334155;
+}
+.dev-debug-trace-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.dev-debug-trace-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #e2e8f0;
+}
+.dev-debug-trace-summary,
+.dev-debug-trace-empty {
+    color: #94a3b8;
+    font-size: 11px;
+    line-height: 1.5;
+}
+.dev-debug-trace-summary {
+    margin-bottom: 8px;
+}
+.dev-debug-trace-list {
+    display: grid;
+    gap: 8px;
+}
+.dev-debug-trace-item {
+    padding: 8px;
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+.dev-debug-trace-row {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 8px;
+    font-size: 11px;
+    line-height: 1.4;
+}
+.dev-debug-trace-row + .dev-debug-trace-row {
+    margin-top: 4px;
+}
+.dev-debug-trace-key {
+    color: #7dd3fc;
+    font-weight: 600;
+}
+.dev-debug-trace-value {
+    color: #f8fafc;
+    overflow-wrap: anywhere;
+}
 
 /* --- Stage 2 Quiz-based step-by-step styles --- */
 .quiz-steps-panel {

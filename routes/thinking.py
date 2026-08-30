@@ -294,6 +294,135 @@ def _public_code_review(log):
     }
 
 
+def _stage3_default_coverage_summary():
+    return {
+        'coverage_score': 0.0,
+        'ready_for_code': False,
+        'unresolved_concepts': [],
+        'concept_coverage': [],
+    }
+
+
+def _stage3_safe_coverage_summary(session_id: int):
+    snapshot = MemoryStore(SqlAlchemyEventStore()).load(session_id)
+    raw_coverage = snapshot.state.concept_coverage if isinstance(snapshot.state.concept_coverage, list) else []
+    concept_coverage = []
+    for item in raw_coverage:
+        if not isinstance(item, dict):
+            continue
+        concept = str(item.get('concept') or '').strip()
+        status = str(item.get('status') or '').strip()
+        if not concept or not status:
+            continue
+        concept_coverage.append({
+            'concept': concept,
+            'status': status,
+            'asked_dimensions': [
+                str(value).strip()
+                for value in (item.get('asked_dimensions') or [])
+                if str(value).strip()
+            ],
+            'accepted_evidence_count': int(item.get('accepted_evidence_count') or 0),
+            'attempts': int(item.get('attempts') or 0),
+        })
+    coverage_score = snapshot.state.coverage_score
+    if not isinstance(coverage_score, (int, float)):
+        coverage_score = 0.0
+    unresolved = [
+        str(value).strip()
+        for value in (snapshot.state.unresolved_concepts or [])
+        if str(value).strip()
+    ]
+    return {
+        'coverage_score': float(coverage_score),
+        'ready_for_code': bool(snapshot.state.ready_for_code),
+        'unresolved_concepts': unresolved,
+        'concept_coverage': concept_coverage,
+    }, snapshot.state.pending_probe
+
+
+def _stage3_forum_state(session_id: int):
+    coverage_summary, pending_probe = _stage3_safe_coverage_summary(session_id)
+    reply_to_event_id = None
+    target_role = AgentRole.TEACHER_AGENT.value
+    if isinstance(pending_probe, dict) and pending_probe:
+        target_role = AgentRole.STUDENT_AGENT.value
+        for event in reversed(_stage3_forum_history(session_id)):
+            if (
+                event.get('source_role') == AgentRole.STUDENT_AGENT.value
+                and event.get('message_kind') == Stage3MessageKind.STUDENT_PROBE.value
+            ):
+                event_id = event.get('event_id')
+                reply_to_event_id = str(event_id) if event_id else None
+                break
+    return {
+        'target_role': target_role,
+        'reply_to_event_id': reply_to_event_id,
+        'coverage_summary': coverage_summary,
+    }
+
+
+def _request_is_local() -> bool:
+    host = str(request.host or '').split(':', 1)[0].lower()
+    return host in {'localhost', '127.0.0.1'}
+
+
+def _stage3_trace_target_role(log):
+    metadata = log.get_metadata() or {}
+    value = str(metadata.get('target_role') or '').strip()
+    if value:
+        return value
+    panel = str(metadata.get('panel') or '').strip()
+    if panel in {AgentRole.TEACHER_AGENT.value, AgentRole.STUDENT_AGENT.value}:
+        return panel
+    if log.event_type == 'agent_message':
+        return Stage3Target.USER.value
+    return None
+
+
+def _stage3_trace_tool_name(metadata: dict):
+    tool_call = metadata.get('tool_call')
+    if not isinstance(tool_call, dict):
+        return None
+    value = str(tool_call.get('name') or '').strip()
+    return value or None
+
+
+def _stage3_trace_coverage_score(metadata: dict):
+    state_patch = metadata.get('state_patch')
+    if isinstance(state_patch, dict) and isinstance(state_patch.get('coverage_score'), (int, float)):
+        return float(state_patch['coverage_score'])
+    state = metadata.get('state')
+    if isinstance(state, dict) and isinstance(state.get('coverage_score'), (int, float)):
+        return float(state['coverage_score'])
+    return None
+
+
+def _stage3_trace_entries(session_id: int):
+    logs = ThinkingStageLog.query.filter_by(
+        session_id=session_id,
+        stage=3,
+    ).order_by(
+        ThinkingStageLog.created_at.asc(),
+        ThinkingStageLog.id.asc(),
+    ).all()
+    trace = []
+    for log in _stable_event_order(logs):
+        metadata = log.get_metadata() or {}
+        input_kind = str(metadata.get('input_kind') or '').strip() or None
+        ui_action = str(metadata.get('ui_action') or '').strip() or None
+        trace.append({
+            'event_type': str(log.event_type or ''),
+            'role': str(log.role or ''),
+            'target_role': _stage3_trace_target_role(log),
+            'input_kind': input_kind,
+            'tool_name': _stage3_trace_tool_name(metadata),
+            'coverage_score': _stage3_trace_coverage_score(metadata),
+            'ui_action': ui_action,
+        })
+    return trace
+
+
 def _check_and_trigger_stale_preset(preset, assignment_id):
     """
     检查预设是否是老版本（状态为 ready 但没有 quiz_steps），如果是，则自动触发重新生成。
@@ -432,6 +561,8 @@ def start_session():
         if existing:
             # 计算已过秒数
             elapsed_seconds = int((dt.utcnow() - existing.started_at).total_seconds())
+            forum_history = _stage3_forum_history(existing.id)
+            forum_state = _stage3_forum_state(existing.id)
             
             # 加载伴学历史 (全部阶段)
             companion_logs = ThinkingStageLog.query.filter_by(
@@ -537,7 +668,8 @@ def start_session():
                 'stage1_score': existing.stage1_score,
                 'stage2_block_order': stage2_block_order,
                 'companion_history': companion_history,
-                'forum_history': _stage3_forum_history(existing.id),
+                'forum_history': forum_history,
+                'forum_state': forum_state,
                 'teacher_history': teacher_history,
                 'student_history': student_history,
                 'buggy_code_info': buggy_code_info,
@@ -562,6 +694,14 @@ def start_session():
             'current_stage': 1,
             'resumed': False,
             'forum_history': [],
+            'forum_state': {
+                'target_role': AgentRole.TEACHER_AGENT.value,
+                'reply_to_event_id': None,
+                'coverage_summary': _stage3_default_coverage_summary(),
+            },
+            'teacher_history': [],
+            'student_history': [],
+            'buggy_code_info': None,
             'preset': _serialize_preset(preset)
         })
 
@@ -1029,6 +1169,29 @@ def stage3_forum_message():
         db.session.rollback()
         current_app.logger.exception('阶段3论坛对话失败')
         return jsonify({'error': '服务暂时不可用'}), 500
+
+
+@thinking.route('/api/stage3/forum/trace', methods=['POST'])
+@login_required
+def stage3_forum_trace():
+    """费曼阶段 — 本地开发者安全追踪"""
+    if not (current_app.debug or _request_is_local()):
+        return jsonify({
+            'error': '非开发环境，拒绝访问该调试接口',
+            'error_code': 'DEV_TRACE_DISABLED',
+        }), 403
+
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    thinking_session = ThinkingSession.query.get(session_id)
+    if not thinking_session or thinking_session.student_id != current_user.student_id:
+        return _stage3_runtime_error_response('SESSION_NOT_FOUND')
+
+    return jsonify({
+        'success': True,
+        'session_id': thinking_session.id,
+        'trace': _stage3_trace_entries(thinking_session.id),
+    })
 
 
 @thinking.route('/api/stage3/teach', methods=['POST'])
