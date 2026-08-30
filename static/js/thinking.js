@@ -10,6 +10,7 @@
     // State Management
     // ============================================================
     const MAX_PUBLIC_FORUM_EVENTS = 80;
+    const SYNTHETIC_FORUM_EVENT_PREFIXES = ['local-', 'forum-welcome-'];
 
     const state = {
         sessionId: null,
@@ -93,7 +94,7 @@
                     state.stage1Score = data.stage1_score || null;
                     state.stage2BlockOrder = data.stage2_block_order || null;
                     state.companionHistory = data.companion_history || [];
-                    state.forumHistory = sanitizePublicForumHistory(data.forum_history || []);
+                    state.forumHistory = sanitizePublicForumHistory(data.forum_history || [], { persisted: true });
                     state.teacherHistory = data.teacher_history || [];
                     state.studentHistory = data.student_history || [];
                     state.buggyCodeInfo = data.buggy_code_info || null;
@@ -1035,7 +1036,7 @@
         const input = document.getElementById('forum-input');
         const message = options.message ? String(options.message).trim() : (input ? input.value.trim() : '');
         const targetRole = normalizeForumTargetRole(options.targetRole || state.forumTargetRole);
-        const replyToEventId = state.forumReplyContext ? state.forumReplyContext.event_id : null;
+        const replyToEventId = getPersistedForumReplyEventId();
         if (!message || state.isLoading || state.pendingForumRequestId) return;
 
         const requestId = newAgentRequestId('forum');
@@ -1081,6 +1082,11 @@
                 requestId,
                 targetRole,
                 userEvent,
+            });
+            return reconcileForumHistory(requestId).catch(() => {
+                // Keep the optimistic public messages, but leave their reply
+                // actions disabled until a later refresh proves persistence.
+                showNotification('消息已发送，但论坛记录尚未同步；请稍后刷新。', 'warning');
             });
         }).catch(err => {
             hideTypingIndicator('forum');
@@ -1295,6 +1301,69 @@
         }
     }
 
+    function reconcileForumHistory(localRequestId) {
+        if (!state.assignmentId || state.sessionId === null || state.sessionId === undefined) {
+            return Promise.reject(new Error('论坛记录同步失败'));
+        }
+
+        const localHistory = state.forumHistory.slice();
+        return fetchJSON('/thinking/api/start_session', {
+            method: 'POST',
+            body: JSON.stringify({ assignment_id: state.assignmentId })
+        }).then(data => {
+            if (
+                !data ||
+                data.success !== true ||
+                String(data.session_id) !== String(state.sessionId) ||
+                !Array.isArray(data.forum_history)
+            ) {
+                throw new Error('论坛记录同步失败');
+            }
+
+            const persistedHistory = sanitizePublicForumHistory(
+                data.forum_history,
+                { persisted: true }
+            );
+            state.forumHistory = mergeReconciledForumHistory(
+                persistedHistory,
+                localHistory,
+                localRequestId
+            );
+            renderForumFeed();
+            return persistedHistory;
+        });
+    }
+
+    function mergeReconciledForumHistory(persistedHistory, localHistory, localRequestId) {
+        const persistedRequestIds = new Set(
+            persistedHistory
+                .map(event => event.request_id)
+                .filter(Boolean)
+        );
+        const currentRequestId = optionalString(localRequestId);
+        const currentRequestWasPersisted = Boolean(
+            currentRequestId && persistedRequestIds.has(currentRequestId)
+        );
+        const localOnlyEvents = (Array.isArray(localHistory) ? localHistory : [])
+            .filter(event => !isPersistedForumEvent(event))
+            .filter(event => {
+                const requestId = event.request_id;
+                const parentRequestId = event.parent_request_id;
+                const belongsToCurrentRequest = Boolean(
+                    currentRequestId &&
+                    (requestId === currentRequestId || parentRequestId === currentRequestId)
+                );
+                if (belongsToCurrentRequest) {
+                    return !currentRequestWasPersisted;
+                }
+                return !(
+                    (requestId && persistedRequestIds.has(requestId)) ||
+                    (parentRequestId && persistedRequestIds.has(parentRequestId))
+                );
+            });
+        return [...persistedHistory, ...localOnlyEvents].slice(-MAX_PUBLIC_FORUM_EVENTS);
+    }
+
     function renderForumFeed() {
         const container = getMessageContainer('forum');
         if (!container) return;
@@ -1401,26 +1470,28 @@
         content.className = 'forum-content';
         content.textContent = sanitized.content;
 
-        const actions = document.createElement('div');
-        actions.className = 'forum-actions';
-
-        const replyAction = document.createElement('button');
-        replyAction.type = 'button';
-        replyAction.className = 'forum-reply-action';
-        replyAction.textContent = '回复';
-        replyAction.addEventListener('click', () => {
-            setForumTarget(replyTargetRoleForEvent(sanitized));
-            setForumReplyContext(sanitized);
-            const input = document.getElementById('forum-input');
-            if (input) {
-                input.focus();
-            }
-        });
-
-        actions.appendChild(replyAction);
         card.appendChild(meta);
         card.appendChild(content);
-        card.appendChild(actions);
+        if (isPersistedForumEvent(sanitized)) {
+            const actions = document.createElement('div');
+            actions.className = 'forum-actions';
+
+            const replyAction = document.createElement('button');
+            replyAction.type = 'button';
+            replyAction.className = 'forum-reply-action';
+            replyAction.textContent = '回复';
+            replyAction.addEventListener('click', () => {
+                setForumTarget(replyTargetRoleForEvent(sanitized));
+                setForumReplyContext(sanitized);
+                const input = document.getElementById('forum-input');
+                if (input) {
+                    input.focus();
+                }
+            });
+
+            actions.appendChild(replyAction);
+            card.appendChild(actions);
+        }
         wrapper.appendChild(avatar);
         wrapper.appendChild(card);
         return wrapper;
@@ -1502,15 +1573,15 @@
         return null;
     }
 
-    function sanitizePublicForumHistory(history) {
+    function sanitizePublicForumHistory(history, options = {}) {
         if (!Array.isArray(history)) return [];
         return history
-            .map(item => sanitizeForumEvent(item))
+            .map(item => sanitizeForumEvent(item, options))
             .filter(Boolean)
             .slice(-MAX_PUBLIC_FORUM_EVENTS);
     }
 
-    function sanitizeForumEvent(rawEvent) {
+    function sanitizeForumEvent(rawEvent, options = {}) {
         if (!rawEvent || typeof rawEvent !== 'object') return null;
         const sourceRole = normalizePublicRole(rawEvent.source_role || rawEvent.role);
         const targetRole = normalizePublicRole(rawEvent.target_role || 'user');
@@ -1518,6 +1589,8 @@
         const content = safeString(rawEvent.content);
         if (!sourceRole || !targetRole || !messageKind || !content) return null;
         return {
+            // This is client bookkeeping only; it is never included in a request.
+            persisted: options.persisted === true || rawEvent.persisted === true,
             event_id: optionalString(rawEvent.event_id),
             event_type: optionalString(rawEvent.event_type) || (sourceRole === 'user' ? 'agent_user_message' : 'agent_message'),
             role: optionalString(rawEvent.role) || (sourceRole === 'user' ? 'student' : sourceRole),
@@ -1585,6 +1658,20 @@
 
     function optionalString(value) {
         return typeof value === 'string' && value.trim() ? value.trim() : null;
+    }
+
+    function isSyntheticForumEventId(eventId) {
+        const value = optionalString(eventId);
+        return Boolean(value && SYNTHETIC_FORUM_EVENT_PREFIXES.some(prefix => value.indexOf(prefix) === 0));
+    }
+
+    function isPersistedForumEvent(event) {
+        return Boolean(
+            event &&
+            event.persisted === true &&
+            event.event_id &&
+            !isSyntheticForumEventId(event.event_id)
+        );
     }
 
     function forumAvatar(role) {
@@ -1656,10 +1743,20 @@
         const sanitized = sanitizeForumEvent(event);
         const container = document.getElementById('forum-reply-context');
         const label = container ? container.querySelector('.forum-reply-context-label') : null;
-        if (!sanitized || !container || !label) return;
+        if (!sanitized || !isPersistedForumEvent(sanitized) || !container || !label) {
+            clearForumReplyContext();
+            return;
+        }
         state.forumReplyContext = sanitized;
         container.hidden = false;
         label.textContent = `正在回复 ${forumAvatar(sanitized.source_role).label}：${truncateText(sanitized.content, 48)}`;
+    }
+
+    function getPersistedForumReplyEventId() {
+        const context = state.forumReplyContext;
+        if (!isPersistedForumEvent(context)) return null;
+        const currentEvent = findForumEventById(context.event_id);
+        return isPersistedForumEvent(currentEvent) ? currentEvent.event_id : null;
     }
 
     function clearForumReplyContext() {

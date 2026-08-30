@@ -94,11 +94,11 @@ def test_buggy_code_and_ui_action_open_the_existing_repair_area():
 def test_browser_state_and_forum_rendering_stay_on_public_fields_only():
     sanitize_block = _slice(
         THINKING_JS,
-        "function sanitizeForumEvent(rawEvent) {",
+        "function sanitizeForumEvent(rawEvent, options = {}) {",
         "function normalizeForumTargetRole(role) {",
     )
 
-    assert "state.forumHistory = sanitizePublicForumHistory(data.forum_history || []);" in THINKING_JS
+    assert "state.forumHistory = sanitizePublicForumHistory(data.forum_history || [], { persisted: true });" in THINKING_JS
     assert "state.forumHistory = [...state.forumHistory, sanitized].slice(-MAX_PUBLIC_FORUM_EVENTS);" in THINKING_JS
 
     for forbidden in (
@@ -112,3 +112,47 @@ def test_browser_state_and_forum_rendering_stay_on_public_fields_only():
         "full_history",
     ):
         assert forbidden not in sanitize_block
+
+
+def test_successful_forum_send_reconciles_with_public_history_only():
+    send_block = _slice(
+        THINKING_JS,
+        "function sendForumMessage(options = {}) {",
+        "function sendTeacherChat() {",
+    )
+    reconcile_block = _slice(
+        THINKING_JS,
+        "function reconcileForumHistory(localRequestId) {",
+        "function mergeReconciledForumHistory(",
+    )
+
+    assert "return reconcileForumHistory(requestId).catch(() =>" in send_block
+    assert "fetchJSON('/thinking/api/start_session'" in reconcile_block
+    assert "assignment_id: state.assignmentId" in reconcile_block
+    assert "String(data.session_id) !== String(state.sessionId)" in reconcile_block
+    assert "data.forum_history" in reconcile_block
+    assert "sanitizePublicForumHistory(\n                data.forum_history,\n                { persisted: true }\n            )" in reconcile_block
+    assert "state.teacherHistory" not in reconcile_block
+    assert "state.studentHistory" not in reconcile_block
+    assert "mergeReconciledForumHistory(\n                persistedHistory,\n                localHistory,\n                localRequestId\n            )" in reconcile_block
+
+
+def test_reply_actions_and_reply_payload_require_persisted_event_ids():
+    node_block = _slice(
+        THINKING_JS,
+        "function createForumEventNode(event) {",
+        "function applyForumTurnPayload(",
+    )
+    reply_block = _slice(
+        THINKING_JS,
+        "function setForumReplyContext(event) {",
+        "function clearForumReplyContext() {",
+    )
+
+    assert "if (isPersistedForumEvent(sanitized))" in node_block
+    assert "function isSyntheticForumEventId(eventId)" in THINKING_JS
+    assert "forum-welcome-" in THINKING_JS
+    assert "local-" in THINKING_JS
+    assert "const replyToEventId = getPersistedForumReplyEventId();" in THINKING_JS
+    assert "if (!sanitized || !isPersistedForumEvent(sanitized)" in reply_block
+    assert "return isPersistedForumEvent(currentEvent) ? currentEvent.event_id : null;" in THINKING_JS
