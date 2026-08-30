@@ -3,6 +3,7 @@
 Blueprint: thinking, URL前缀: /thinking
 """
 import json
+import ipaddress
 import traceback
 import uuid
 from datetime import datetime as dt
@@ -314,24 +315,29 @@ def _stage3_safe_coverage_summary(session_id: int):
         status = str(item.get('status') or '').strip()
         if not concept or not status:
             continue
+        raw_dimensions = item.get('used_dimensions')
+        if not isinstance(raw_dimensions, (list, tuple)):
+            raw_dimensions = item.get('asked_dimensions')
+        if not isinstance(raw_dimensions, (list, tuple)):
+            raw_dimensions = []
         concept_coverage.append({
             'concept': concept,
             'status': status,
             'asked_dimensions': [
-                str(value).strip()
-                for value in (item.get('asked_dimensions') or [])
-                if str(value).strip()
+                value.strip()
+                for value in raw_dimensions
+                if isinstance(value, str) and value.strip()
             ],
-            'accepted_evidence_count': int(item.get('accepted_evidence_count') or 0),
-            'attempts': int(item.get('attempts') or 0),
+            'accepted_evidence_count': _safe_int(item.get('accepted_evidence_count')),
+            'attempts': _safe_int(item.get('attempts')),
         })
     coverage_score = snapshot.state.coverage_score
     if not isinstance(coverage_score, (int, float)):
         coverage_score = 0.0
     unresolved = [
-        str(value).strip()
+        value.strip()
         for value in (snapshot.state.unresolved_concepts or [])
-        if str(value).strip()
+        if isinstance(value, str) and value.strip()
     ]
     return {
         'coverage_score': float(coverage_score),
@@ -363,8 +369,20 @@ def _stage3_forum_state(session_id: int):
 
 
 def _request_is_local() -> bool:
-    host = str(request.host or '').split(':', 1)[0].lower()
-    return host in {'localhost', '127.0.0.1'}
+    remote_addr = str(request.remote_addr or '').strip()
+    if not remote_addr:
+        return False
+    try:
+        return ipaddress.ip_address(remote_addr).is_loopback
+    except ValueError:
+        return False
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _stage3_trace_target_role(log):
@@ -1175,7 +1193,7 @@ def stage3_forum_message():
 @login_required
 def stage3_forum_trace():
     """费曼阶段 — 本地开发者安全追踪"""
-    if not (current_app.debug or _request_is_local()):
+    if not _request_is_local():
         return jsonify({
             'error': '非开发环境，拒绝访问该调试接口',
             'error_code': 'DEV_TRACE_DISABLED',

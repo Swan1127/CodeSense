@@ -1678,6 +1678,66 @@
         return typeof value === 'string' && value.trim() ? value.trim() : null;
     }
 
+    function forumComposerStorageKey() {
+        if (state.assignmentId === null || state.assignmentId === undefined) return null;
+        if (state.sessionId === null || state.sessionId === undefined) return null;
+        return `codesense-stage3-forum-compose:${state.assignmentId}:${state.sessionId}`;
+    }
+
+    function loadPersistedForumComposerState() {
+        if (!forumComposerStorageKey()) return null;
+        try {
+            return sanitizeStoredForumComposerState(sessionStorage.getItem(forumComposerStorageKey()));
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function persistForumComposerState() {
+        if (!forumComposerStorageKey()) return;
+        let replyToEventId = validateRestorableForumReplyEventId(state.forumReplyEventId);
+        if (state.forumReplyContext) {
+            replyToEventId = getPersistedForumReplyEventId();
+        }
+        const payload = {
+            target_role: normalizeForumTargetRole(state.forumTargetRole),
+            reply_to_event_id: replyToEventId,
+        };
+        if (!payload.reply_to_event_id && payload.target_role === 'teacher_agent') {
+            clearPersistedForumComposerState();
+            return;
+        }
+        try {
+            sessionStorage.setItem(forumComposerStorageKey(), JSON.stringify(payload));
+        } catch (error) {
+            // Keep the composer usable when sessionStorage is unavailable.
+        }
+    }
+
+    function clearPersistedForumComposerState() {
+        if (!forumComposerStorageKey()) return;
+        try {
+            sessionStorage.removeItem(forumComposerStorageKey());
+        } catch (error) {
+            // Ignore storage errors and keep runtime state authoritative.
+        }
+    }
+
+    function sanitizeStoredForumComposerState(rawState) {
+        if (typeof rawState !== 'string' || !rawState.trim()) return null;
+        try {
+            const parsed = JSON.parse(rawState);
+            if (!parsed || typeof parsed !== 'object') return null;
+            return {
+                target_role: normalizeForumTargetRole(parsed.target_role || 'teacher_agent'),
+                reply_to_event_id: optionalString(parsed.reply_to_event_id),
+            };
+        } catch (error) {
+            clearPersistedForumComposerState();
+            return null;
+        }
+    }
+
     function sanitizeCoverageSummary(rawSummary) {
         const fallback = defaultCoverageSummary();
         if (!rawSummary || typeof rawSummary !== 'object') return fallback;
@@ -1700,13 +1760,16 @@
         if (!rawItem || typeof rawItem !== 'object') return null;
         const concept = safeString(rawItem.concept);
         const status = safeString(rawItem.status);
+        const askedDimensions = Array.isArray(rawItem.asked_dimensions)
+            ? rawItem.asked_dimensions
+            : (Array.isArray(rawItem.used_dimensions) ? rawItem.used_dimensions : []);
         if (!concept || !status) return null;
         return {
             concept,
             status,
-            asked_dimensions: Array.isArray(rawItem.asked_dimensions)
-                ? rawItem.asked_dimensions.map(item => safeString(item)).filter(Boolean)
-                : [],
+            asked_dimensions: askedDimensions
+                .map(item => safeString(item))
+                .filter(Boolean),
             accepted_evidence_count: Number.isInteger(rawItem.accepted_evidence_count)
                 ? rawItem.accepted_evidence_count
                 : 0,
@@ -1721,10 +1784,58 @@
             coverage_summary: defaultCoverageSummary(),
         };
         const source = rawState && typeof rawState === 'object' ? rawState : defaultState;
-        state.forumTargetRole = normalizeForumTargetRole(source.target_role || defaultState.target_role);
-        state.forumReplyEventId = optionalString(source.reply_to_event_id);
         state.forumCoverageSummary = sanitizeCoverageSummary(source.coverage_summary);
+        const restoredSelection = chooseRestoredForumComposerState(source);
+        state.forumTargetRole = restoredSelection.target_role;
+        state.forumReplyEventId = restoredSelection.reply_to_event_id;
         renderDevDebugCoverageSummary();
+        persistForumComposerState();
+    }
+
+    function chooseRestoredForumComposerState(source) {
+        const serverTargetRole = normalizeForumTargetRole(source.target_role || 'teacher_agent');
+        const serverReplyEventId = validateRestorableForumReplyEventId(optionalString(source.reply_to_event_id));
+        if (serverReplyEventId) {
+            return {
+                target_role: replyTargetRoleForEvent(findForumEventById(serverReplyEventId)),
+                reply_to_event_id: serverReplyEventId,
+            };
+        }
+        if (serverTargetRole === 'student_agent') {
+            return {
+                target_role: serverTargetRole,
+                reply_to_event_id: null,
+            };
+        }
+        const persistedComposer = loadPersistedForumComposerState();
+        if (!persistedComposer) {
+            return {
+                target_role: serverTargetRole,
+                reply_to_event_id: null,
+            };
+        }
+        const replyEventId = validateRestorableForumReplyEventId(persistedComposer.reply_to_event_id);
+        if (!replyEventId) {
+            return {
+                target_role: normalizeForumTargetRole(persistedComposer.target_role || serverTargetRole),
+                reply_to_event_id: null,
+            };
+        }
+        return {
+            target_role: replyTargetRoleForEvent(findForumEventById(replyEventId)),
+            reply_to_event_id: replyEventId,
+        };
+    }
+
+    function validateRestorableForumReplyEventId(replyEventId) {
+        if (!replyEventId || isSyntheticForumEventId(replyEventId)) {
+            return null;
+        }
+        const persistedEvent = findForumEventById(replyEventId);
+        if (!isPersistedForumEvent(persistedEvent)) {
+            return null;
+        }
+        return persistedEvent.event_id;
     }
 
     function isSyntheticForumEventId(eventId) {
@@ -1788,8 +1899,15 @@
 
     function setForumTarget(targetRole) {
         state.forumTargetRole = normalizeForumTargetRole(targetRole);
+        if (state.forumReplyContext) {
+            const replyTargetRole = replyTargetRoleForEvent(state.forumReplyContext);
+            if (replyTargetRole !== state.forumTargetRole) {
+                clearForumReplyContext();
+            }
+        }
         updateForumTargetControls();
         updateForumComposerState();
+        persistForumComposerState();
     }
 
     function updateForumTargetControls() {
@@ -1818,6 +1936,7 @@
         state.forumReplyEventId = sanitized.event_id;
         container.hidden = false;
         label.textContent = `正在回复 ${forumAvatar(sanitized.source_role).label}：${truncateText(sanitized.content, 48)}`;
+        persistForumComposerState();
     }
 
     function getPersistedForumReplyEventId() {
@@ -1838,14 +1957,17 @@
         if (label) {
             label.textContent = '未选择回复对象';
         }
+        persistForumComposerState();
     }
 
     function restoreForumReplyContext() {
-        if (!state.forumReplyEventId) {
+        const replyEventId = validateRestorableForumReplyEventId(state.forumReplyEventId);
+        if (!replyEventId) {
             clearForumReplyContext();
             return;
         }
-        const event = findForumEventById(state.forumReplyEventId);
+        state.forumReplyEventId = replyEventId;
+        const event = findForumEventById(replyEventId);
         if (!event) {
             clearForumReplyContext();
             return;

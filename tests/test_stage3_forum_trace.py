@@ -196,7 +196,7 @@ def test_stage3_forum_trace_returns_only_the_safe_local_debug_mapping(stage3_tra
         assert forbidden not in body
 
 
-def test_stage3_forum_trace_is_disabled_outside_local_or_debug(stage3_trace_context):
+def test_stage3_forum_trace_allows_local_peer_even_with_non_loopback_host(stage3_trace_context):
     app, client, session_id = stage3_trace_context
     app.debug = False
 
@@ -206,8 +206,8 @@ def test_stage3_forum_trace_is_disabled_outside_local_or_debug(stage3_trace_cont
         base_url="http://example.com",
     )
 
-    assert response.status_code == 403
-    assert response.json["error_code"] == "DEV_TRACE_DISABLED"
+    assert response.status_code == 200
+    assert response.json["success"] is True
 
 
 def test_stage3_forum_trace_returns_stable_missing_session_error(stage3_trace_context):
@@ -221,6 +221,35 @@ def test_stage3_forum_trace_returns_stable_missing_session_error(stage3_trace_co
 
     assert response.status_code == 403
     assert response.json["error_code"] == "SESSION_NOT_FOUND"
+
+
+def test_stage3_forum_trace_rejects_remote_peer_even_with_loopback_host(stage3_trace_context):
+    _, client, session_id = stage3_trace_context
+
+    response = client.post(
+        "/thinking/api/stage3/forum/trace",
+        json={"session_id": session_id},
+        base_url="http://localhost",
+        environ_overrides={"REMOTE_ADDR": "203.0.113.9"},
+    )
+
+    assert response.status_code == 403
+    assert response.json["error_code"] == "DEV_TRACE_DISABLED"
+
+
+def test_stage3_forum_trace_rejects_remote_peer_even_when_debug_enabled(stage3_trace_context):
+    app, client, session_id = stage3_trace_context
+    app.debug = True
+
+    response = client.post(
+        "/thinking/api/stage3/forum/trace",
+        json={"session_id": session_id},
+        base_url="http://localhost",
+        environ_overrides={"REMOTE_ADDR": "198.51.100.24"},
+    )
+
+    assert response.status_code == 403
+    assert response.json["error_code"] == "DEV_TRACE_DISABLED"
 
 
 def test_stage3_trace_debug_panel_contract_is_collapsible_and_uses_safe_text_rendering():

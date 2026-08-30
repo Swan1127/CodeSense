@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +13,10 @@ from models import (
     User,
     db,
 )
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+THINKING_JS = (PROJECT_ROOT / "static" / "js" / "thinking.js").read_text(encoding="utf-8")
 
 
 @pytest.fixture
@@ -157,7 +162,7 @@ def test_start_session_restores_public_forum_state_and_safe_coverage_summary(sta
                     "concept_coverage": [{
                         "concept": "循环边界",
                         "status": "covered",
-                        "asked_dimensions": ["core", "edge_case"],
+                        "used_dimensions": ["core", "edge_case"],
                         "accepted_evidence_count": 1,
                         "attempts": 2,
                         "last_evidence_event_id": "probe-1",
@@ -226,6 +231,73 @@ def test_start_session_restores_public_forum_state_and_safe_coverage_summary(sta
         "full_prompt",
         "secret",
     ):
+        assert forbidden not in body
+
+
+def test_start_session_safely_maps_production_and_malformed_coverage_fields(stage3_restore_context):
+    app, client, session_id, assignment_id = stage3_restore_context
+    with app.app_context():
+        db.session.add(ThinkingStageLog(
+            session_id=session_id,
+            stage=3,
+            event_type="state_snapshot",
+            role="student_agent",
+            content="",
+            metadata_json=json.dumps({
+                "state": {
+                    "phase": "student_dialogue",
+                    "concept_coverage": [
+                        {
+                            "concept": "循环边界",
+                            "status": "partial",
+                            "used_dimensions": "core",
+                            "accepted_evidence_count": "oops",
+                            "attempts": None,
+                            "last_evidence_event_id": "private-event-1",
+                        },
+                        {
+                            "concept": "输出",
+                            "status": "covered",
+                            "used_dimensions": ["application", "", None],
+                            "accepted_evidence_count": 2,
+                            "attempts": 3,
+                            "learning_evidence": [{"secret": True}],
+                        },
+                    ],
+                    "coverage_score": 0.25,
+                    "unresolved_concepts": ["循环边界", "", None],
+                    "ready_for_code": False,
+                }
+            }, ensure_ascii=False),
+        ))
+        db.session.commit()
+
+    response = client.post("/thinking/api/start_session", json={"assignment_id": assignment_id})
+
+    assert response.status_code == 200
+    assert response.json["forum_state"]["coverage_summary"] == {
+        "coverage_score": 0.25,
+        "ready_for_code": False,
+        "unresolved_concepts": ["循环边界"],
+        "concept_coverage": [
+            {
+                "concept": "循环边界",
+                "status": "partial",
+                "asked_dimensions": [],
+                "accepted_evidence_count": 0,
+                "attempts": 0,
+            },
+            {
+                "concept": "输出",
+                "status": "covered",
+                "asked_dimensions": ["application"],
+                "accepted_evidence_count": 2,
+                "attempts": 3,
+            },
+        ],
+    }
+    body = json.dumps(response.json["forum_state"], ensure_ascii=False)
+    for forbidden in ("used_dimensions", "last_evidence_event_id", "learning_evidence", "private-event-1"):
         assert forbidden not in body
 
 
@@ -322,3 +394,19 @@ def test_start_session_returns_stable_empty_forum_restore_for_new_session(tmp_pa
             "concept_coverage": [],
         },
     }
+
+
+def test_stage3_forum_frontend_restores_safe_user_selected_target_and_reply_context_after_refresh():
+    assert "codesense-stage3-forum-compose:" in THINKING_JS
+    assert "function forumComposerStorageKey()" in THINKING_JS
+    assert "function loadPersistedForumComposerState()" in THINKING_JS
+    assert "function persistForumComposerState()" in THINKING_JS
+    assert "function clearPersistedForumComposerState()" in THINKING_JS
+    assert "sessionStorage.getItem(forumComposerStorageKey())" in THINKING_JS
+    assert "sessionStorage.setItem(forumComposerStorageKey()" in THINKING_JS
+    assert "sessionStorage.removeItem(forumComposerStorageKey())" in THINKING_JS
+    assert "const restoredSelection = chooseRestoredForumComposerState(source);" in THINKING_JS
+    assert "const persistedEvent = findForumEventById(replyEventId);" in THINKING_JS
+    assert "if (!isPersistedForumEvent(persistedEvent))" in THINKING_JS
+    assert "if (serverReplyEventId) {" in THINKING_JS
+    assert "if (state.forumReplyContext) {" in THINKING_JS
