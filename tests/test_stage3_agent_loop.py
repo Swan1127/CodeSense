@@ -9,6 +9,7 @@ from utils.agents.feynman import FeynmanCallbacks, build_feynman_runtime
 from utils.agents.memory import EventRecord, FeynmanState, MemorySnapshot, MemoryStore
 from utils.agents.model import ModelError
 from utils.agents.loop import AgentLoop, AgentLoopConfig, AgentLoopSpec
+from utils.agents.tools import build_feynman_tool_registry
 
 
 @dataclass
@@ -172,6 +173,18 @@ def make_loop(*, model, tools=None, memory=None):
     )
 
 
+def make_student_loop(*, model, tools=None, memory=None):
+    return AgentLoop(
+        session_id=12,
+        role=AgentRole.STUDENT_AGENT,
+        model=model,
+        tools=tools or FakeRegistry({"inspect_learning_state": ToolResult(ok=True)}),
+        memory=memory or FakeMemory(),
+        spec=AgentLoopSpec(system_prompt="study safely"),
+        config=AgentLoopConfig(),
+    )
+
+
 def test_agent_loop_sanitizes_code_before_public_response_and_persistence():
     memory = FakeMemory()
     result = AgentLoop(
@@ -262,6 +275,179 @@ def test_agent_loop_executes_tool_then_uses_result():
         "tool_call_id": "c1", "name": "inspect_learning_state", "ok": True,
         "content": {"focus": "循环边界"},
     }]
+
+
+def test_agent_loop_collects_only_the_first_internal_probe_signal_per_request():
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[
+                ToolCall("probe-1", "request_student_probe", {
+                    "concept": "循环边界",
+                    "dimension": "core",
+                    "goal": "先问边界条件",
+                }),
+                ToolCall("probe-2", "request_student_probe", {
+                    "concept": "不变量",
+                    "dimension": "edge_case",
+                    "goal": "再问边界情况",
+                }),
+            ]),
+            AgentDecision(message="先说明循环什么时候停止。"),
+        ]),
+        tools=FakeRegistry({
+            "request_student_probe": [
+                ToolResult(
+                    ok=True,
+                    model_content={"accepted": True},
+                    internal_content={
+                        "concept": "循环边界",
+                        "dimension": "core",
+                        "goal": "先问边界条件",
+                    },
+                    signal_type="student_probe",
+                ),
+                ToolResult(
+                    ok=True,
+                    model_content={"accepted": True},
+                    internal_content={
+                        "concept": "不变量",
+                        "dimension": "edge_case",
+                        "goal": "再问边界情况",
+                    },
+                    signal_type="student_probe",
+                ),
+            ],
+        }),
+    ).handle_turn("继续", request_id="teacher-probe")
+
+    assert result.success is True
+    assert result.response == "先说明循环什么时候停止。"
+    assert result.internal_signals == {
+        "student_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "先问边界条件",
+        }
+    }
+    assert "internal_signals" not in result.to_public_dict()
+
+
+def test_persisted_probe_tool_result_keeps_only_allowed_private_signal_keys():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("probe-1", "request_student_probe", {
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "先问边界条件",
+            })]),
+            AgentDecision(message="继续。"),
+        ]),
+        tools=FakeRegistry({"request_student_probe": ToolResult(
+            ok=True,
+            model_content={"accepted": True},
+            internal_content={
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "先问边界条件",
+                "hidden_answer": "i < n",
+            },
+            signal_type="student_probe",
+        )}),
+        memory=memory,
+    ).handle_turn("继续", request_id="persisted-probe")
+
+    tool_event = next(event for event in memory.events if event[0] == "tool_result")
+
+    assert result.success is True
+    assert result.internal_signals == {
+        "student_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "先问边界条件",
+        }
+    }
+    assert tool_event[3]["signal_type"] == "student_probe"
+    assert tool_event[3]["internal_content"] == {
+        "concept": "循环边界",
+        "dimension": "core",
+        "goal": "先问边界条件",
+    }
+    assert "hidden_answer" not in tool_event[3]["internal_content"]
+
+
+def test_agent_loop_forbidden_probe_tool_returns_stable_error_without_public_message():
+    memory = FakeMemory()
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("forbidden", "ask_student_probe", {
+                "question": "你能解释一下为什么最后一个索引不是 n 吗？",
+            })]),
+        ]),
+        tools=FakeRegistry({"ask_student_probe": ToolResult(ok=False, error_code="TOOL_NOT_ALLOWED")}),
+        memory=memory,
+    ).handle_turn("继续", request_id="forbidden-probe")
+
+    assert (result.success, result.error_code) == (False, "TOOL_NOT_ALLOWED")
+    assert "agent_message" not in [event[0] for event in memory.events]
+
+
+def test_handle_trigger_persists_agent_trigger_without_blank_user_message():
+    memory = FakeMemory()
+    result = make_student_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("probe-ask", "ask_student_probe", {
+                "question": "你能解释一下为什么最后一个合法索引是 n - 1 吗？",
+            })]),
+        ]),
+        tools=FakeRegistry({"ask_student_probe": ToolResult(
+            ok=True,
+            public_content={"message": "你能解释一下为什么最后一个合法索引是 n - 1 吗？"},
+            state_patch={"pending_probe": {"concept": "循环边界", "dimension": "core"}},
+        )}),
+        memory=memory,
+    ).handle_trigger(
+        {"concept": "循环边界", "dimension": "core", "goal": "检查边界解释"},
+        request_id="trigger-1",
+    )
+
+    assert result.success is True
+    assert result.response == "你能解释一下为什么最后一个合法索引是 n - 1 吗？"
+    assert [event[0] for event in memory.events][:4] == [
+        "agent_trigger", "agent_decision", "tool_call", "tool_result",
+    ]
+    assert "agent_user_message" not in [event[0] for event in memory.events]
+    assert memory.events[0][3]["message_kind"] == "agent_trigger"
+    assert memory.events[0][3]["target_role"] == "student_agent"
+
+
+def test_handle_trigger_does_not_emit_recursive_intervention_signal():
+    result = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall("probe-1", "request_student_probe", {
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "先问边界条件",
+            })]),
+            AgentDecision(message="继续。"),
+        ]),
+        tools=FakeRegistry({"request_student_probe": ToolResult(
+            ok=True,
+            model_content={"accepted": True},
+            internal_content={
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "先问边界条件",
+            },
+            signal_type="student_probe",
+        )}),
+    ).handle_trigger(
+        {"concept": "循环边界", "dimension": "edge_case", "goal": "外部触发"},
+        request_id="trigger-recursive",
+    )
+
+    assert result.success is True
+    assert result.internal_signals == {}
 
 
 def test_agent_loop_stops_after_four_model_decisions():
@@ -761,6 +947,142 @@ def test_replayed_buggy_tool_result_without_artifact_recovers_public_result():
     assert result.response == "我写了一版代码，请帮我检查。"
     assert generator_calls == []
     assert [event for event in runtime.event_store.events if event.event_type == "buggy_attempt"] == []
+
+
+def test_replayed_probe_tool_result_preserves_private_signal_without_public_leak():
+    event_store = FakeEventStore()
+    request_id = "replay-probe-request"
+    call = ToolCall("probe-replay", "request_student_probe", {
+        "concept": "循环边界",
+        "dimension": "core",
+        "goal": "检查用户能否解释边界条件",
+    })
+    event_store.append(EventRecord(
+        session_id=12,
+        stage=3,
+        event_type="tool_call",
+        role="teacher_agent",
+        metadata={
+            "request_id": request_id,
+            "tool_call": call.to_payload(),
+            "claim": True,
+            "side_effect": True,
+        },
+    ))
+    event_store.append(EventRecord(
+        session_id=12,
+        stage=3,
+        event_type="tool_result",
+        role="teacher_agent",
+        metadata={
+            "request_id": request_id,
+            "tool_call": call.to_payload(),
+            "ok": True,
+            "terminal": False,
+            "model_content": {"accepted": True},
+            "public_content": {},
+            "state_patch": {},
+            "signal_type": "student_probe",
+            "internal_content": {
+                "concept": "循环边界",
+                "dimension": "core",
+                "goal": "检查用户能否解释边界条件",
+            },
+        },
+    ))
+    memory = MemoryStore(event_store)
+    loop = AgentLoop(
+        session_id=12,
+        role=AgentRole.TEACHER_AGENT,
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[call]),
+            AgentDecision(message="先说明循环什么时候停止。"),
+        ]),
+        tools=build_feynman_tool_registry(),
+        memory=memory,
+        spec=AgentLoopSpec(
+            system_prompt="teach safely",
+            key_concepts=["循环边界", "不变量"],
+        ),
+        config=AgentLoopConfig(),
+    )
+
+    result = loop.handle_turn("继续", request_id=request_id)
+    projected = memory.forum_events(12)
+
+    assert result.success is True
+    assert result.internal_signals == {
+        "student_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "检查用户能否解释边界条件",
+        }
+    }
+    assert "internal_signals" not in result.to_public_dict()
+    assert "检查用户能否解释边界条件" not in str(result.to_public_dict())
+    assert len([event for event in event_store.events if event.event_type == "tool_result"]) == 1
+    assert all(item["event_type"] != "tool_result" for item in projected)
+    assert "检查用户能否解释边界条件" not in str(projected)
+
+
+def test_completed_probe_retry_replays_private_signal_without_public_leak():
+    event_store = FakeEventStore()
+    memory = MemoryStore(event_store)
+    request_id = "completed-probe-retry"
+    probe = ToolResult(
+        ok=True,
+        model_content={"accepted": True},
+        internal_content={
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "检查用户能否解释边界条件",
+            "hidden_answer": "i < n",
+        },
+        signal_type="student_probe",
+    )
+    loop = make_loop(
+        model=FakeDecisionModel([
+            AgentDecision(tool_calls=[ToolCall(
+                "probe-complete",
+                "request_student_probe",
+                {
+                    "concept": "循环边界",
+                    "dimension": "core",
+                    "goal": "检查用户能否解释边界条件",
+                },
+            )]),
+            AgentDecision(message="先说明循环什么时候停止。"),
+        ]),
+        tools=FakeRegistry({
+            "request_student_probe": probe,
+        }),
+        memory=memory,
+    )
+
+    first = loop.handle_turn("继续", request_id=request_id)
+    retry = loop.handle_turn("重复提交", request_id=request_id)
+    terminal = next(
+        event for event in reversed(event_store.events)
+        if event.event_type == "state_snapshot"
+        and event.metadata.get("request_id") == request_id
+    )
+    projected = memory.forum_events(12)
+
+    assert first.internal_signals == {
+        "student_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+            "goal": "检查用户能否解释边界条件",
+        }
+    }
+    assert retry.internal_signals == first.internal_signals
+    assert retry.to_public_dict() == first.to_public_dict()
+    assert len(loop.model.calls) == 2
+    assert terminal.metadata["signal_type"] == "student_probe"
+    assert terminal.metadata["internal_content"] == first.internal_signals["student_probe"]
+    assert "hidden_answer" not in terminal.metadata["internal_content"]
+    assert "internal_signals" not in retry.to_public_dict()
+    assert "检查用户能否解释边界条件" not in str(projected)
 
 
 def test_side_effect_tool_claim_is_persisted_before_callback_runs():

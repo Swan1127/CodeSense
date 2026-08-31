@@ -8,11 +8,26 @@ from typing import Any, Dict, List, Mapping, Optional
 MAX_TOOL_CALLS_PER_DECISION = 4
 MAX_TOOL_CALL_ID_CHARS = 128
 MAX_TOOL_NAME_CHARS = 80
+_INTERNAL_PUBLIC_CONTENT_KEYS = frozenset({"internal_signals"})
 
 
 class AgentRole(str, Enum):
     TEACHER_AGENT = "teacher_agent"
     STUDENT_AGENT = "student_agent"
+
+
+class Stage3Target(str, Enum):
+    TEACHER_AGENT = "teacher_agent"
+    STUDENT_AGENT = "student_agent"
+    USER = "user"
+    SYSTEM = "system"
+
+
+class Stage3MessageKind(str, Enum):
+    USER_MESSAGE = "user_message"
+    AGENT_MESSAGE = "agent_message"
+    STUDENT_PROBE = "student_probe"
+    AGENT_TRIGGER = "agent_trigger"
 
 
 class GoalStatus(str, Enum):
@@ -120,6 +135,31 @@ class ToolResult:
     memory_events: List[Dict[str, Any]] = field(default_factory=list)
     error_code: Optional[str] = None
     retryable: bool = False
+    internal_content: Dict[str, Any] = field(default_factory=dict)
+    signal_type: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ForumEnvelope:
+    request_id: str
+    source: Stage3Target
+    target: Stage3Target
+    content: str
+    message_kind: Stage3MessageKind
+    reply_to_event_id: Optional[str] = None
+    parent_request_id: Optional[str] = None
+    visibility: str = "public"
+
+    def to_metadata(self) -> Dict[str, Any]:
+        return {
+            "request_id": self.request_id,
+            "source_role": self.source.value,
+            "target_role": self.target.value,
+            "message_kind": self.message_kind.value,
+            "reply_to_event_id": self.reply_to_event_id,
+            "parent_request_id": self.parent_request_id,
+            "visibility": self.visibility,
+        }
 
 
 @dataclass
@@ -129,8 +169,15 @@ class FeynmanState:
     phase: str = "student_dialogue"
     teacher_rounds: int = 0
     student_rounds: int = 0
+    feynman_rounds: int = 0
+    key_concepts: List[str] = field(default_factory=list)
     learning_evidence: List[Dict[str, Any]] = field(default_factory=list)
     misconceptions: List[Dict[str, Any]] = field(default_factory=list)
+    concept_coverage: List[Dict[str, Any]] = field(default_factory=list)
+    coverage_score: float = 0.0
+    unresolved_concepts: List[str] = field(default_factory=list)
+    ready_for_code: bool = False
+    pending_probe: Optional[Dict[str, Any]] = None
     buggy_code_event_id: Optional[str] = None
     code_review_status: str = "pending"
     status: str = "in_progress"
@@ -149,15 +196,21 @@ class AgentState:
 @dataclass
 class AgentResult:
     success: bool
-    agent: AgentRole
+    agent: AgentRole | Stage3Target
     response: str = ""
     ui_action: UIAction = UIAction.CONTINUE_CHAT
     ready_for_code: bool = False
     state: Dict[str, Any] = field(default_factory=dict)
     public_content: Dict[str, Any] = field(default_factory=dict)
+    internal_signals: Dict[str, Any] = field(default_factory=dict)
     error_code: Optional[str] = None
 
     def to_public_dict(self) -> Dict[str, Any]:
+        safe_public_content = {
+            key: value
+            for key, value in self.public_content.items()
+            if key not in _INTERNAL_PUBLIC_CONTENT_KEYS
+        }
         result = {
             "success": self.success,
             "response": self.response,
@@ -165,7 +218,7 @@ class AgentResult:
             "ui_action": self.ui_action.value,
             "ready_for_code": self.ready_for_code,
             "state": self.state,
-            **self.public_content,
+            **safe_public_content,
         }
         if self.error_code:
             result["error_code"] = self.error_code

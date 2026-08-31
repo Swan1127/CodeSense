@@ -3,9 +3,11 @@
 Blueprint: thinking, URL前缀: /thinking
 """
 import json
+import ipaddress
 import traceback
 import uuid
 from datetime import datetime as dt
+import math
 
 from flask import Blueprint, render_template, request, jsonify, session, Response, current_app
 from flask_login import current_user
@@ -17,9 +19,10 @@ from utils.thinking_ai import (
     generate_preset, evaluate_description, generate_stage1_hint,
     generate_stage2_hint, companion_agent_chat, sanitize_response
 )
-from utils.agents.contracts import AgentRole
+from utils.agents.contracts import AgentRole, Stage3MessageKind, Stage3Target
 from utils.agents.feynman import build_feynman_runtime
 from utils.agents.memory import MemoryStore, SqlAlchemyEventStore
+from utils.agents.orchestrator import Stage3Orchestrator
 
 thinking = Blueprint('thinking', __name__, url_prefix='/thinking')
 
@@ -37,6 +40,46 @@ def _extract_stage3_message(data: dict) -> str:
 def _request_id(data: dict) -> str:
     value = str(data.get('request_id') or '').strip()
     return value[:80] if value else uuid.uuid4().hex
+
+
+def _stage3_forum_history(session_id: int):
+    return MemoryStore(SqlAlchemyEventStore()).forum_events(session_id)
+
+
+def _stage3_target_role(data: dict, *, default_role: AgentRole | None = None, required: bool = False):
+    value = str(data.get('target_role') or '').strip()
+    if not value:
+        if required or default_role is None:
+            return None, 'TARGET_ROLE_REQUIRED'
+        return default_role, None
+    try:
+        return AgentRole(value), None
+    except ValueError:
+        return None, 'TARGET_ROLE_INVALID'
+
+
+def _reply_to_event_id(data: dict):
+    value = str(data.get('reply_to_event_id') or '').strip()
+    return value or None
+
+
+def _stage3_reply_event_exists(session_id: int, reply_to_event_id: str) -> bool:
+    return any(
+        str(item.get('event_id') or '') == str(reply_to_event_id)
+        for item in _stage3_forum_history(session_id)
+    )
+
+
+def _stage3_forum_validation_error_response(error_code: str):
+    messages = {
+        'TARGET_ROLE_REQUIRED': '缺少目标对象',
+        'TARGET_ROLE_INVALID': '目标对象无效',
+        'REPLY_EVENT_NOT_FOUND': '回复目标不存在',
+    }
+    return jsonify({
+        'error': messages.get(error_code, '请求无效'),
+        'error_code': error_code,
+    }), 400
 
 
 def _stage3_runtime(data: dict):
@@ -88,6 +131,127 @@ def _stage3_request_result(session_id: int, request_id: str):
     return MemoryStore(SqlAlchemyEventStore()).find_request_result(session_id, request_id)
 
 
+def _stage3_student_message_guard(session_id: int, message: str, request_id: str):
+    completed = _stage3_request_result(session_id, request_id)
+    if completed is not None:
+        return completed
+    cleaned_current = "".join(message.split())
+    if len(cleaned_current) < 5:
+        return {
+            'success': True,
+            'response': '呃，你说的这也太简短了（需要5字以上），我感觉完全听不明白。能稍微详细一点解释吗？',
+            'ready_for_code': False,
+        }
+    import difflib
+
+    history_logs = ThinkingStageLog.query.filter_by(session_id=session_id, stage=3).all()
+    runtime_roles = _runtime_role_by_request(history_logs)
+    for log in history_logs:
+        if log.role != 'student':
+            continue
+        meta = log.get_metadata() or {}
+        if meta.get('request_id') == request_id:
+            continue
+        is_runtime_student_message = (
+            log.event_type == 'agent_user_message' and
+            runtime_roles.get(str(meta.get('request_id') or '')) == 'student_agent'
+        )
+        is_legacy_student_message = log.event_type == 'chat' and meta.get('panel') == 'student_agent'
+        if not (is_runtime_student_message or is_legacy_student_message):
+            continue
+        if difflib.SequenceMatcher(None, "".join(log.content.split()).lower(), cleaned_current.lower()).ratio() > 0.8:
+            return {
+                'success': True,
+                'response': '咦，这句话你刚才已经解释过一遍了呀！能不能换个思路，或者用别的话跟我说一下？',
+                'ready_for_code': False,
+            }
+    return None
+
+
+def _stage3_forum_payload(primary_payload: dict, interventions: list | None = None):
+    return {
+        'primary': dict(primary_payload),
+        'interventions': list(interventions or []),
+    }
+
+
+def _stage3_legacy_event_metadata(target_role: AgentRole):
+    return {
+        'source_role': Stage3Target.USER.value,
+        'target_role': target_role.value,
+        'message_kind': Stage3MessageKind.USER_MESSAGE.value,
+        'visibility': 'public',
+    }
+
+
+def _run_stage3_legacy_turn(data: dict, target_role: AgentRole):
+    message = _extract_stage3_message(data)
+    if not message:
+        return jsonify({'error': '缺少消息'}), 400
+    ts, runtime, error_code = _stage3_runtime(data)
+    if error_code:
+        return _stage3_runtime_error_response(error_code)
+
+    request_id = _request_id(data)
+    if target_role is AgentRole.STUDENT_AGENT:
+        guarded = _stage3_student_message_guard(ts.id, message, request_id)
+        if guarded is not None:
+            return guarded.to_public_dict() if hasattr(guarded, 'to_public_dict') else guarded
+
+    result = runtime.handle_chat(
+        target_role,
+        message,
+        request_id=request_id,
+        event_metadata=_stage3_legacy_event_metadata(target_role),
+    )
+    return result.to_public_dict()
+
+
+def _run_stage3_forum_turn(
+    data: dict,
+    *,
+    default_target_role: AgentRole | None = None,
+    require_target_role: bool = False,
+):
+    message = _extract_stage3_message(data)
+    if not message:
+        return None, None, (jsonify({'error': '缺少消息'}), 400)
+    ts, runtime, error_code = _stage3_runtime(data)
+    if error_code:
+        return None, None, _stage3_runtime_error_response(error_code)
+
+    target_role, target_error = _stage3_target_role(
+        data,
+        default_role=default_target_role,
+        required=require_target_role,
+    )
+    if target_error:
+        return None, None, _stage3_forum_validation_error_response(target_error)
+
+    request_id = _request_id(data)
+    reply_to_event_id = _reply_to_event_id(data)
+    if reply_to_event_id and not _stage3_reply_event_exists(ts.id, reply_to_event_id):
+        return None, None, _stage3_forum_validation_error_response('REPLY_EVENT_NOT_FOUND')
+
+    if target_role is AgentRole.STUDENT_AGENT:
+        guarded = _stage3_student_message_guard(ts.id, message, request_id)
+        if guarded is not None:
+            guarded_payload = guarded.to_public_dict() if hasattr(guarded, 'to_public_dict') else dict(guarded)
+            return ts, target_role, _stage3_forum_payload(guarded_payload)
+
+    orchestrator = Stage3Orchestrator(runtime)
+    try:
+        result = orchestrator.handle_user_message(
+            message,
+            target_role=target_role,
+            request_id=request_id,
+            reply_to_event_id=reply_to_event_id,
+        )
+    except ValueError:
+        return None, None, _stage3_forum_validation_error_response('REPLY_EVENT_NOT_FOUND')
+    return ts, target_role, result.to_public_dict()
+
+
 def _stable_event_order(logs):
     return sorted(
         logs,
@@ -130,6 +294,163 @@ def _public_code_review(log):
         'buggy_code': buggy_code,
         'message': str(public_content.get('message') or log.content or ''),
     }
+
+
+def _stage3_default_coverage_summary():
+    return {
+        'coverage_score': 0.0,
+        'ready_for_code': False,
+        'unresolved_concepts': [],
+        'concept_coverage': [],
+    }
+
+
+def _stage3_safe_coverage_summary(session_id: int):
+    snapshot = MemoryStore(SqlAlchemyEventStore()).load(session_id)
+    raw_coverage = snapshot.state.concept_coverage if isinstance(snapshot.state.concept_coverage, list) else []
+    concept_coverage = []
+    for item in raw_coverage:
+        if not isinstance(item, dict):
+            continue
+        concept = str(item.get('concept') or '').strip()
+        status = str(item.get('status') or '').strip()
+        if not concept or not status:
+            continue
+        raw_dimensions = item.get('used_dimensions')
+        if not isinstance(raw_dimensions, (list, tuple)):
+            raw_dimensions = item.get('asked_dimensions')
+        if not isinstance(raw_dimensions, (list, tuple)):
+            raw_dimensions = []
+        concept_coverage.append({
+            'concept': concept,
+            'status': status,
+            'asked_dimensions': [
+                value.strip()
+                for value in raw_dimensions
+                if isinstance(value, str) and value.strip()
+            ],
+            'accepted_evidence_count': _safe_int(item.get('accepted_evidence_count')),
+            'attempts': _safe_int(item.get('attempts')),
+        })
+    coverage_score = _safe_float(snapshot.state.coverage_score)
+    raw_unresolved = snapshot.state.unresolved_concepts
+    if not isinstance(raw_unresolved, (list, tuple)):
+        raw_unresolved = []
+    unresolved = [
+        value.strip()
+        for value in raw_unresolved
+        if isinstance(value, str) and value.strip()
+    ]
+    return {
+        'coverage_score': coverage_score,
+        'ready_for_code': bool(snapshot.state.ready_for_code),
+        'unresolved_concepts': unresolved,
+        'concept_coverage': concept_coverage,
+    }, snapshot.state.pending_probe
+
+
+def _stage3_forum_state(session_id: int):
+    coverage_summary, pending_probe = _stage3_safe_coverage_summary(session_id)
+    reply_to_event_id = None
+    target_role = AgentRole.TEACHER_AGENT.value
+    if isinstance(pending_probe, dict) and pending_probe:
+        target_role = AgentRole.STUDENT_AGENT.value
+        for event in reversed(_stage3_forum_history(session_id)):
+            if (
+                event.get('source_role') == AgentRole.STUDENT_AGENT.value
+                and event.get('message_kind') == Stage3MessageKind.STUDENT_PROBE.value
+            ):
+                event_id = event.get('event_id')
+                reply_to_event_id = str(event_id) if event_id else None
+                break
+    return {
+        'target_role': target_role,
+        'reply_to_event_id': reply_to_event_id,
+        'coverage_summary': coverage_summary,
+    }
+
+
+def _request_is_local() -> bool:
+    remote_addr = str(request.remote_addr or '').strip()
+    if not remote_addr:
+        return False
+    try:
+        return ipaddress.ip_address(remote_addr).is_loopback
+    except ValueError:
+        return False
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        if isinstance(value, float) and not math.isfinite(value):
+            return default
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _safe_float(value, default: float = 0.0):
+    try:
+        number = float(value)
+        return number if math.isfinite(number) else default
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _stage3_trace_target_role(log):
+    metadata = log.get_metadata() or {}
+    value = str(metadata.get('target_role') or '').strip()
+    if value:
+        return value
+    panel = str(metadata.get('panel') or '').strip()
+    if panel in {AgentRole.TEACHER_AGENT.value, AgentRole.STUDENT_AGENT.value}:
+        return panel
+    if log.event_type == 'agent_message':
+        return Stage3Target.USER.value
+    return None
+
+
+def _stage3_trace_tool_name(metadata: dict):
+    tool_call = metadata.get('tool_call')
+    if not isinstance(tool_call, dict):
+        return None
+    value = str(tool_call.get('name') or '').strip()
+    return value or None
+
+
+def _stage3_trace_coverage_score(metadata: dict):
+    state_patch = metadata.get('state_patch')
+    if isinstance(state_patch, dict) and isinstance(state_patch.get('coverage_score'), (int, float)):
+        return _safe_float(state_patch['coverage_score'], None)
+    state = metadata.get('state')
+    if isinstance(state, dict) and isinstance(state.get('coverage_score'), (int, float)):
+        return _safe_float(state['coverage_score'], None)
+    return None
+
+
+def _stage3_trace_entries(session_id: int):
+    logs = ThinkingStageLog.query.filter_by(
+        session_id=session_id,
+        stage=3,
+    ).order_by(
+        ThinkingStageLog.created_at.asc(),
+        ThinkingStageLog.id.asc(),
+    ).all()
+    trace = []
+    for log in _stable_event_order(logs):
+        metadata = log.get_metadata() or {}
+        input_kind = str(metadata.get('input_kind') or '').strip() or None
+        ui_action = str(metadata.get('ui_action') or '').strip() or None
+        trace.append({
+            'event_type': str(log.event_type or ''),
+            'role': str(log.role or ''),
+            'target_role': _stage3_trace_target_role(log),
+            'input_kind': input_kind,
+            'tool_name': _stage3_trace_tool_name(metadata),
+            'coverage_score': _stage3_trace_coverage_score(metadata),
+            'ui_action': ui_action,
+        })
+    return trace
 
 
 def _check_and_trigger_stale_preset(preset, assignment_id):
@@ -270,6 +591,8 @@ def start_session():
         if existing:
             # 计算已过秒数
             elapsed_seconds = int((dt.utcnow() - existing.started_at).total_seconds())
+            forum_history = _stage3_forum_history(existing.id)
+            forum_state = _stage3_forum_state(existing.id)
             
             # 加载伴学历史 (全部阶段)
             companion_logs = ThinkingStageLog.query.filter_by(
@@ -375,6 +698,8 @@ def start_session():
                 'stage1_score': existing.stage1_score,
                 'stage2_block_order': stage2_block_order,
                 'companion_history': companion_history,
+                'forum_history': forum_history,
+                'forum_state': forum_state,
                 'teacher_history': teacher_history,
                 'student_history': student_history,
                 'buggy_code_info': buggy_code_info,
@@ -398,6 +723,15 @@ def start_session():
             'session_id': new_session.id,
             'current_stage': 1,
             'resumed': False,
+            'forum_history': [],
+            'forum_state': {
+                'target_role': AgentRole.TEACHER_AGENT.value,
+                'reply_to_event_id': None,
+                'coverage_summary': _stage3_default_coverage_summary(),
+            },
+            'teacher_history': [],
+            'student_history': [],
+            'buggy_code_info': None,
             'preset': _serialize_preset(preset)
         })
 
@@ -838,18 +1172,56 @@ def stage3_teacher_chat():
     """费曼阶段 — 老师Agent对话"""
     try:
         data = request.get_json() or {}
-        message = _extract_stage3_message(data)
-        if not message:
-            return jsonify({'error': '缺少消息'}), 400
-        ts, runtime, error_code = _stage3_runtime(data)
-        if error_code:
-            return _stage3_runtime_error_response(error_code)
-        result = runtime.handle_chat(AgentRole.TEACHER_AGENT, message, request_id=_request_id(data))
-        return jsonify(result.to_public_dict())
+        payload = _run_stage3_legacy_turn(data, AgentRole.TEACHER_AGENT)
+        if isinstance(payload, tuple):
+            return payload
+        return jsonify(payload)
     except Exception:
         db.session.rollback()
         current_app.logger.exception('阶段3老师Agent对话失败')
         return jsonify({'error': '服务暂时不可用'}), 500
+
+
+@thinking.route('/api/stage3/forum/message', methods=['POST'])
+@login_required
+def stage3_forum_message():
+    """费曼阶段 — 论坛式显式目标对话"""
+    try:
+        data = request.get_json() or {}
+        _, _, payload = _run_stage3_forum_turn(
+            data,
+            require_target_role=True,
+        )
+        if isinstance(payload, tuple):
+            return payload
+        return jsonify(payload)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('阶段3论坛对话失败')
+        return jsonify({'error': '服务暂时不可用'}), 500
+
+
+@thinking.route('/api/stage3/forum/trace', methods=['POST'])
+@login_required
+def stage3_forum_trace():
+    """费曼阶段 — 本地开发者安全追踪"""
+    if not _request_is_local():
+        return jsonify({
+            'error': '非开发环境，拒绝访问该调试接口',
+            'error_code': 'DEV_TRACE_DISABLED',
+        }), 403
+
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    thinking_session = ThinkingSession.query.get(session_id)
+    if not thinking_session or thinking_session.student_id != current_user.student_id:
+        return _stage3_runtime_error_response('SESSION_NOT_FOUND')
+
+    return jsonify({
+        'success': True,
+        'session_id': thinking_session.id,
+        'trace': _stage3_trace_entries(thinking_session.id),
+    })
 
 
 @thinking.route('/api/stage3/teach', methods=['POST'])
@@ -858,41 +1230,10 @@ def stage3_student_teach():
     """费曼阶段 — 教坏学生对话"""
     try:
         data = request.get_json() or {}
-        message = _extract_stage3_message(data)
-        if not message:
-            return jsonify({'error': '缺少消息'}), 400
-        ts, runtime, error_code = _stage3_runtime(data)
-        if error_code:
-            return _stage3_runtime_error_response(error_code)
-
-        # 验证学生发给小明的解答质量（防止刷屏/复读绕过）
-        request_id = _request_id(data)
-        completed = _stage3_request_result(ts.id, request_id)
-        if completed is not None:
-            return jsonify(completed.to_public_dict())
-        cleaned_current = "".join(message.split())
-        if len(cleaned_current) < 5:
-            return jsonify({'success': True, 'response': '呃，你说的这也太简短了（需要5字以上），我感觉完全听不明白。能稍微详细一点解释吗？', 'ready_for_code': False})
-        import difflib
-        history_logs = ThinkingStageLog.query.filter_by(session_id=ts.id, stage=3).all()
-        runtime_roles = _runtime_role_by_request(history_logs)
-        for log in history_logs:
-            if log.role != 'student':
-                continue
-            meta = log.get_metadata() or {}
-            if meta.get('request_id') == request_id:
-                continue
-            is_runtime_student_message = (
-                log.event_type == 'agent_user_message' and
-                runtime_roles.get(str(meta.get('request_id') or '')) == 'student_agent'
-            )
-            is_legacy_student_message = log.event_type == 'chat' and meta.get('panel') == 'student_agent'
-            if not (is_runtime_student_message or is_legacy_student_message):
-                continue
-            if difflib.SequenceMatcher(None, "".join(log.content.split()).lower(), cleaned_current.lower()).ratio() > 0.8:
-                return jsonify({'success': True, 'response': '咦，这句话你刚才已经解释过一遍了呀！能不能换个思路，或者用别的话跟我说一下？', 'ready_for_code': False})
-        result = runtime.handle_chat(AgentRole.STUDENT_AGENT, message, request_id=request_id)
-        return jsonify(result.to_public_dict())
+        payload = _run_stage3_legacy_turn(data, AgentRole.STUDENT_AGENT)
+        if isinstance(payload, tuple):
+            return payload
+        return jsonify(payload)
     except Exception:
         db.session.rollback()
         current_app.logger.exception('阶段3学生Agent对话失败')
@@ -908,7 +1249,18 @@ def stage3_write_code():
         ts, runtime, error_code = _stage3_runtime(data)
         if error_code:
             return _stage3_runtime_error_response(error_code)
-        result = runtime.generate_buggy_attempt(request_id=_request_id(data))
+        request_id = _request_id(data)
+        completed = _stage3_request_result(ts.id, request_id)
+        if completed is not None:
+            return jsonify(completed.to_public_dict())
+        result = runtime.generate_buggy_attempt(
+            request_id=request_id,
+            enforce_ready=True,
+        )
+        if result.success:
+            completed = _stage3_request_result(ts.id, request_id)
+            if completed is not None:
+                return jsonify(completed.to_public_dict())
         return jsonify(result.to_public_dict())
     except Exception:
         db.session.rollback()

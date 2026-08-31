@@ -150,6 +150,31 @@ def test_tool_result_separates_public_and_model_content():
     assert result.retryable is True
 
 
+def test_tool_result_preserves_legacy_positional_constructor_order():
+    state_patch = {"status": "complete"}
+    memory_events = [{"event_type": "learning_evidence"}]
+
+    result = ToolResult(
+        True,
+        {"model": "private"},
+        {"public": "visible"},
+        state_patch,
+        memory_events,
+        "TOOL_FAILED",
+        True,
+    )
+
+    assert result.ok is True
+    assert result.model_content == {"model": "private"}
+    assert result.public_content == {"public": "visible"}
+    assert result.state_patch == state_patch
+    assert result.memory_events == memory_events
+    assert result.error_code == "TOOL_FAILED"
+    assert result.retryable is True
+    assert result.internal_content == {}
+    assert result.signal_type is None
+
+
 def test_structured_model_accepts_fenced_json():
     model = StructuredDecisionModel(FakeClient([
         "```json\n{\"message\":\"请解释边界\"}\n```"

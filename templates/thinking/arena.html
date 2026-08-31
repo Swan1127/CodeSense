@@ -179,26 +179,46 @@
                 </div>
             </div>
 
-            <!-- ===== STAGE 3: Feynman Teaching (Left = Teacher Chat) ===== -->
+            <!-- ===== STAGE 3: Feynman Teaching (Public Forum) ===== -->
             <div class="stage-section" id="stage-3">
                 <div class="panel-header">
-                    <h3><i class="bi bi-mortarboard"></i> 老师辅导</h3>
-                    <span style="font-size: 12px; color: var(--arena-text-dim);">向老师请教，深化理解</span>
+                    <h3><i class="bi bi-people"></i> 阶段三：公开讨论区</h3>
+                    <span style="font-size: 12px; color: var(--arena-text-dim);">公开向老师或小明发言，并在讨论中完成代码修复</span>
                 </div>
-                <div class="chat-container">
-                    <div class="chat-messages" id="teacher-messages">
-                        <!-- Teacher chat messages -->
-                    </div>
-                    <div class="chat-input-area">
-                        <input class="chat-input" id="teacher-chat-input" type="text"
-                               placeholder="向老师提问..."
-                               onkeydown="if(event.key==='Enter'){ThinkingArena.sendTeacherChat()}">
-                        <button class="arena-btn-voice" onclick="ThinkingArena.startVoiceInput('teacher-chat-input', this)" title="语音输入" style="margin-right: 6px;">
-                            <i class="bi bi-mic"></i>
-                        </button>
-                        <button class="arena-btn-send" onclick="ThinkingArena.sendTeacherChat()">
-                            <i class="bi bi-send-fill"></i>
-                        </button>
+                <div class="panel-body">
+                    <div class="stage3-forum" id="stage3-forum">
+                        <div class="forum-toolbar">
+                            <div class="forum-targets" role="group" aria-label="选择下一条消息的接收对象">
+                                <button type="button" class="forum-target-btn is-selected" id="forum-target-teacher"
+                                        data-target-role="teacher_agent" aria-pressed="true">
+                                    <span class="forum-target-label">发给老师</span>
+                                    <span class="forum-target-hint">默认讲解与答疑</span>
+                                </button>
+                                <button type="button" class="forum-target-btn" id="forum-target-student"
+                                        data-target-role="student_agent" aria-pressed="false">
+                                    <span class="forum-target-label">发给小明</span>
+                                    <span class="forum-target-hint">用于教学解释与追问</span>
+                                </button>
+                            </div>
+                            <div class="forum-reply-context" id="forum-reply-context" hidden aria-live="polite">
+                                <span class="forum-reply-context-label">未选择回复对象</span>
+                                <button type="button" class="forum-reply-clear" id="forum-reply-clear">取消回复</button>
+                            </div>
+                        </div>
+                        <div class="forum-feed" id="forum-feed" role="log" aria-live="polite" aria-relevant="additions text">
+                            <!-- Public forum timeline -->
+                        </div>
+                        <div class="chat-input-area forum-input-area">
+                            <input class="chat-input" id="forum-input" type="text"
+                                   placeholder="输入你要公开发送的消息..."
+                                   onkeydown="if(event.key==='Enter'){ThinkingArena.sendForumMessage()}">
+                            <button class="arena-btn-voice" onclick="ThinkingArena.startVoiceInput('forum-input', this)" title="语音输入" style="margin-right: 6px;">
+                                <i class="bi bi-mic"></i>
+                            </button>
+                            <button class="arena-btn-send" id="forum-send" onclick="ThinkingArena.sendForumMessage()">
+                                <i class="bi bi-send-fill"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -242,26 +262,24 @@
                 </div>
             </div>
 
-            <!-- Stage 3: Bad Student Chat Panel -->
+            <!-- Stage 3: Guide Panel -->
             <div id="student-agent-panel" class="stage-section">
                 <div class="panel-header">
-                    <h3><i class="bi bi-person-raised-hand"></i> 教同学（小明）</h3>
-                    <span style="font-size: 12px; color: var(--arena-text-dim);">把你学到的教给他</span>
+                    <h3><i class="bi bi-info-circle"></i> 阶段说明</h3>
+                    <span style="font-size: 12px; color: var(--arena-text-dim);">公开讨论与代码修复规则</span>
                 </div>
-                <div class="chat-container">
-                    <div class="chat-messages" id="student-messages">
-                        <!-- Student chat messages -->
+                <div class="panel-body stage3-guide-panel">
+                    <div class="stage3-guide-card">
+                        <h4>发言规则</h4>
+                        <p>先选择收件人，再发送公开消息。老师负责讲解，小明负责追问和代码检查。</p>
                     </div>
-                    <div class="chat-input-area">
-                        <input class="chat-input" id="student-chat-input" type="text"
-                               placeholder="教小明解题..."
-                               onkeydown="if(event.key==='Enter'){ThinkingArena.sendStudentChat()}">
-                        <button class="arena-btn-voice" onclick="ThinkingArena.startVoiceInput('student-chat-input', this)" title="语音输入" style="margin-right: 6px;">
-                            <i class="bi bi-mic"></i>
-                        </button>
-                        <button class="arena-btn-send" onclick="ThinkingArena.sendStudentChat()">
-                            <i class="bi bi-send-fill"></i>
-                        </button>
+                    <div class="stage3-guide-card">
+                        <h4>回复关系</h4>
+                        <p>每条公开消息都可以点击“回复”继续同一条线索，讨论区会显示来源角色和回复对象。</p>
+                    </div>
+                    <div class="stage3-guide-card">
+                        <h4>代码修复</h4>
+                        <p>当小明发起追问并给出错误代码后，下方会展开现有修复区；标准答案、内部工具参数和隐藏决策不会出现在浏览器里。</p>
                     </div>
                 </div>
             </div>
@@ -338,9 +356,9 @@
                     tabPreviewBtn.style.display = 'inline-block';
                     tabRightBtn.textContent = 'AI 伴学';
                 } else if (currentStage === 3) {
-                    tabLeftBtn.textContent = '老师辅导';
+                    tabLeftBtn.textContent = '公开论坛';
                     tabPreviewBtn.style.display = 'none';
-                    tabRightBtn.textContent = '教小明';
+                    tabRightBtn.textContent = '阶段说明';
                 }
             }
 

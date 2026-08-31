@@ -8,7 +8,7 @@ Flask application context.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from typing import Any, Dict, List, Mapping, Optional, Protocol
 
 from .contracts import (
@@ -16,7 +16,10 @@ from .contracts import (
     AgentRole,
     AgentState,
     FeynmanState,
+    ForumEnvelope,
     GoalStatus,
+    Stage3MessageKind,
+    Stage3Target,
     ToolResult,
     UIAction,
 )
@@ -27,7 +30,9 @@ _COMPLETED_RESULT_EVENTS = frozenset({
     "agent_message", "tool_result", "agent_result", "state_snapshot",
 })
 _REPLAYABLE_STATE_FIELDS = frozenset({
-    "phase", "learning_evidence", "code_review_status", "status",
+    "phase", "learning_evidence", "concept_coverage", "coverage_score",
+    "unresolved_concepts", "ready_for_code", "pending_probe",
+    "code_review_status", "status",
 })
 _STUDENT_SAFE_ARTIFACT_FIELDS = frozenset({"public_hint"})
 _ADVANCEMENT_RESULT_FIELDS = frozenset({
@@ -129,6 +134,7 @@ class MemorySnapshot:
         default_factory=lambda: {role: [] for role in AgentRole}
     )
     code_artifact_index: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    student_learning_evidence: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -163,19 +169,32 @@ class MemoryStore:
                 if isinstance(raw_state, Mapping):
                     snapshot.state = _feynman_state(raw_state, session_id)
                     snapshot.agent_states = _agent_states(record.metadata.get("agent_states"))
+                    snapshot.student_learning_evidence = _project_student_snapshot_learning_evidence(
+                        snapshot.student_learning_evidence,
+                        record,
+                        snapshot.state.learning_evidence,
+                    )
             elif record.event_type == "tool_result":
                 _apply_replayable_state_patch(snapshot.state, record.metadata.get("state_patch"))
-            elif record.event_type == "agent_user_message":
+                snapshot.student_learning_evidence = _project_student_learning_evidence(
+                    snapshot.student_learning_evidence,
+                    record,
+                    snapshot.state.learning_evidence,
+                )
+            elif record.event_type in {"agent_user_message", "chat"}:
                 message = _message(record)
                 snapshot.student_messages.append(message)
                 for agent_role in AgentRole:
-                    snapshot.visible_messages[agent_role].append(message)
+                    if _message_visible_to_role(record, agent_role):
+                        snapshot.visible_messages[agent_role].append(message)
             elif record.event_type == "agent_message":
                 role = _agent_role(record.role)
                 if role is not None:
                     message = _message(record)
                     snapshot.agent_messages[role].append(message)
-                    snapshot.visible_messages[role].append(message)
+                    for agent_role in AgentRole:
+                        if _message_visible_to_role(record, agent_role):
+                            snapshot.visible_messages[agent_role].append(message)
 
             artifact = record.metadata.get("artifact")
             if isinstance(artifact, Mapping):
@@ -192,15 +211,25 @@ class MemoryStore:
             snapshot.visible_messages[role] = snapshot.visible_messages[role][-_MAX_MESSAGES:]
         return snapshot
 
+    def forum_events(self, session_id: int) -> List[Dict[str, Any]]:
+        projected: List[Dict[str, Any]] = []
+        for record in self.event_store.list_events(session_id, stage=3):
+            event = _forum_event(record)
+            if event is not None:
+                projected.append(event)
+        return projected
+
     def view_for(self, snapshot: MemorySnapshot, role: AgentRole) -> MemoryView:
         agent_state = snapshot.agent_states.get(role, AgentState())
         messages = list(snapshot.visible_messages[role])
         artifacts = list(snapshot.code_artifact_index.values())
+        state = snapshot.state
         if role is AgentRole.STUDENT_AGENT:
             artifacts = [_student_safe_artifact(item) for item in artifacts]
+            state = replace(snapshot.state, learning_evidence=list(snapshot.student_learning_evidence))
         return MemoryView(
             role=role,
-            state=snapshot.state,
+            state=state,
             agent_state=agent_state,
             messages=messages[-_MAX_MESSAGES:],
             code_artifacts=artifacts,
@@ -302,12 +331,15 @@ def _tool_result_from_event(record: EventRecord) -> ToolResult:
     public_content = metadata.get("public_content")
     model_content = metadata.get("model_content")
     state_patch = metadata.get("state_patch")
+    signal_metadata = _tool_signal_metadata(metadata)
     return ToolResult(
         ok=metadata.get("ok") is True,
         model_content=dict(model_content) if isinstance(model_content, Mapping) else {},
         public_content=dict(public_content) if isinstance(public_content, Mapping) else {},
+        internal_content=dict(signal_metadata.get("internal_content", {})),
         state_patch=dict(state_patch) if isinstance(state_patch, Mapping) else {},
         error_code=str(metadata["error_code"]) if metadata.get("error_code") else None,
+        signal_type=signal_metadata.get("signal_type"),
         retryable=False,
     )
 
@@ -377,6 +409,148 @@ def _message(record: EventRecord) -> Dict[str, str]:
     return {"role": record.role, "content": record.content, "event_type": record.event_type}
 
 
+def _message_visible_to_role(record: EventRecord, viewer_role: AgentRole) -> bool:
+    target_role = _target_role(record)
+    if record.event_type in {"agent_user_message", "chat"}:
+        if target_role is None:
+            return True
+        return target_role == viewer_role.value
+    if record.event_type == "agent_message":
+        source_role = _source_role(record)
+        if source_role == viewer_role.value:
+            return True
+        if target_role is None:
+            return _agent_role(record.role) == viewer_role
+        return target_role == viewer_role.value
+    return False
+
+
+def _project_student_learning_evidence(
+    current: List[Dict[str, Any]],
+    record: EventRecord,
+    candidate: Any,
+) -> List[Dict[str, Any]]:
+    if "learning_evidence" not in record.metadata.get("state_patch", {}):
+        return current
+    if not _has_student_learning_evidence_provenance(record):
+        return current
+    return _normalized_learning_evidence(candidate)
+
+
+def _project_student_snapshot_learning_evidence(
+    current: List[Dict[str, Any]],
+    record: EventRecord,
+    candidate: Any,
+) -> List[Dict[str, Any]]:
+    if not _has_student_learning_evidence_provenance(record):
+        return current
+    return _normalized_learning_evidence(candidate)
+
+
+def _forum_event(record: EventRecord) -> Optional[Dict[str, Any]]:
+    message_kind = _message_kind(record)
+    target_role = _target_role(record)
+    if message_kind is None or target_role is None:
+        return None
+    visibility = _visibility(record)
+    if visibility != "public":
+        return None
+    if record.event_type not in {"agent_user_message", "agent_message", "chat"}:
+        return None
+    return {
+        "event_id": record.event_id,
+        "event_type": record.event_type,
+        "role": record.role,
+        "source_role": _source_role(record),
+        "target_role": target_role,
+        "message_kind": message_kind,
+        "visibility": visibility,
+        "content": record.content,
+        "request_id": _string_metadata(record, "request_id"),
+        "reply_to_event_id": _string_metadata(record, "reply_to_event_id"),
+        "parent_request_id": _string_metadata(record, "parent_request_id"),
+    }
+
+
+def _message_kind(record: EventRecord) -> Optional[str]:
+    raw_value = record.metadata.get("message_kind")
+    if raw_value is not None:
+        try:
+            return Stage3MessageKind(raw_value).value
+        except ValueError:
+            return None
+    if record.event_type in {"agent_user_message", "chat"} and record.role == "student":
+        return Stage3MessageKind.USER_MESSAGE.value
+    if record.event_type == "agent_message":
+        return Stage3MessageKind.AGENT_MESSAGE.value
+    return None
+
+
+def _target_role(record: EventRecord) -> Optional[str]:
+    raw_value = record.metadata.get("target_role")
+    if raw_value is not None:
+        try:
+            return Stage3Target(raw_value).value
+        except ValueError:
+            return None
+    panel = record.metadata.get("panel")
+    if panel in {AgentRole.TEACHER_AGENT.value, AgentRole.STUDENT_AGENT.value}:
+        return str(panel)
+    if record.event_type == "agent_message":
+        return Stage3Target.USER.value
+    return None
+
+
+def _source_role(record: EventRecord) -> str:
+    raw_value = record.metadata.get("source_role")
+    if raw_value is not None:
+        try:
+            return Stage3Target(raw_value).value
+        except ValueError:
+            pass
+    if record.role == "student":
+        return Stage3Target.USER.value
+    if record.role == "system":
+        return Stage3Target.SYSTEM.value
+    target = _target_role(record)
+    if target in {Stage3Target.USER.value, Stage3Target.SYSTEM.value}:
+        role = _agent_role(record.role)
+        if role is not None:
+            return role.value
+    return record.role
+
+
+def _visibility(record: EventRecord) -> str:
+    raw_value = record.metadata.get("visibility")
+    if isinstance(raw_value, str) and raw_value:
+        return raw_value
+    if _message_kind(record) is not None and _target_role(record) is not None:
+        return ForumEnvelope.visibility
+    return "private"
+
+
+def _string_metadata(record: EventRecord, key: str) -> Optional[str]:
+    value = record.metadata.get(key)
+    return str(value) if value else None
+
+
+def _normalized_learning_evidence(value: Any) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, Mapping):
+            normalized.append(dict(item))
+    return normalized
+
+
+def _has_student_learning_evidence_provenance(record: EventRecord) -> bool:
+    if _agent_role(record.role) is AgentRole.STUDENT_AGENT:
+        return True
+    raw_source = record.metadata.get("source_role")
+    return raw_source == AgentRole.STUDENT_AGENT.value
+
+
 def _student_safe_artifact(item: Dict[str, Any]) -> Dict[str, Any]:
     artifact = item.get("artifact")
     if not isinstance(artifact, Mapping):
@@ -422,6 +596,7 @@ def _result_from_event(record: EventRecord) -> Optional[AgentResult]:
         ),
         state=dict(record.metadata.get("state", {})) if isinstance(record.metadata.get("state"), Mapping) else {},
         public_content=dict(public_content),
+        internal_signals=_internal_signals_from_metadata(_result_signal_metadata({}, record.metadata)),
         error_code=record.metadata.get("error_code"),
     )
 
@@ -441,6 +616,7 @@ def _agent_result_from_payload(payload: Mapping[str, Any], record: EventRecord) 
             public_content=public_content,
             error_code=payload.get("error_code") or record.metadata.get("error_code"),
         )
+    signal_metadata = _result_signal_metadata(payload, record.metadata)
     return AgentResult(
         success=True,
         agent=role,
@@ -449,6 +625,7 @@ def _agent_result_from_payload(payload: Mapping[str, Any], record: EventRecord) 
         ready_for_code=bool(payload.get("ready_for_code", False)),
         state=dict(payload.get("state", {})) if isinstance(payload.get("state"), Mapping) else {},
         public_content=dict(public_content),
+        internal_signals=_internal_signals_from_metadata(signal_metadata),
         error_code=payload.get("error_code"),
     )
 
@@ -494,3 +671,40 @@ def _ui_action(value: Any) -> UIAction:
         return UIAction(value or UIAction.CONTINUE_CHAT)
     except ValueError:
         return UIAction.CONTINUE_CHAT
+
+
+def _tool_signal_metadata(metadata: Mapping[str, Any]) -> Dict[str, Any]:
+    return _signal_metadata(metadata.get("signal_type"), metadata.get("internal_content"))
+
+
+def _result_signal_metadata(
+    payload: Mapping[str, Any], record_metadata: Mapping[str, Any],
+) -> Dict[str, Any]:
+    for metadata in (payload, record_metadata):
+        signal_metadata = _tool_signal_metadata(metadata)
+        if signal_metadata:
+            return signal_metadata
+    return {}
+
+
+def _internal_signals_from_metadata(metadata: Mapping[str, Any]) -> Dict[str, Any]:
+    signal_type = metadata.get("signal_type")
+    internal_content = metadata.get("internal_content")
+    if not signal_type or not isinstance(internal_content, Mapping):
+        return {}
+    return {str(signal_type): dict(internal_content)}
+
+
+def _signal_metadata(signal_type: Any, internal_content: Any) -> Dict[str, Any]:
+    if signal_type != "student_probe" or not isinstance(internal_content, Mapping):
+        return {}
+    allowed = {}
+    for key in ("concept", "dimension", "goal"):
+        value = internal_content.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return {}
+        allowed[key] = value.strip()
+    return {
+        "signal_type": "student_probe",
+        "internal_content": allowed,
+    }

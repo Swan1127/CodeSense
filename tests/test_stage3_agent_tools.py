@@ -3,6 +3,7 @@ import json
 import pytest
 
 from utils.agents.contracts import AgentRole, FeynmanState, ToolCall
+from utils.agents.coverage import CoverageConfig
 from utils.agents.memory import MemorySnapshot
 from utils.agents.tools import ToolContext, build_feynman_tool_registry
 
@@ -14,7 +15,36 @@ def fake_tool_context(role, *, state=None):
         role=role,
         memory=MemorySnapshot(state=state or FeynmanState(session_id=12)),
         key_concepts=["循环边界", "不变量"],
+        coverage_config=CoverageConfig(),
     )
+
+
+def test_tool_context_preserves_legacy_positional_constructor_order():
+    snapshot = MemorySnapshot(state=FeynmanState(session_id=12))
+    executed_results = {"call-1": "stored"}
+
+    context = ToolContext(
+        12,
+        "request-1",
+        AgentRole.TEACHER_AGENT,
+        snapshot,
+        "循环练习",
+        ["循环边界"],
+        "reference code",
+        executed_results,
+    )
+
+    assert context.session_id == 12
+    assert context.request_id == "request-1"
+    assert context.role is AgentRole.TEACHER_AGENT
+    assert context.memory is snapshot
+    assert context.assignment_title == "循环练习"
+    assert context.key_concepts == ["循环边界"]
+    assert context.reference_code == "reference code"
+    assert context.executed_results is executed_results
+    assert context.input_kind == "chat"
+    assert context.target_role == ""
+    assert context.trigger is None
 
 
 def ready_fix_context():
@@ -391,3 +421,121 @@ def test_meaningless_evidence_for_known_concept_is_rejected():
     assert (result.ok, result.error_code, result.state_patch) == (
         False, "INVALID_LEARNING_EVIDENCE", {},
     )
+
+
+def test_teacher_probe_request_only_returns_redacted_internal_signal():
+    registry = build_feynman_tool_registry()
+
+    result = registry.execute(
+        AgentRole.TEACHER_AGENT,
+        ToolCall("probe-1", "request_student_probe", {
+            "concept": "循环边界",
+            "dimension": "edge_case",
+            "goal": "检查用户能否解释边界情况",
+        }),
+        fake_tool_context(AgentRole.TEACHER_AGENT),
+    )
+
+    assert result.ok is True
+    assert result.signal_type == "student_probe"
+    assert result.internal_content == {
+        "concept": "循环边界",
+        "dimension": "edge_case",
+        "goal": "检查用户能否解释边界情况",
+    }
+    assert result.public_content == {}
+    assert result.memory_events == []
+    assert result.model_content == {"accepted": True}
+
+
+@pytest.mark.parametrize("question", [
+    "   ",
+    "我也懂了。",
+    "我知道答案了。",
+    "最后一个索引是 n - 1。",
+])
+def test_student_probe_question_must_be_a_real_question_without_self_confirmation(question):
+    registry = build_feynman_tool_registry()
+    context = fake_tool_context(AgentRole.STUDENT_AGENT)
+    context.trigger = {
+        "concept": "循环边界",
+        "dimension": "core",
+        "goal": "检查用户能否解释为什么不会越界",
+    }
+
+    result = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("probe-ask", "ask_student_probe", {"question": question}),
+        context,
+    )
+
+    assert (result.ok, result.error_code) == (False, "INVALID_STUDENT_PROBE")
+    assert result.public_content == {}
+    assert result.memory_events == []
+
+
+def test_student_probe_question_uses_server_target_and_persists_pending_probe():
+    registry = build_feynman_tool_registry()
+    context = fake_tool_context(AgentRole.STUDENT_AGENT)
+    context.trigger = {
+        "concept": "循环边界",
+        "dimension": "core",
+        "goal": "检查用户能否解释为什么不会越界",
+    }
+
+    result = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("probe-ask", "ask_student_probe", {
+            "question": "你能解释一下为什么 i < n 不会越界吗？",
+        }),
+        context,
+    )
+
+    assert result.ok is True
+    assert result.public_content == {
+        "message": "你能解释一下为什么 i < n 不会越界吗？",
+    }
+    assert result.state_patch == {
+        "pending_probe": {
+            "concept": "循环边界",
+            "dimension": "core",
+        }
+    }
+
+
+def test_assess_teaching_progress_is_student_only_and_uses_reducer_state_patch():
+    registry = build_feynman_tool_registry()
+    state = FeynmanState(session_id=12, pending_probe={
+        "concept": "循环边界",
+        "dimension": "core",
+    })
+    student_context = fake_tool_context(AgentRole.STUDENT_AGENT, state=state)
+    teacher_context = fake_tool_context(AgentRole.TEACHER_AGENT, state=state)
+
+    forbidden = registry.execute(
+        AgentRole.TEACHER_AGENT,
+        ToolCall("assess-teacher", "assess_teaching_progress", {
+            "assessment": "covered",
+            "evidence": "因为 i < n 会在到达非法索引前停止，所以最后一个合法位置是 n - 1。",
+        }),
+        teacher_context,
+    )
+    allowed = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("assess-student", "assess_teaching_progress", {
+            "assessment": "covered",
+            "evidence": "因为 i < n 会在到达非法索引前停止，所以最后一个合法位置是 n - 1。",
+        }),
+        student_context,
+    )
+
+    assert (forbidden.ok, forbidden.error_code, forbidden.public_content, forbidden.memory_events) == (
+        False, "TOOL_NOT_ALLOWED", {}, [],
+    )
+    assert allowed.ok is True
+    assert allowed.state_patch["concept_coverage"][0]["concept"] == "循环边界"
+    assert allowed.state_patch["coverage_score"] == pytest.approx(0.5)
+    assert allowed.state_patch["pending_probe"] == {
+        "concept": "不变量",
+        "dimension": "core",
+    }
