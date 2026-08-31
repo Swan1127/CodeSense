@@ -7,6 +7,7 @@ import ipaddress
 import traceback
 import uuid
 from datetime import datetime as dt
+import math
 
 from flask import Blueprint, render_template, request, jsonify, session, Response, current_app
 from flask_login import current_user
@@ -380,8 +381,10 @@ def _request_is_local() -> bool:
 
 def _safe_int(value, default: int = 0) -> int:
     try:
+        if isinstance(value, float) and not math.isfinite(value):
+            return default
         return int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
