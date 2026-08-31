@@ -53,6 +53,95 @@ def _stage3_forum_history(session_id: int):
     return MemoryStore(SqlAlchemyEventStore()).forum_events(session_id)
 
 
+def _stage3_initial_question(assignment, preset) -> str:
+    """Build a task-specific opening prompt without exposing private artifacts."""
+    difficulty = {}
+    if preset:
+        difficulty = preset.get_difficulty_config() or {}
+
+    candidates = [
+        difficulty.get('stage3_initial_question'),
+        difficulty.get('initial_question'),
+    ]
+    guided_questions = difficulty.get('guided_questions')
+    if isinstance(guided_questions, list):
+        candidates.extend(guided_questions)
+    question = next(
+        (str(item).strip() for item in candidates if isinstance(item, str) and item.strip()),
+        '',
+    )
+
+    title = str(getattr(assignment, 'title', '') or '').strip() or '这道题'
+    description = str(getattr(assignment, 'description', '') or '').strip()
+    key_steps = preset.get_key_steps() if preset else []
+    focus = (
+        next(
+            (item.strip() for item in key_steps if isinstance(item, str) and item.strip()),
+            '',
+        )
+        if isinstance(key_steps, list)
+        else ''
+    )
+
+    if question:
+        prompt = (
+            f'我们先围绕题目《{title}》开始：{question} '
+            '请先用自己的话说说目前的理解，老师会根据你的回答继续引导。'
+        )
+    elif focus:
+        prompt = (
+            f'我们先围绕题目《{title}》开始。请你用自己的话说说对“{focus}”的理解，'
+            f'并结合题目要求说明你的处理思路。{description[:180]}'
+        )
+    elif description:
+        prompt = (
+            f'我们先从题目《{title}》开始。请用自己的话说说你准备如何处理：'
+            f'{description[:220]}'
+        )
+    else:
+        prompt = f'我们先从题目《{title}》开始，请用自己的话说说你的解题思路。'
+    return sanitize_response(prompt)[:800]
+
+
+def _ensure_stage3_initial_prompt(thinking_session, assignment, preset) -> bool:
+    """Persist exactly one public teacher opening for an empty Stage 3 forum."""
+    if not _stage3_session_is_active(thinking_session):
+        return False
+
+    initial_request_id = f'stage3-initial:{thinking_session.id}'
+    existing_logs = ThinkingStageLog.query.filter_by(
+        session_id=thinking_session.id,
+        stage=3,
+    ).all()
+    if any(
+        (log.get_metadata() or {}).get('request_id') == initial_request_id
+        for log in existing_logs
+    ):
+        return False
+    if _stage3_forum_history(thinking_session.id):
+        return False
+
+    prompt = _stage3_initial_question(assignment, preset)
+    if not prompt:
+        return False
+    _log_event(
+        thinking_session.id,
+        3,
+        'agent_message',
+        AgentRole.TEACHER_AGENT.value,
+        prompt,
+        metadata={
+            'request_id': initial_request_id,
+            'source_role': AgentRole.TEACHER_AGENT.value,
+            'target_role': Stage3Target.USER.value,
+            'message_kind': Stage3MessageKind.AGENT_MESSAGE.value,
+            'visibility': 'public',
+            'initial_prompt': True,
+        },
+    )
+    return True
+
+
 def _stage3_target_role(data: dict, *, default_role: AgentRole | None = None, required: bool = False):
     value = str(data.get('target_role') or '').strip()
     if not value:
@@ -739,6 +828,8 @@ def start_session():
         ).first()
 
         if existing:
+            if _ensure_stage3_initial_prompt(existing, assignment, preset):
+                db.session.commit()
             # 计算已过秒数
             elapsed_seconds = int((dt.utcnow() - existing.started_at).total_seconds())
             forum_history = _stage3_forum_history(existing.id)
@@ -1008,6 +1099,7 @@ def stage2_verify():
 
         preset = AssignmentThinkingPreset.query.filter_by(assignment_id=ts.assignment_id).first()
         quiz_steps = preset.get_quiz_steps() if preset else []
+        assignment = Assignment.query.get(ts.assignment_id)
 
         passed = True
         wrong_steps = []
@@ -1057,6 +1149,7 @@ def stage2_verify():
             ts.stage2_completed = True
             ts.current_stage = 3
             _log_event(session_id, 2, 'stage_pass', 'system', '逐步构建程序验证通过')
+            _ensure_stage3_initial_prompt(ts, assignment, preset)
         else:
             _log_event(session_id, 2, 'verify_fail', 'system', '验证未通过',
                        metadata={'wrong_steps': wrong_steps, 'wrong_step_explanations': wrong_step_explanations})
@@ -1895,6 +1988,13 @@ def debug_jump_stage():
             ts.status = 'completed'
             ts.completed_at = dt.utcnow()
             _record_demo_guided_submission(ts)
+
+        if target_stage == 3:
+            assignment = Assignment.query.get(ts.assignment_id)
+            preset = AssignmentThinkingPreset.query.filter_by(
+                assignment_id=ts.assignment_id,
+            ).first()
+            _ensure_stage3_initial_prompt(ts, assignment, preset)
 
         db.session.commit()
         return jsonify({'success': True, 'current_stage': ts.current_stage, 'status': ts.status})

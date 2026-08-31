@@ -302,7 +302,25 @@ class AgentLoop:
             return self._decision_failure("MODEL_ERROR", request_id, step)
         error = getattr(self.model, "last_error", None)
         if isinstance(error, ModelError):
-            return self._decision_failure(error.code, request_id, step)
+            if (
+                getattr(self.model, "fallback_used", False)
+                and isinstance(decision, AgentDecision)
+                and not decision.tool_calls
+                and decision.message.strip()
+            ):
+                self.memory.append_event(
+                    self.session_id,
+                    "agent_fallback",
+                    self.role.value,
+                    metadata={
+                        "request_id": str(request_id)[:80],
+                        "role": self.role.value,
+                        "step": int(step),
+                        "error_code": _safe_error_code(error.code),
+                    },
+                )
+            else:
+                return self._decision_failure(error.code, request_id, step)
         if not isinstance(decision, AgentDecision):
             return self._decision_failure("INVALID_DECISION", request_id, step)
         return decision

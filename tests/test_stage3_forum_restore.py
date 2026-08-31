@@ -234,6 +234,38 @@ def test_start_session_restores_public_forum_state_and_safe_coverage_summary(sta
         assert forbidden not in body
 
 
+def test_start_session_seeds_one_task_specific_teacher_prompt_for_empty_stage3_session(stage3_restore_context):
+    app, client, session_id, assignment_id = stage3_restore_context
+
+    response = client.post("/thinking/api/start_session", json={"assignment_id": assignment_id})
+
+    assert response.status_code == 200
+    assert response.json["resumed"] is True
+    assert len(response.json["forum_history"]) == 1
+    prompt = response.json["forum_history"][0]
+    assert prompt["source_role"] == "teacher_agent"
+    assert prompt["target_role"] == "user"
+    assert prompt["message_kind"] == "agent_message"
+    assert prompt["visibility"] == "public"
+    assert prompt["request_id"] == f"stage3-initial:{session_id}"
+    assert "循环练习" in prompt["content"]
+    assert "循环边界" in prompt["content"]
+
+    second_response = client.post(
+        "/thinking/api/start_session",
+        json={"assignment_id": assignment_id},
+    )
+    assert len(second_response.json["forum_history"]) == 1
+
+    with app.app_context():
+        initial_logs = ThinkingStageLog.query.filter_by(
+            session_id=session_id,
+            stage=3,
+            event_type="agent_message",
+        ).all()
+        assert len(initial_logs) == 1
+
+
 def test_start_session_safely_maps_production_and_malformed_coverage_fields(stage3_restore_context):
     app, client, session_id, assignment_id = stage3_restore_context
     with app.app_context():

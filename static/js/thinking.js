@@ -1528,7 +1528,7 @@
             target_role: 'user',
             message_kind: forumMessageKindFromPayload(payload.primary),
             visibility: 'public',
-            content: safeForumText(payload.primary),
+            content: safeForumText(payload.primary, forumFallbackText(payload.primary)),
             request_id: context.requestId,
             reply_to_event_id: context.userEvent.event_id,
             parent_request_id: parentRequestId,
@@ -1550,7 +1550,7 @@
                 target_role: 'user',
                 message_kind: forumMessageKindFromPayload(item),
                 visibility: 'public',
-                content: safeForumText(item),
+                content: safeForumText(item, forumFallbackText(item)),
                 request_id: requestId,
                 reply_to_event_id: primaryEvent ? primaryEvent.event_id : context.userEvent.event_id,
                 parent_request_id: context.requestId,
@@ -1657,6 +1657,18 @@
             return 'student_probe';
         }
         return 'agent_message';
+    }
+
+    function forumFallbackText(payload) {
+        if (!payload || payload.success !== false) return '';
+        const messages = {
+            SESSION_LOCK_UNAVAILABLE: '当前会话正在处理中，请稍后再试。',
+            STAGE3_NOT_ACTIVE: '当前会话还没有进入阶段 3，请刷新页面后再试。',
+            STAGE3_UNAVAILABLE: '阶段 3 学习数据尚未准备好，请稍后再试。',
+            CLIENT_UNAVAILABLE: '老师暂时无法连接模型，请先继续整理自己的思路，稍后再试。',
+            CLIENT_ERROR: '老师暂时无法生成回复，请稍后再试。',
+        };
+        return messages[payload.error_code] || '当前暂时无法生成回复，请稍后重试。';
     }
 
     function safeForumText(payload, fallbackText = '') {

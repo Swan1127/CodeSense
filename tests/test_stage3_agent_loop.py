@@ -7,7 +7,7 @@ from flask import Flask
 from utils.agents.contracts import AgentDecision, AgentResult, AgentRole, GoalStatus, ToolCall, ToolResult, UIAction
 from utils.agents.feynman import FeynmanCallbacks, build_feynman_runtime
 from utils.agents.memory import EventRecord, FeynmanState, MemorySnapshot, MemoryStore
-from utils.agents.model import ModelError
+from utils.agents.model import ModelError, StructuredDecisionModel
 from utils.agents.loop import AgentLoop, AgentLoopConfig, AgentLoopSpec
 from utils.agents.tools import build_feynman_tool_registry
 
@@ -547,6 +547,34 @@ def test_agent_loop_returns_model_fallback_error_without_advancing_state():
 
     assert (result.success, result.error_code, result.state) == (False, "INVALID_DECISION", {})
     assert "agent_message" not in [event[0] for event in memory.events]
+
+
+def test_agent_loop_publishes_structured_model_fallback_when_provider_is_unavailable():
+    class UnavailableClient:
+        def is_available(self):
+            return False
+
+    memory = FakeMemory()
+    model = StructuredDecisionModel(
+        UnavailableClient(),
+        fallback_message="老师暂时无法连接，请先说说你对这一步的理解。",
+    )
+
+    result = make_loop(model=model, memory=memory).handle_turn(
+        "为什么这里从 0 开始？",
+        request_id="provider-unavailable",
+    )
+
+    assert result.success is True
+    assert result.response == "老师暂时无法连接，请先说说你对这一步的理解。"
+    assert any(event[0] == "agent_message" for event in memory.events)
+    fallback_event = next(event for event in memory.events if event[0] == "agent_fallback")
+    assert fallback_event[3] == {
+        "request_id": "provider-unavailable",
+        "role": "teacher_agent",
+        "step": 0,
+        "error_code": "CLIENT_UNAVAILABLE",
+    }
 
 
 def test_agent_loop_records_sanitized_agent_decision_error_event():

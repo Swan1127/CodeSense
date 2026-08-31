@@ -111,6 +111,7 @@ class StructuredDecisionModel:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.last_error: Optional[ModelError] = None
+        self.fallback_used = False
 
     def decide(
         self,
@@ -121,6 +122,7 @@ class StructuredDecisionModel:
         tool_results: Optional[List[Dict[str, Any]]] = None,
     ) -> AgentDecision:
         self.last_error = None
+        self.fallback_used = False
         if not self._is_available():
             return self._fallback("CLIENT_UNAVAILABLE")
 
@@ -168,6 +170,7 @@ class StructuredDecisionModel:
 
     def _fallback(self, code: str) -> AgentDecision:
         self.last_error = ModelError(code)
+        self.fallback_used = True
         return self.fallback_decision
 
     @staticmethod

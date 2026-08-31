@@ -78,6 +78,13 @@ def test_stage3_forum_renders_primary_and_interventions_with_reply_context_and_a
     assert "message_kind" in THINKING_JS
 
 
+def test_stage3_forum_keeps_model_failures_visible_instead_of_dropping_empty_replies():
+    assert "function forumFallbackText(payload)" in THINKING_JS
+    assert "safeForumText(payload.primary, forumFallbackText(payload.primary))" in THINKING_JS
+    assert "safeForumText(item, forumFallbackText(item))" in THINKING_JS
+    assert "当前暂时无法生成回复，请稍后重试。" in THINKING_JS
+
+
 def test_student_probe_switches_the_selected_target_to_student_agent():
     assert "primaryEvent.message_kind === 'student_probe'" in THINKING_JS
     assert "interventionEvent.message_kind === 'student_probe'" in THINKING_JS

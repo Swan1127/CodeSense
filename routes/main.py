@@ -126,14 +126,15 @@ def home():
         ).all()
         active_assignment_ids = [a.id for a in active_assignments]
 
-        # 2. 基于有效作业重新计算首页展示统计数据
-        # “我的作业”显示当前有效作业的总数
-        assignments_count = len(active_assignment_ids)
+        # 2. 首页统计保留历史作业，避免截止日期过滤让学生误以为数据被清空。
+        # 当前有效作业仍单独保留，供页面展示“当前未截止”信息。
+        assignments_count = len(all_assigned_ids)
+        active_assignments_count = len(active_assignment_ids)
 
-        # “已提交”显示在有效作业范围内已经提交过的独立题目数量（即已完成的任务数）
+        # “已提交”显示所有历史作业中已经提交过的独立题目数量。
         submissions_count = db.session.query(func.count(func.distinct(Submission.assignment_id))).filter(
             Submission.student_id == student_id,
-            Submission.assignment_id.in_(active_assignment_ids)
+            Submission.assignment_id.in_(all_assigned_ids)
         ).scalar() or 0
 
         # 平均得分的计算范围仍保留为所有已分配给该学生的作业，以反映整体表现
@@ -311,6 +312,7 @@ def home():
         context = {
             'user': user,
             'assignments_count': assignments_count,
+            'active_assignments_count': active_assignments_count,
             'submissions_count': submissions_count,
             'average_score': average_score,
             'maturity_score': maturity_score,
