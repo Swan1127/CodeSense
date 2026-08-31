@@ -2,6 +2,33 @@
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
+## PR worktree runtime isolation
+
+PR branches and temporary worktrees must share reusable capabilities with the main development setup, but must not share writable state with the main runtime.
+
+- Code and dependencies: run the checked-out PR code with the shared Anaconda `student-eval` environment. Do not copy source files from the main checkout into the worktree; rebase or merge the branch when main-code updates are needed.
+- AI access: API credentials may be supplied through process/user environment variables or a secrets file outside Git. Never copy `.env` into a worktree, print secret values, or commit credentials. The AI provider account/quota is shared, while its database/cache state must remain isolated.
+- SQLite: create a one-time seed copy of the main development database inside the PR worktree, for example `instance/pr_student_code_review.db`, and set `DEV_DATABASE_URL` to that absolute path. Never point a PR process at the main database path. Refresh the seed only intentionally, with the source application stopped; normal PR runs write only to the PR copy.
+- MySQL or another server database: use a separate database/schema and credentials for the PR. A different branch or process is not a database isolation boundary.
+- Redis: use a distinct Redis database or instance for the PR, such as `redis://127.0.0.1:6379/1` when main uses database 0. If Redis is unavailable, keep filesystem sessions/cache under the worktree-local directories.
+- Filesystem state: keep sessions, uploads, logs, generated artifacts, and test databases under the worktree. Do not reuse main's writable directories.
+- Migrations: test schema changes against the PR database first. Apply them to the main database only as a separate, explicitly reviewed deployment step.
+
+Canonical PowerShell startup for a seeded PR worktree:
+
+```powershell
+conda activate student-eval
+cd E:\CodeSense\stage3-forum-agent-interaction
+$env:DEV_DATABASE_URL = "sqlite:///E:/CodeSense/stage3-forum-agent-interaction/instance/pr_student_code_review.db"
+$env:REDIS_URL = "redis://127.0.0.1:6379/1"
+$env:HOST = "127.0.0.1"
+$env:PORT = "5000"
+$env:FLASK_DEBUG = "0"
+python .\app.py
+```
+
+Before starting, verify that the seed database exists and that `DEV_DATABASE_URL` does not resolve to the main checkout. Keep the seed database untracked; it is already covered by the repository's `instance/` and `*.db` ignore rules.
+
 ## Project Overview
 
 CodeSense 酷森思 is an intelligent programming education platform for universities. It uses a "Causal Sandbox" for code execution and "Heuristic LLM" for AI-powered programming guidance that leads students to answers through questioning rather than providing direct solutions.
