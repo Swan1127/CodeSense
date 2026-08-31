@@ -332,16 +332,17 @@ def _stage3_safe_coverage_summary(session_id: int):
             'accepted_evidence_count': _safe_int(item.get('accepted_evidence_count')),
             'attempts': _safe_int(item.get('attempts')),
         })
-    coverage_score = snapshot.state.coverage_score
-    if not isinstance(coverage_score, (int, float)):
-        coverage_score = 0.0
+    coverage_score = _safe_float(snapshot.state.coverage_score)
+    raw_unresolved = snapshot.state.unresolved_concepts
+    if not isinstance(raw_unresolved, (list, tuple)):
+        raw_unresolved = []
     unresolved = [
         value.strip()
-        for value in (snapshot.state.unresolved_concepts or [])
+        for value in raw_unresolved
         if isinstance(value, str) and value.strip()
     ]
     return {
-        'coverage_score': float(coverage_score),
+        'coverage_score': coverage_score,
         'ready_for_code': bool(snapshot.state.ready_for_code),
         'unresolved_concepts': unresolved,
         'concept_coverage': concept_coverage,
@@ -388,6 +389,14 @@ def _safe_int(value, default: int = 0) -> int:
         return default
 
 
+def _safe_float(value, default: float = 0.0):
+    try:
+        number = float(value)
+        return number if math.isfinite(number) else default
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
 def _stage3_trace_target_role(log):
     metadata = log.get_metadata() or {}
     value = str(metadata.get('target_role') or '').strip()
@@ -412,10 +421,10 @@ def _stage3_trace_tool_name(metadata: dict):
 def _stage3_trace_coverage_score(metadata: dict):
     state_patch = metadata.get('state_patch')
     if isinstance(state_patch, dict) and isinstance(state_patch.get('coverage_score'), (int, float)):
-        return float(state_patch['coverage_score'])
+        return _safe_float(state_patch['coverage_score'], None)
     state = metadata.get('state')
     if isinstance(state, dict) and isinstance(state.get('coverage_score'), (int, float)):
-        return float(state['coverage_score'])
+        return _safe_float(state['coverage_score'], None)
     return None
 
 

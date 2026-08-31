@@ -1747,7 +1747,7 @@
                 .filter(Boolean)
             : [];
         return {
-            coverage_score: typeof rawSummary.coverage_score === 'number' ? rawSummary.coverage_score : 0,
+            coverage_score: Number.isFinite(rawSummary.coverage_score) ? rawSummary.coverage_score : 0,
             ready_for_code: rawSummary.ready_for_code === true,
             unresolved_concepts: Array.isArray(rawSummary.unresolved_concepts)
                 ? rawSummary.unresolved_concepts.map(item => safeString(item)).filter(Boolean)
@@ -2271,7 +2271,7 @@
             target_role: optionalString(rawEntry.target_role),
             input_kind: optionalString(rawEntry.input_kind),
             tool_name: optionalString(rawEntry.tool_name),
-            coverage_score: typeof rawEntry.coverage_score === 'number' ? rawEntry.coverage_score : null,
+            coverage_score: Number.isFinite(rawEntry.coverage_score) ? rawEntry.coverage_score : null,
             ui_action: optionalString(rawEntry.ui_action),
         };
     }

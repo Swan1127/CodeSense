@@ -264,8 +264,8 @@ def test_start_session_safely_maps_production_and_malformed_coverage_fields(stag
                             "learning_evidence": [{"secret": True}],
                         },
                     ],
-                    "coverage_score": 0.25,
-                    "unresolved_concepts": ["循环边界", "", None],
+                    "coverage_score": float("inf"),
+                    "unresolved_concepts": "malformed-not-a-list",
                     "ready_for_code": False,
                 }
             }, ensure_ascii=False),
@@ -276,9 +276,9 @@ def test_start_session_safely_maps_production_and_malformed_coverage_fields(stag
 
     assert response.status_code == 200
     assert response.json["forum_state"]["coverage_summary"] == {
-        "coverage_score": 0.25,
+        "coverage_score": 0.0,
         "ready_for_code": False,
-        "unresolved_concepts": ["循环边界"],
+        "unresolved_concepts": [],
         "concept_coverage": [
             {
                 "concept": "循环边界",

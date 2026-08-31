@@ -128,6 +128,16 @@ def test_stage3_forum_trace_returns_only_the_safe_local_debug_mapping(stage3_tra
                     "tool_arguments": {"question": "hidden"},
                 }, ensure_ascii=False),
             ),
+            ThinkingStageLog(
+                session_id=session_id,
+                stage=3,
+                event_type="state_snapshot",
+                role="system",
+                content="",
+                metadata_json=json.dumps({
+                    "state_patch": {"coverage_score": float("nan")},
+                }, ensure_ascii=False),
+            ),
         ])
         db.session.commit()
 
@@ -173,6 +183,15 @@ def test_stage3_forum_trace_returns_only_the_safe_local_debug_mapping(stage3_tra
                 "event_type": "agent_message",
                 "role": "student_agent",
                 "target_role": "user",
+                "input_kind": None,
+                "tool_name": None,
+                "coverage_score": None,
+                "ui_action": None,
+            },
+            {
+                "event_type": "state_snapshot",
+                "role": "system",
+                "target_role": None,
                 "input_kind": None,
                 "tool_name": None,
                 "coverage_score": None,
