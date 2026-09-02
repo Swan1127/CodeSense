@@ -281,6 +281,34 @@ gunicorn -c gunicorn_config.py wsgi:application
 静态响应压缩等参数均可通过环境变量调整，具体容量边界见
 [性能与容量评估报告](PERFORMANCE_CAPACITY.md)。
 
+### HTTPS 反向代理配置
+
+如果由 Nginx 负责 HTTPS 证书，再把请求转发给本机 Gunicorn，HTTPS 的
+`server` 块至少要保留原始主机和协议头。当前线上 Gunicorn 监听
+`127.0.0.1:8000`，示例配置如下：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_redirect off;
+    proxy_buffering off;
+    proxy_read_timeout 180s;
+}
+```
+
+线上 `.env` 建议设置 `FLASK_CONFIG=production`、
+`SECURE_COOKIES=true`、`TRUST_PROXY_HEADERS=true` 和
+`PROXY_FIX_HOPS=1`，然后执行 `nginx -t && systemctl reload nginx`。
+应用会通过 `ProxyFix` 恢复 HTTPS scheme，确保登录后的会话 Cookie、
+重定向和外部链接使用同一套 HTTPS 地址。
+
 ## 配置说明
 
 | 变量 | 用途 |
@@ -305,6 +333,8 @@ gunicorn -c gunicorn_config.py wsgi:application
 | `PRESET_SCAN_ENABLED` / `PRESET_SCAN_BATCH_SIZE` | 是否启动预设补全扫描及单次扫描上限；生产默认关闭重复扫描。 |
 | `ACCESS_LOG_ENABLED` / `SLOW_REQUEST_MS` | 应用访问日志开关和慢请求阈值；生产建议交给 Gunicorn/Nginx 记录普通访问。 |
 | `STATIC_CACHE_SECONDS` / `ENABLE_RESPONSE_COMPRESSION` | 静态资源缓存时长及 HTML/JSON 压缩开关，用于降低 3 Mbps 带宽压力。 |
+| `SECURE_COOKIES` | 生产 HTTPS 部署应设为 `true`；本地 HTTP 调试可设为 `false`。 |
+| `TRUST_PROXY_HEADERS` / `PROXY_FIX_HOPS` | HTTPS 反向代理协议头信任开关和代理层数；当前 Nginx -> Gunicorn 拓扑使用 `true` / `1`。 |
 
 ## API 入口
 

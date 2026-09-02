@@ -16,6 +16,7 @@ from logging import FileHandler
 
 from flask import Flask, request, session, flash, redirect, url_for, g, jsonify
 from flask_login import LoginManager
+from werkzeug.middleware.proxy_fix import ProxyFix
 # Flask-Session导入优化
 try:
     from flask_session import Session
@@ -46,6 +47,37 @@ def _env_bool(name, default=False):
     if value is None:
         return default
     return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+
+def _configure_proxy_headers(app, config_name):
+    """让 HTTPS 反向代理后的请求恢复真实 scheme/host 信息。
+
+    生产部署通常由 Nginx 终止 TLS，再通过 HTTP 转发给 Gunicorn。若不信任
+    Nginx 传来的 X-Forwarded-* 头，Flask 会把外部 HTTPS 请求误判成 HTTP，
+    造成外部 URL、重定向和安全 Cookie 行为不一致。默认只信任一个代理跳数，
+    与当前线上拓扑（Nginx -> Gunicorn）匹配；直连开发环境默认关闭。
+    """
+
+    enabled = _env_bool('TRUST_PROXY_HEADERS', config_name == 'production')
+    try:
+        hops = int(os.environ.get('PROXY_FIX_HOPS', '1'))
+    except (TypeError, ValueError):
+        hops = 1
+    hops = max(0, min(hops, 5))
+
+    app.config['CODESENSE_PROXY_HEADERS_ENABLED'] = bool(enabled and hops)
+    app.config['CODESENSE_PROXY_HEADERS_HOPS'] = hops
+    if not enabled or not hops:
+        return
+
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=hops,
+        x_proto=hops,
+        x_host=hops,
+        x_port=hops,
+        x_prefix=hops,
+    )
 
 
 def _redact_connection_url(value):
@@ -332,6 +364,10 @@ def create_app(config_name='default'):
     if 'FLASK_DEBUG' in os.environ:
         app.config['DEBUG'] = _env_bool('FLASK_DEBUG', app.config.get('DEBUG', False))
 
+    # 线上 HTTPS 通常由 Nginx 终止，再转发到本机 Gunicorn。必须在请求进入
+    # Flask 前恢复代理传来的真实 scheme，否则 HTTPS 会被误判为 HTTP。
+    _configure_proxy_headers(app, config_name)
+
     # 必须在 db.init_app 前设置 engine options，否则 Flask-SQLAlchemy 会
     # 立即创建一个没有连接池边界的 engine。
     _configure_database_engine(app)
@@ -379,6 +415,14 @@ def create_app(config_name='default'):
         app.config['SESSION_COOKIE_SECURE'] = True  # 生产环境默认启用HTTPS安全Cookie
     else:
         app.config['SESSION_COOKIE_SECURE'] = False  # 开发环境默认不启用
+
+    # 明确设置会话 Cookie 的作用域和安全属性，避免不同 Flask-Session 版本
+    # 或不同部署方式产生不一致的默认值。
+    app.config.setdefault('SESSION_COOKIE_HTTPONLY', True)
+    app.config.setdefault('SESSION_COOKIE_SAMESITE', 'Lax')
+    app.config.setdefault('SESSION_COOKIE_PATH', '/')
+    if config_name == 'production':
+        app.config['PREFERRED_URL_SCHEME'] = 'https'
         
     # 调用配置初始化
     config[config_name].init_app(app)
@@ -387,6 +431,11 @@ def create_app(config_name='default'):
     print("\n正在配置应用日志系统...")
     setup_logging(app)
     app.logger.info(f"应用启动 - 配置: {config_name}")
+    app.logger.info(
+        "反向代理协议头: %s (hops=%s)",
+        '已启用' if app.config.get('CODESENSE_PROXY_HEADERS_ENABLED') else '未启用',
+        app.config.get('CODESENSE_PROXY_HEADERS_HOPS', 0),
+    )
     app.logger.info(
         "数据库连接: %s",
         _redact_connection_url(app.config.get('SQLALCHEMY_DATABASE_URI')),
