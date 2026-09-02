@@ -7,14 +7,23 @@
 from __future__ import annotations
 
 import threading
-import time
 import traceback
 from datetime import datetime
+
+from sqlalchemy.orm import joinedload
 
 from models import AbilityTrend, Submission, db
 from services.ai_evaluator import AIEvaluator
 from services.api_keys import api_keys
 from services.demo_database import activate_demo_run, is_active_demo_run
+
+
+_ACTIVE_ANALYSES = set()
+_ACTIVE_ANALYSES_LOCK = threading.RLock()
+
+
+def _analysis_key(student_id, demo_run_id=None):
+    return (str(demo_run_id or "formal"), str(student_id))
 
 
 def _demo_database_is_available(demo_run_id: str | None) -> bool:
@@ -43,116 +52,114 @@ def generate_ability_analysis_async(app, student_id, demo_run_id=None):
     正式数据库。
     """
 
+    key = _analysis_key(student_id, demo_run_id)
+    with _ACTIVE_ANALYSES_LOCK:
+        if key in _ACTIVE_ANALYSES:
+            return None
+        _ACTIVE_ANALYSES.add(key)
+
     def _generate():
-        with app.app_context():
-            if demo_run_id and not activate_demo_run(demo_run_id):
-                print(f"公开体验会话已失效，跳过能力分析任务: {demo_run_id}")
-                return
-
-            try:
-                # 任何业务查询前都再次确认临时库仍然存在。退出体验时，
-                # destroy_demo_run 会把运行从缓存移除，避免后台线程继续写入。
-                if not _demo_database_is_available(demo_run_id):
+        try:
+            with app.app_context():
+                if demo_run_id and not activate_demo_run(demo_run_id):
+                    print(f"公开体验会话已失效，跳过能力分析任务: {demo_run_id}")
                     return
 
-                AbilityTrend.mark_as_processing(student_id)
-
-                submissions = (
-                    Submission.query.filter_by(student_id=student_id)
-                    .order_by(Submission.submitted_at.desc())
-                    .limit(20)
-                    .all()
-                )
-
-                if not submissions:
-                    if _demo_database_is_available(demo_run_id):
-                        AbilityTrend.update_analysis(
-                            student_id=student_id,
-                            analysis_markdown="暂无提交记录，请先完成一些作业。",
-                            submissions_count=0,
-                        )
-                    return
-
-                submission_data = []
-                for submission in submissions:
-                    if submission.code and submission.assignment:
-                        submission_data.append(
-                            {
-                                "assignment_title": submission.assignment.title,
-                                "code": submission.code[:500],
-                                "score": submission.score,
-                                "submitted_at": (
-                                    submission.submitted_at.strftime("%Y-%m-%d %H:%M")
-                                    if submission.submitted_at
-                                    else "未知时间"
-                                ),
-                            }
-                        )
-
-                if not submission_data:
-                    raise RuntimeError("没有可供 AI 分析的有效提交内容")
-
-                api_key = api_keys.zhipu_key
-                if not api_key:
-                    raise RuntimeError("AI 服务未配置")
-
-                ai_evaluator = AIEvaluator(api_key)
-                analysis_markdown = ""
-                print(f"开始后台生成能力分析 - 学生 {student_id}")
-
-                last_error = None
-                for attempt in range(2):
-                    try:
-                        analysis_markdown = ""
-                        for chunk in ai_evaluator.analyze_ability_trend_stream(
-                            submission_data
-                        ):
-                            if chunk:
-                                analysis_markdown += chunk
-
-                        if not analysis_markdown.strip():
-                            raise RuntimeError("AI 未返回有效分析内容")
-                        last_error = None
-                        break
-                    except Exception as chunk_error:
-                        last_error = chunk_error
-                        print(
-                            f"生成能力分析失败（尝试 {attempt + 1}/2）: "
-                            f"{chunk_error}"
-                        )
-                        if attempt == 0:
-                            time.sleep(3)
-
-                if last_error is not None:
-                    raise last_error
-
-                if not _demo_database_is_available(demo_run_id):
-                    return
-
-                AbilityTrend.update_analysis(
-                    student_id=student_id,
-                    analysis_markdown=analysis_markdown.strip(),
-                    submissions_count=len(submissions),
-                )
-                print(
-                    f"能力分析生成完成 - 学生 {student_id}, "
-                    f"长度: {len(analysis_markdown)} 字符"
-                )
-
-            except Exception as error:
-                print(f"生成能力分析失败 - 学生 {student_id}: {error}")
-                traceback.print_exc()
-
-                # 失败处理仍在已经绑定的会话中执行。临时库被销毁时，
-                # 直接结束，绝不重新打开默认正式数据库。
-                if not _demo_database_is_available(demo_run_id):
-                    return
                 try:
-                    db.session.rollback()
-                    _mark_analysis_failed(student_id)
-                except Exception:
-                    db.session.rollback()
+                    # 任何业务查询前都再次确认临时库仍然存在。退出体验时，
+                    # destroy_demo_run 会把运行从缓存移除，避免后台线程继续写入。
+                    if not _demo_database_is_available(demo_run_id):
+                        return
+
+                    AbilityTrend.mark_as_processing(student_id)
+                    submissions = (
+                        Submission.query.options(joinedload(Submission.assignment))
+                        .filter_by(student_id=student_id)
+                        .order_by(Submission.submitted_at.desc())
+                        .limit(20)
+                        .all()
+                    )
+
+                    if not submissions:
+                        if _demo_database_is_available(demo_run_id):
+                            AbilityTrend.update_analysis(
+                                student_id=student_id,
+                                analysis_markdown="暂无提交记录，请先完成一些作业。",
+                                submissions_count=0,
+                            )
+                        return
+
+                    submission_data = []
+                    for submission in submissions:
+                        if submission.code and submission.assignment:
+                            submission_data.append(
+                                {
+                                    "assignment_title": submission.assignment.title,
+                                    "code": submission.code[:500],
+                                    "score": submission.score,
+                                    "submitted_at": (
+                                        submission.submitted_at.strftime("%Y-%m-%d %H:%M")
+                                        if submission.submitted_at
+                                        else "未知时间"
+                                    ),
+                                }
+                            )
+
+                    if not submission_data:
+                        raise RuntimeError("没有可供 AI 分析的有效提交内容")
+
+                    from services.llm_client import SharedLLMClient
+                    api_key = api_keys.zhipu_key or api_keys.openai_key
+                    if not api_key or not SharedLLMClient().is_available():
+                        raise RuntimeError("AI 服务未配置或暂时不可用")
+
+                    # 保留旧版 AIEvaluator(api_key) 的兼容签名；实际 provider
+                    # 选择、重试和熔断统一由 SharedLLMClient 负责。
+                    ai_evaluator = AIEvaluator(api_key)
+                    analysis_markdown = ""
+                    print(f"开始后台生成能力分析 - 学生 {student_id}")
+
+                    # SharedLLMClient 已经负责有限重试、provider 故障切换和
+                    # 流中断保护，这里不再额外重放整段分析。
+                    for chunk in ai_evaluator.analyze_ability_trend_stream(
+                        submission_data
+                    ):
+                        if chunk:
+                            analysis_markdown += chunk
+
+                    if not analysis_markdown.strip():
+                        raise RuntimeError("AI 未返回有效分析内容")
+
+                    if not _demo_database_is_available(demo_run_id):
+                        return
+
+                    AbilityTrend.update_analysis(
+                        student_id=student_id,
+                        analysis_markdown=analysis_markdown.strip(),
+                        submissions_count=len(submissions),
+                    )
+                    print(
+                        f"能力分析生成完成 - 学生 {student_id}, "
+                        f"长度: {len(analysis_markdown)} 字符"
+                    )
+
+                except Exception as error:
+                    print(f"生成能力分析失败 - 学生 {student_id}: {error}")
                     traceback.print_exc()
+
+                    # 失败处理仍在已经绑定的会话中执行。临时库被销毁时，
+                    # 直接结束，绝不重新打开默认正式数据库。
+                    if not _demo_database_is_available(demo_run_id):
+                        return
+                    try:
+                        db.session.rollback()
+                        _mark_analysis_failed(student_id)
+                    except Exception:
+                        db.session.rollback()
+                        traceback.print_exc()
+        finally:
+            with _ACTIVE_ANALYSES_LOCK:
+                _ACTIVE_ANALYSES.discard(key)
 
     thread = threading.Thread(target=_generate)
     thread.daemon = True
@@ -173,15 +180,20 @@ def trigger_analysis_if_needed(student_id, force=False, demo_run_id=None):
     if demo_run_id and not _demo_database_is_available(demo_run_id):
         return False
 
+    key = _analysis_key(student_id, demo_run_id)
+    with _ACTIVE_ANALYSES_LOCK:
+        if key in _ACTIVE_ANALYSES:
+            return False
+
     trend = AbilityTrend.query.filter_by(student_id=student_id).first()
 
     if force or not trend or trend.status in ["pending", "outdated", "failed"]:
-        generate_ability_analysis_async(
+        thread = generate_ability_analysis_async(
             current_app._get_current_object(),
             student_id,
             demo_run_id=demo_run_id,
         )
-        return True
+        return thread is not None
 
     if trend.status == "processing":
         return False

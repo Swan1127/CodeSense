@@ -9,15 +9,20 @@ from models import db, User, Assignment, Submission, AbilityTrend, TestCase
 from utils.auth import login_required, admin_required, teacher_required, admin_or_teacher_required
 from utils.api import api_response, error_response, user_to_dict, assignment_to_dict, submission_to_dict
 from utils.code_evaluator import evaluate_cpp_code
-from utils.guidance_generator import generate_guidance, generate_answer_to_question  # 导入指导生成函数和答案生成函数
+from utils.guidance_generator import (
+    generate_guidance,
+    generate_guidance_stream,
+    generate_answer_to_question,
+    generate_answer_to_question_stream,
+)  # 导入指导生成函数和答案生成函数
 from utils.code_advisor import generate_code_advice  # 导入新的代码建议系统
+from utils.sse import sse_event, sse_response, wants_sse
 from services.ai_evaluator import AIEvaluator
 from services.api_keys import api_keys  # 导入 API 密钥管理器
 from services.demo_database import current_demo_run_id
 import json
 import traceback
 import os
-import requests  # 添加requests导入
 from datetime import datetime
 
 api = Blueprint('api', __name__, url_prefix='/api')
@@ -228,6 +233,39 @@ def enhance_markdown(text):
     return enhanced_text
 
 
+def _code_advice_report(analysis_result):
+    """Build the user-facing code advice once for JSON and SSE callers."""
+    advice = f"""## 代码分析报告
+
+### 总体评价
+{analysis_result.get('overall_feedback', '无法生成评估')}
+
+### 详细分析
+
+#### 算法能力 ({analysis_result.get('algorithm_score', 60)}/100)
+{analysis_result.get('algorithm_feedback', '算法设计与问题解决能力的分析暂不可用')}
+
+#### 代码风格 ({analysis_result.get('style_score', 60)}/100)
+{analysis_result.get('style_feedback', '代码风格与命名规范分析暂不可用')}
+
+### 改进建议
+"""
+    suggestions = analysis_result.get('suggestions', [])
+    if suggestions:
+        for index, suggestion in enumerate(suggestions, 1):
+            advice += f"{index}. {suggestion}\n"
+    else:
+        advice += "- 暂无具体改进建议\n"
+    return advice
+
+
+def _text_chunks(text, size=120):
+    """Yield reasonably sized chunks for a completed structured report."""
+    text = str(text or '')
+    for index in range(0, len(text), size):
+        yield text[index:index + size]
+
+
 @api.route('/submit', methods=['POST'])
 @login_required
 def submit_code():
@@ -385,6 +423,7 @@ def get_users():
 
 
 @api.route('/get_programming_guidance', methods=['POST'])
+@api.route('/get_coding_guidance', methods=['POST'])
 @login_required
 def get_programming_guidance():
     """获取编程指导"""
@@ -409,6 +448,50 @@ def get_programming_guidance():
         try:
             # 输出调试信息
             print(f"正在为代码（长度:{len(code)}）生成编程指导...")
+
+            if wants_sse():
+                def stream_guidance():
+                    yield sse_event({
+                        'type': 'start',
+                        'message': '正在分析代码并生成编程指导...'
+                    })
+                    chunks = []
+                    try:
+                        for chunk in generate_guidance_stream(
+                            code=code,
+                            assignment_title=assignment.title,
+                            assignment_description=assignment.description,
+                            language=language,
+                        ):
+                            if not chunk:
+                                continue
+                            chunks.append(str(chunk))
+                            yield sse_event({
+                                'type': 'delta',
+                                'content': str(chunk),
+                            })
+
+                        raw_guidance = ''.join(chunks)
+                        formatted = enhance_code_blocks(
+                            enhance_markdown(raw_guidance),
+                            default_lang=language,
+                        ) if raw_guidance else '无法生成针对您代码的指导内容，请稍后再试。'
+                        yield sse_event({
+                            'type': 'done',
+                            'done': True,
+                            'content': formatted,
+                            'guidance': formatted,
+                            'data': {'guidance': formatted},
+                        })
+                    except Exception as stream_error:
+                        current_app.logger.exception('流式编程指导失败')
+                        yield sse_event({
+                            'type': 'error',
+                            'error': str(stream_error),
+                            'message': '生成编程指导失败，请稍后重试',
+                        })
+
+                return sse_response(stream_guidance())
             
             # 生成编程指导
             guidance_text = generate_guidance(
@@ -518,6 +601,76 @@ def ask_question():
             # 显示处理中状态
             print(f"正在处理学生问题: '{question}'")
             print(f"代码长度: {len(code)}")
+
+            if wants_sse():
+                def stream_answer():
+                    yield sse_event({
+                        'type': 'start',
+                        'message': '正在理解你的问题并生成回答...'
+                    })
+                    chunks = []
+                    try:
+                        for chunk in generate_answer_to_question_stream(
+                            code=code,
+                            question=question,
+                            assignment_title=assignment.title,
+                            assignment_description=assignment.description,
+                            language=language,
+                        ):
+                            if not chunk:
+                                continue
+                            text = str(chunk)
+                            chunks.append(text)
+                            yield sse_event({
+                                'type': 'delta',
+                                'content': text,
+                            })
+
+                        answer = ''.join(chunks)
+                        if answer:
+                            try:
+                                formatted_answer = enhance_code_blocks(
+                                    enhance_markdown(answer),
+                                    default_lang=language,
+                                )
+                            except Exception:
+                                formatted_answer = answer
+                        else:
+                            formatted_answer = '很抱歉，我无法理解您的问题或无法基于当前代码生成回答。请尝试重新表述您的问题或提供更多代码上下文。'
+
+                        if student_id:
+                            try:
+                                from models import StudentQuestion
+                                db.session.add(StudentQuestion(
+                                    student_id=student_id,
+                                    assignment_id=assignment_id,
+                                    question=question,
+                                    code_snapshot=code,
+                                    answer=answer,
+                                    asked_at=datetime.utcnow(),
+                                ))
+                                db.session.commit()
+                            except Exception:
+                                db.session.rollback()
+                                current_app.logger.exception('记录流式学生提问日志失败')
+
+                        yield sse_event({
+                            'type': 'done',
+                            'done': True,
+                            'content': formatted_answer,
+                            'answer': formatted_answer,
+                            'data': {'answer': formatted_answer},
+                        })
+                    except Exception as stream_error:
+                        db.session.rollback()
+                        current_app.logger.exception('流式学生提问失败')
+                        yield sse_event({
+                            'type': 'error',
+                            'error': str(stream_error),
+                            'message': 'AI服务暂时不可用，请稍后再试',
+                        })
+
+                return sse_response(stream_answer())
             
             # 使用大模型生成回答
             answer = generate_answer_to_question(
@@ -654,10 +807,13 @@ def get_code_advice():
             try:
                 print(f"聊天模式：回答用户问题 - {user_question}")
 
-                # 使用AI生成针对性回答
-                api_key = api_keys.zhipu_key
-                if not api_key:
-                    return error_response("AI服务未配置", 500)
+                # 所有文本请求统一经过共享容错客户端，避免此入口绕过
+                # 重试、熔断、缓存和 provider 故障切换。
+                from services.llm_client import LLMServiceError, SharedLLMClient
+
+                shared_client = SharedLLMClient()
+                if not shared_client.is_available():
+                    return error_response("AI服务未配置或暂时不可用", 503)
 
                 # 构建对话上下文
                 messages = [
@@ -713,65 +869,57 @@ def get_code_advice():
 
                 messages.append({"role": "user", "content": user_prompt})
 
-                # 调用AI（流式）
-                try:
-                    from services.llm_client import safe_zhipu_post
-                    response = safe_zhipu_post(
-                        "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                        headers={
-                            "Content-Type": "application/json",
-                            "Authorization": f"Bearer {api_key}"
-                        },
-                        json_data={
-                            "model": "glm-4.5-flash",
-                            "messages": messages,
-                            "temperature": 0.7,
-                            "max_tokens": 1000,
-                            "stream": True  # 启用流式输出
-                        },
-                        timeout=30,
-                        stream=True  # 流式接收响应
-                    )
-                except requests.exceptions.ConnectionError as e:
-                    print(f"AI API 连接失败: {e}")
-                    return error_response("无法连接到AI服务，请稍后重试", 503)
-                except requests.exceptions.Timeout as e:
-                    print(f"AI API 超时: {e}")
-                    return error_response("AI服务响应超时，请稍后重试", 504)
-                except Exception as e:
-                    print(f"AI API 请求异常: {e}")
-                    return error_response(f"AI服务暂时不可用: {str(e)}", 500)
+                # 共享客户端在首个 token 前会有限重试并切换 provider；
+                # 首个 token 后若连接中断则返回可识别的 SSE 错误，避免重复播放前缀。
+                def generate():
+                    chunks = []
+                    yield sse_event({
+                        'type': 'start',
+                        'message': '正在根据你的问题分析代码...'
+                    })
+                    try:
+                        for content in shared_client.chat_stream(
+                            messages,
+                            temperature=0.7,
+                            max_tokens=1000,
+                        ):
+                            if content:
+                                chunks.append(content)
+                                yield sse_event({
+                                    'type': 'delta',
+                                    'content': content,
+                                })
 
-                if response.status_code == 200:
-                    # 流式返回SSE格式
-                    def generate():
-                        try:
-                            for line in response.iter_lines():
-                                if line:
-                                    line_str = line.decode('utf-8')
-                                    if line_str.startswith('data:'):
-                                        data_str = line_str[5:].strip()
-                                        if data_str == '[DONE]':
-                                            break
-                                        try:
-                                            chunk = json.loads(data_str)
-                                            if 'choices' in chunk and len(chunk['choices']) > 0:
-                                                delta = chunk['choices'][0].get('delta', {})
-                                                content = delta.get('content', '')
-                                                if content:
-                                                    yield f"data: {json.dumps({'content': content})}\n\n"
-                                        except json.JSONDecodeError:
-                                            continue
+                        full_content = ''.join(chunks)
+                        if not full_content:
+                            yield sse_event({
+                                'type': 'error',
+                                'error': 'AI_EMPTY_RESPONSE',
+                                'message': 'AI服务未返回有效内容，请稍后重试',
+                            })
+                            return
+                        yield sse_event({
+                            'type': 'done',
+                            'done': True,
+                            'content': full_content,
+                            'answer': full_content,
+                            'data': {'answer': full_content},
+                        })
+                    except LLMServiceError as exc:
+                        yield sse_event({
+                            'type': 'error',
+                            'error': exc.code,
+                            'message': 'AI服务流式输出中断，请稍后重试',
+                        })
+                    except Exception as exc:
+                        print(f"流式输出错误: {type(exc).__name__}")
+                        yield sse_event({
+                            'type': 'error',
+                            'error': 'AI_STREAM_FAILED',
+                            'message': 'AI服务流式输出失败，请稍后重试',
+                        })
 
-                            yield f"data: {json.dumps({'done': True})}\n\n"
-                        except Exception as e:
-                            print(f"流式输出错误: {e}")
-                            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-                    return Response(generate(), mimetype='text/event-stream')
-                else:
-                    print(f"AI API调用失败: {response.status_code}")
-                    return error_response("AI服务暂时不可用", 500)
+                return sse_response(generate())
 
             except Exception as e:
                 print(f"聊天模式处理失败: {e}")
@@ -780,6 +928,53 @@ def get_code_advice():
 
         else:
             # 代码分析模式：生成完整的代码分析报告
+            if wants_sse():
+                def stream_report():
+                    yield sse_event({
+                        'type': 'start',
+                        'message': '正在分析代码，请稍候...'
+                    })
+                    try:
+                        analysis_result = generate_code_advice(
+                            code=code,
+                            language=language,
+                            assignment_title=assignment_title,
+                            assignment_description=assignment_description,
+                            advanced_mode=False
+                        )
+                        if not analysis_result:
+                            raise RuntimeError('无法生成代码建议，请稍后再试')
+                        advice = _code_advice_report(analysis_result)
+                        metrics = {
+                            'algorithm_score': analysis_result.get('algorithm_score', 60),
+                            'style_score': analysis_result.get('style_score', 60),
+                            'functionality_score': analysis_result.get('functionality_score', 60),
+                            'efficiency_score': analysis_result.get('efficiency_score', 60),
+                        }
+                        yield sse_event({
+                            'type': 'status',
+                            'message': '分析完成，正在整理报告...'
+                        })
+                        for chunk in _text_chunks(advice):
+                            yield sse_event({'type': 'delta', 'content': chunk})
+                        yield sse_event({
+                            'type': 'done',
+                            'done': True,
+                            'content': advice,
+                            'advice': advice,
+                            'metrics': metrics,
+                            'data': {'advice': advice, 'metrics': metrics},
+                        })
+                    except Exception as stream_error:
+                        current_app.logger.exception('流式代码分析失败')
+                        yield sse_event({
+                            'type': 'error',
+                            'error': str(stream_error),
+                            'message': '生成代码分析失败，请稍后重试',
+                        })
+
+                return sse_response(stream_report())
+
             try:
                 print(f"代码分析模式：生成完整报告")
                 analysis_result = generate_code_advice(
@@ -797,30 +992,13 @@ def get_code_advice():
 
                 print(f"代码建议生成成功")
 
-                # 构建详细的分析报告
-                advice = f"""## 代码分析报告
-
-### 总体评价
-{analysis_result.get('overall_feedback', '无法生成评估')}
-
-### 详细分析
-
-#### 算法能力 ({analysis_result.get('algorithm_score', 60)}/100)
-{analysis_result.get('algorithm_feedback', '算法设计与问题解决能力的分析暂不可用')}
-
-#### 代码风格 ({analysis_result.get('style_score', 60)}/100)
-{analysis_result.get('style_feedback', '代码风格与命名规范分析暂不可用')}
-
-### 改进建议
-"""
-
-                # 添加建议列表
-                suggestions = analysis_result.get('suggestions', [])
-                if suggestions:
-                    for i, suggestion in enumerate(suggestions, 1):
-                        advice += f"{i}. {suggestion}\n"
-                else:
-                    advice += "- 暂无具体改进建议\n"
+                advice = _code_advice_report(analysis_result)
+                metrics = {
+                    'algorithm_score': analysis_result.get('algorithm_score', 60),
+                    'style_score': analysis_result.get('style_score', 60),
+                    'functionality_score': analysis_result.get('functionality_score', 60),
+                    'efficiency_score': analysis_result.get('efficiency_score', 60),
+                }
 
                 # 返回API响应
                 return api_response(
@@ -828,12 +1006,7 @@ def get_code_advice():
                     message="代码建议生成成功",
                     data={
                         'advice': advice,
-                        'metrics': {
-                            'algorithm_score': analysis_result.get('algorithm_score', 60),
-                            'style_score': analysis_result.get('style_score', 60),
-                            'functionality_score': analysis_result.get('functionality_score', 60),
-                            'efficiency_score': analysis_result.get('efficiency_score', 60)
-                        }
+                        'metrics': metrics
                     }
                 )
 
@@ -971,8 +1144,6 @@ def format_assignment():
     """
     Receives raw assignment text and streams a formatted JSON object using an LLM.
     """
-    from flask import stream_with_context
-
     data = request.get_json()
     if not data or 'raw_text' not in data:
         return error_response("Request must include 'raw_text' field.", 400)
@@ -981,8 +1152,9 @@ def format_assignment():
     if len(raw_text.strip()) < 5:
         return error_response("Text is too short to format.", 400)
 
-    # 在请求上下文内提前获取 api_key，使用统一的 API 密钥管理器
-    api_key = api_keys.zhipu_key
+    # 交给共享客户端选择可用 provider；OpenAI-only 配置也应能使用该入口。
+    from services.llm_client import SharedLLMClient
+    shared_client = SharedLLMClient()
 
     # 在请求上下文中查询数据库，获取一个未被占用的作业ID
     try:
@@ -994,21 +1166,31 @@ def format_assignment():
 
     def generate():
         try:
-            if not api_key:
-                yield f"data: {json.dumps({'error': '系统未配置AI接口密钥，无法使用智能格式化功能'})}\n\n"
+            yield sse_event({'type': 'start', 'message': '正在格式化作业内容...'})
+            if not shared_client.is_available():
+                yield sse_event({
+                    'type': 'error',
+                    'error': 'AI_NOT_CONFIGURED',
+                    'message': '系统未配置可用的 AI 接口，无法使用智能格式化功能',
+                })
                 return
-            ai_evaluator = AIEvaluator(api_key=api_key)
+            ai_evaluator = AIEvaluator()
             for chunk in ai_evaluator.format_assignment_text(raw_text):
-                # SSE format: data: <json_string>\n\n
-                yield f"data: {json.dumps({'token': chunk})}\n\n"
+                # ``token`` 保留给旧页面，``content`` 是统一增量字段。
+                yield sse_event({'type': 'delta', 'content': chunk, 'token': chunk})
             # 流结束后，发送真实可用的 ID 覆盖 AI 的建议
+            final_payload = {'type': 'done', 'done': True}
             if next_available_id is not None:
-                yield f"data: {json.dumps({'override_id': next_available_id})}\n\n"
+                final_payload['override_id'] = next_available_id
+            yield sse_event(final_payload)
         except Exception as e:
-            error_message = json.dumps({"error": f"服务器发生错误: {str(e)}"})
-            yield f"data: {error_message}\n\n"
+            yield sse_event({
+                'type': 'error',
+                'error': f'服务器发生错误: {str(e)}',
+                'message': f'服务器发生错误: {str(e)}',
+            })
 
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    return sse_response(generate())
 
 @api.route('/stream/ability-analysis', methods=['GET'])
 @login_required
@@ -1173,40 +1355,47 @@ def validate_testcases_api():
                 'is_public': tc.get('is_public', False),
             })
 
-        # 调用验证器
-        from utils.validate_testcases import validate_test_cases
-        result = validate_test_cases(
-            description=description,
-            test_cases=test_cases,
-            num_solutions=min(num_solutions, 3)  # 最多 3 套
-        )
+        def validate():
+            from utils.validate_testcases import validate_test_cases
+            result = validate_test_cases(
+                description=description,
+                test_cases=test_cases,
+                num_solutions=min(num_solutions, 3)  # 最多 3 套
+            )
+            return {
+                'success': True,
+                'valid': result['valid'],
+                'summary': result['summary'],
+                'solutions': [
+                    {
+                        'index': s['index'],
+                        'code_preview': s['code'][:500] + ('...' if len(s['code']) > 500 else ''),
+                        'passed': s['passed'],
+                        'total': s['total'],
+                        'status': s['status'],
+                        'compile_error': s['compile_error'],
+                        'details': [
+                            {
+                                'case_id': d.get('case_id', ''),
+                                'passed': d.get('passed', False),
+                                'actual_output': d.get('actual_output', '')[:200],
+                                'expected_output': d.get('expected_output', '')[:200],
+                                'error': d.get('error', ''),
+                            }
+                            for d in s.get('details', [])
+                        ]
+                    }
+                    for s in result['solutions']
+                ]
+            }
 
-        return jsonify({
-            'success': True,
-            'valid': result['valid'],
-            'summary': result['summary'],
-            'solutions': [
-                {
-                    'index': s['index'],
-                    'code_preview': s['code'][:500] + ('...' if len(s['code']) > 500 else ''),
-                    'passed': s['passed'],
-                    'total': s['total'],
-                    'status': s['status'],
-                    'compile_error': s['compile_error'],
-                    'details': [
-                        {
-                            'case_id': d.get('case_id', ''),
-                            'passed': d.get('passed', False),
-                            'actual_output': d.get('actual_output', '')[:200],
-                            'expected_output': d.get('expected_output', '')[:200],
-                            'error': d.get('error', ''),
-                        }
-                        for d in s.get('details', [])
-                    ]
-                }
-                for s in result['solutions']
-            ]
-        })
+        if wants_sse():
+            from utils.sse import sse_blocking_events
+            return sse_response(sse_blocking_events(
+                validate,
+                start_message='正在生成参考程序并验证测试用例...'
+            ))
+        return jsonify(validate())
 
     except Exception as e:
         print(f"测试用例验证失败: {e}")
@@ -1240,25 +1429,33 @@ def auto_validate_testcases_api():
                 'is_public': tc.get('is_public', False),
             })
 
-        from utils.validate_testcases import auto_generate_expected_outputs
-        result = auto_generate_expected_outputs(
-            description=description,
-            test_inputs=test_inputs,
-        )
+        def auto_validate():
+            from utils.validate_testcases import auto_generate_expected_outputs
+            result = auto_generate_expected_outputs(
+                description=description,
+                test_inputs=test_inputs,
+            )
+            return {
+                'success': result['success'],
+                'summary': result['summary'],
+                'test_cases': result['test_cases'],
+                'solutions': [
+                    {
+                        'index': s['index'],
+                        'code_preview': s['code'][:500] + ('...' if len(s['code']) > 500 else '') if s['code'] else '',
+                        'compiled': s['compiled'],
+                    }
+                    for s in result.get('solutions', [])
+                ]
+            }
 
-        return jsonify({
-            'success': result['success'],
-            'summary': result['summary'],
-            'test_cases': result['test_cases'],
-            'solutions': [
-                {
-                    'index': s['index'],
-                    'code_preview': s['code'][:500] + ('...' if len(s['code']) > 500 else '') if s['code'] else '',
-                    'compiled': s['compiled'],
-                }
-                for s in result.get('solutions', [])
-            ]
-        })
+        if wants_sse():
+            from utils.sse import sse_blocking_events
+            return sse_response(sse_blocking_events(
+                auto_validate,
+                start_message='正在为测试用例生成并校验期望输出...'
+            ))
+        return jsonify(auto_validate())
 
     except Exception as e:
         print(f"自动验证测试用例失败: {e}")

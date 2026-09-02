@@ -39,7 +39,7 @@ class LLMEvaluator:
         
         print(f"使用{self.api_type}的{self.model_name}模型进行代码评估")
         if self.strict_mode:
-            print(f"⚠️ 已启用严格评分模式，将对代码质量进行更严格的评判")
+            print(f"[WARN] 已启用严格评分模式，将对代码质量进行更严格的评判")
         
         # 初始化API凭证和客户端
         try:
@@ -79,9 +79,9 @@ class LLMEvaluator:
                     print("==============================\n")
                     raise ValueError("未设置ZHIPU_API_KEY环境变量")
                 self.client = ZhipuAI(api_key=api_key)
-                print("✅ 智谱AI客户端初始化成功")
+                print("[OK] 智谱AI客户端初始化成功")
             except Exception as e:
-                print(f"⚠️ 智谱AI初始化失败: {str(e)}")
+                print(f"[WARN] 智谱AI初始化失败: {type(e).__name__}")
                 print(f"尝试回退到其他API或本地评估方式")
                 # 尝试回退到OpenAI
                 if api_keys.has_openai:
@@ -122,73 +122,60 @@ class LLMEvaluator:
                     print("==============================\n")
                     raise ValueError("未设置OPENAI_API_KEY环境变量")
                 self.client = OpenAI(api_key=api_key)
-                print("✅ OpenAI客户端初始化成功")
+                print("[OK] OpenAI客户端初始化成功")
             except Exception as e:
-                print(f"⚠️ OpenAI初始化失败: {str(e)}")
+                print(f"[WARN] OpenAI初始化失败: {type(e).__name__}")
                 print("没有可用的API，将使用本地启发式评估")
                 raise
     
     def _chat_completions_create(self, **kwargs):
-        """
-        封装 completions.create，并提供限流/访问量过大时的重试与降级机制
-        """
-        import time
-        max_retries = 5
-        base_delay = 2
-        
-        params = kwargs.copy()
-        if self.api_type == "zhipu":
-            if "extra_body" not in params:
-                params["extra_body"] = {}
-            if "thinking" not in params["extra_body"]:
-                params["extra_body"]["thinking"] = {"type": "disabled"}
-                
-        current_model = params.get("model", self.model_name)
-        
-        try:
-            from services.llm_client import SharedLLMClient
-            import time
-            SharedLLMClient.last_user_request_time = time.time()
-        except Exception:
-            pass
+        """通过共享容错客户端调用，保留旧 response 形状供下游解析。"""
+        from types import SimpleNamespace
+        from services.llm_client import SharedLLMClient
 
-        for attempt in range(max_retries):
-            try:
-                params["model"] = current_model
-                response = self.client.chat.completions.create(**params)
-                return response
-            except Exception as e:
-                err_str = str(e)
-                is_rate_limit = (
-                    "429" in err_str or
-                    "1305" in err_str or
-                    "rate limit" in err_str.lower() or
-                    "访问量过大" in err_str or
-                    "频率" in err_str or
-                    "Too Many Requests" in err_str or
-                    "APIReachLimitError" in type(e).__name__ or
-                    "rate_limit" in type(e).__name__.lower()
+        params = kwargs.copy()
+        messages = params.get("messages", [])
+        temperature = params.get("temperature", 0.7)
+        max_tokens = params.get("max_tokens", 2000)
+        model = params.get("model", self.model_name)
+        shared = SharedLLMClient()
+        if params.get("stream"):
+            stream = shared.chat_stream(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                provider=self.api_type,
+                model=model,
+            )
+
+            def wrapped_stream():
+                for content in stream:
+                    yield SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                delta=SimpleNamespace(content=content)
+                            )
+                        ]
+                    )
+
+            return wrapped_stream()
+
+        content = shared.chat(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            provider=self.api_type,
+            model=model,
+        )
+        if not content:
+            raise RuntimeError("LLM provider returned no content")
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content=content)
                 )
-                
-                if is_rate_limit and attempt < max_retries - 1:
-                    if self.api_type == "zhipu" and current_model != "glm-4.5-flash":
-                        print(f"[Fallback] LLMEvaluator 触发限流，将模型从 {current_model} 降级为 glm-4.5-flash")
-                        current_model = "glm-4.5-flash"
-                        self.model_name = "glm-4.5-flash"  # 持久化降级
-                        # 触发全局 SharedLLMClient 的同步更新
-                        try:
-                            from services.llm_client import llm_client
-                            llm_client._model_name = "glm-4.5-flash"
-                        except Exception:
-                            pass
-                        time.sleep(0.5)
-                    else:
-                        delay = base_delay * (2 ** attempt)
-                        print(f"[Retry] LLMEvaluator 触发限流，将在 {delay} 秒后重试 {current_model} (尝试 {attempt+1}/{max_retries})...")
-                        time.sleep(delay)
-                    continue
-                else:
-                    raise e
+            ]
+        )
 
     def evaluate_code_with_structured_data(self, code, assignment_title=None):
         """
@@ -829,6 +816,45 @@ class LLMEvaluator:
             print(f"获取LLM回答失败: {str(e)}")
             print(traceback.format_exc())
             return f"获取AI回答时出错: {str(e)}\n\n如果问题持续，请联系管理员检查API配置。"
+
+    def stream_llm_response(self, prompt):
+        """Yield the raw text response from the model as it is generated.
+
+        Markdown normalization is deliberately left to the caller.  Applying
+        it to every partial chunk can temporarily create invalid code fences
+        and makes the UI flicker; callers should render the accumulated text
+        while streaming and normalize it once in the final ``done`` event.
+        """
+        try:
+            print(f"发送流式提示到LLM，长度: {len(prompt)} 字符")
+            response = self._chat_completions_create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "你是一个有用的编程助手，擅长提供清晰、准确的指导。"},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                stream=True,
+            )
+            for chunk in response:
+                choices = getattr(chunk, "choices", None)
+                if choices is None and isinstance(chunk, dict):
+                    choices = chunk.get("choices")
+                if not choices:
+                    continue
+                first = choices[0]
+                delta = getattr(first, "delta", None)
+                if delta is None and isinstance(first, dict):
+                    delta = first.get("delta") or {}
+                content = getattr(delta, "content", None)
+                if content is None and isinstance(delta, dict):
+                    content = delta.get("content")
+                if content:
+                    yield str(content)
+        except Exception as e:
+            print(f"调用LLM流式API时出错: {e}")
+            print(traceback.format_exc())
+            raise Exception(f"调用{self.api_type}的{self.model_name}模型失败: {str(e)}")
     
     def _format_markdown_response(self, text):
         """
@@ -1013,4 +1039,4 @@ class LLMEvaluator:
         text = re.sub(r'#([^\s])', r'# \1', text)
         
         print(f"简化格式后的Markdown前300个字符: {text[:300]}")
-        return text 
+        return text

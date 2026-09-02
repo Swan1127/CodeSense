@@ -48,6 +48,26 @@ _RELATIONSHIP_PATTERNS = (
 )
 _CODE_OPERAND = r"(?:[A-Za-z_][A-Za-z0-9_]*(?:\[[A-Za-z0-9_\s+\-]+\]|\.[A-Za-z_][A-Za-z0-9_]*)*(?:\s*[\+\-]\s*\d+)?|\d+(?:\s*[\+\-]\s*\d+)?)"
 _CODE_RELATION_PATTERN = re.compile(rf"(?<!\w)({_CODE_OPERAND})\s*(<=|>=|==|!=|<|>|=)\s*({_CODE_OPERAND})(?!\w)")
+_COVERAGE_ANCHOR_GROUPS = (
+    ("input", ("输入", "读入", "读取", "input", "read")),
+    ("output", ("输出", "打印", "顺序", "output", "print")),
+    ("loop", ("循环", "迭代", "for", "i<n", "i < n")),
+    ("boundary", ("边界", "n=0", "n = 0", "n=1", "n = 1", "越界", "不存在", "为空")),
+    ("sequence", ("斐波那契", "前 N 项", "前两项", "相邻", "下一项", "新项", "next", "fib", "a+b")),
+    ("update", ("更新", "赋值", "a=b", "b=next", "滚动", "移动")),
+)
+_COVERAGE_UNCERTAINTY_MARKERS = (
+    "不完整",
+    "不清楚",
+    "说不清",
+    "说不明白",
+    "还不能",
+    "不确定",
+    "不知道",
+    "不明白",
+    "不太会",
+    "可能是",
+)
 
 
 @dataclass(frozen=True)
@@ -110,6 +130,14 @@ def apply_coverage_assessment(
     current_dimension = _require_member("dimension", dimension, config.probe_dimensions)
     current_assessment = _require_member("assessment", assessment, _ALLOWED_ASSESSMENTS)
     evidence_text = _normalize_evidence(evidence)
+    if (
+        current_assessment == "partial"
+        and _evidence_covers_concept(current_concept, evidence_text)
+    ):
+        # Models sometimes under-call a complete explanation as partial. The
+        # server can promote it only when the answer is concrete, expresses no
+        # uncertainty, and covers every recognized anchor of this concept.
+        current_assessment = "covered"
     event_token = _normalize_token("event_id", event_id)
 
     coverage = _normalized_coverage(getattr(state, "concept_coverage", []), concepts)
@@ -237,11 +265,49 @@ def _is_concrete_explanation(text: str) -> bool:
         return False
     if _substantive_character_count(text) < 8:
         return False
-    if _has_complete_code_relation(text) and _has_substantive_detail(text):
-        return True
+    if _has_complete_code_relation(text):
+        if _has_substantive_detail(text):
+            return True
+        # A learner can give a concrete multi-clause explanation by listing
+        # boundary values and code relations without using an explicit
+        # causal connector such as “because” or “所以”.
+        return _substantive_unit_count(_CODE_RELATION_PATTERN.sub(" ", text)) >= 3
     if _has_explanatory_structure(text):
         return True
     return False
+
+
+def _evidence_covers_concept(concept: str, evidence: str) -> bool:
+    if not _is_concrete_explanation(evidence):
+        return False
+    if any(marker in evidence for marker in _COVERAGE_UNCERTAINTY_MARKERS):
+        return False
+
+    required_groups = [
+        aliases
+        for _, aliases in _COVERAGE_ANCHOR_GROUPS
+        if any(_contains_coverage_anchor(concept, alias) for alias in aliases)
+    ]
+    if len(required_groups) < 2:
+        return False
+    return all(
+        any(_contains_coverage_anchor(evidence, alias) for alias in aliases)
+        for aliases in required_groups
+    )
+
+
+def _contains_coverage_anchor(text: str, alias: str) -> bool:
+    if not isinstance(text, str) or not isinstance(alias, str):
+        return False
+    if any("\u4e00" <= char <= "\u9fff" for char in alias):
+        return _compact_coverage_text(alias) in _compact_coverage_text(text)
+    if any(not char.isalnum() and not char.isspace() for char in alias):
+        return _compact_coverage_text(alias) in _compact_coverage_text(text)
+    return bool(re.search(rf"(?<![A-Za-z]){re.escape(alias)}(?![A-Za-z])", text, re.IGNORECASE))
+
+
+def _compact_coverage_text(text: str) -> str:
+    return re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "", text.casefold())
 
 
 def _is_acknowledgement_or_filler(text: str, normalized: str) -> bool:

@@ -1,8 +1,17 @@
 """
 Gunicorn配置文件 - 生产环境部署
 """
-import multiprocessing
 import os
+
+
+def _env_int(name, default, minimum=0, maximum=None):
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    value = max(minimum, value)
+    return min(value, maximum) if maximum is not None else value
+
 
 # 服务器socket
 # 绑定到本地回环地址，不对外暴露，通过Nginx反向代理访问
@@ -10,17 +19,20 @@ bind = "127.0.0.1:5000"
 backlog = 2048
 
 # 工作进程
-# 推荐的worker数量为 CPU核心数 * 2 + 1
-workers = multiprocessing.cpu_count() * 2 + 1
-worker_class = "sync"  # 同步worker，适合CPU密集型任务
-worker_connections = 1000
+# 默认按当前 2 vCPU / 2 GiB 规格保守配置。AI/SSE 请求会长时间等待网络，
+# gthread 能让一个 worker 同时承载多个等待中的连接；CPU 密集型沙箱仍受
+# 进程和队列限制，不应盲目增加 workers。
+workers = _env_int('WEB_CONCURRENCY', 2, minimum=1, maximum=8)
+worker_class = os.environ.get('GUNICORN_WORKER_CLASS', 'gthread')
+threads = _env_int('WEB_THREADS', 4, minimum=1, maximum=16)
+worker_connections = _env_int('WEB_WORKER_CONNECTIONS', 200, minimum=10, maximum=2000)
 max_requests = 1000  # 每个worker处理多少请求后重启，防止内存泄漏
 max_requests_jitter = 50  # 添加随机抖动，避免所有worker同时重启
 
 # 超时设置
 # AI调用可能需要较长时间，设置为120秒
-timeout = 120
-keepalive = 5
+timeout = _env_int('GUNICORN_TIMEOUT', 180, minimum=30, maximum=600)
+keepalive = _env_int('GUNICORN_KEEPALIVE', 5, minimum=1, maximum=60)
 graceful_timeout = 30
 
 # 日志配置
@@ -43,8 +55,9 @@ proc_name = "codesense"
 daemon = False
 
 # 性能优化
-# 预加载应用可以节省内存，但重启时间会变长
-preload_app = True
+# 不预加载：Flask-SQLAlchemy 连接池、Redis 客户端和 AI SDK 在各 worker
+# 内独立创建，避免 fork 后共享连接或 demo 数据库绑定。
+preload_app = False
 
 # 服务器钩子
 def on_starting(server):

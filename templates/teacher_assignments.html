@@ -163,17 +163,33 @@
                     listItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
                     try {
-                        // 1. 调用AI生成作业内容
-                        const genResponse = await fetch('/assignments/generate', {
+                        // 1. 调用AI生成作业内容（SSE 增量展示）
+                        let generatedTitle = '';
+                        let generatedDescription = '';
+                        let streamError = null;
+                        await window.consumeSSE('/assignments/generate', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'text/event-stream'
+                            },
                             body: JSON.stringify({ prompt: prompt })
+                        }, {
+                            onDelta: event => {
+                                // JSON 结构化结果在 done 前不能可靠解析，delta 主要用于保持连接可见。
+                                if (event.content) badge.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 正在输出';
+                            },
+                            onError: event => {
+                                streamError = new Error(event.message || event.error || 'AI生成失败');
+                            },
+                            onDone: data => {
+                                generatedTitle = data.title || (data.result && data.result.title) || '';
+                                generatedDescription = data.description || (data.result && data.result.description) || '';
+                            }
                         });
 
-                        const genData = await genResponse.json();
-
-                        if (!genResponse.ok || genData.error) {
-                            throw new Error(genData.error || 'AI生成失败');
+                        if (streamError || !generatedTitle) {
+                            throw streamError || new Error('AI返回的作业题目为空');
                         }
 
                         // 2. 调用API存入数据库
@@ -181,8 +197,8 @@
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                title: genData.title,
-                                description: genData.description
+                                title: generatedTitle,
+                                description: generatedDescription
                             })
                         });
 

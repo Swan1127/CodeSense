@@ -352,9 +352,14 @@
                             validateResult.innerHTML = '<div class="alert alert-info"><i class="bi bi-robot"></i> AI 正在生成 2 套解题代码并通过沙箱运行验证，预计耗时 30-60 秒...</div>';
                         }
 
-                        const autoResp = await fetch('/api/auto-validate-testcases', {
+                        let autoData = null;
+                        let autoStreamError = null;
+                        await window.consumeSSE('/api/auto-validate-testcases', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'text/event-stream'
+                            },
                             body: JSON.stringify({
                                 description: desc,
                                 test_cases: parsed.test_cases.map(tc => ({
@@ -362,8 +367,17 @@
                                     is_public: tc.is_public || false,
                                 }))
                             })
+                        }, {
+                            onError: event => {
+                                autoStreamError = new Error(event.message || event.error || '自动验证失败');
+                            },
+                            onDone: data => {
+                                autoData = data.result || data;
+                            }
                         });
-                        const autoData = await autoResp.json();
+
+                        if (autoStreamError) throw autoStreamError;
+                        autoData = autoData || {};
 
                         if (autoData.success && autoData.test_cases) {
                             // 用验证后的输出替换原始 AI 猜测的输出
@@ -482,9 +496,14 @@
                 validateResult.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> AI 正在生成解题代码并在沙箱中运行验证，预计耗时 30-60 秒...</div>';
 
                 try {
-                    const resp = await fetch('/api/auto-validate-testcases', {
+                    let data = null;
+                    let autoStreamError = null;
+                    await window.consumeSSE('/api/auto-validate-testcases', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'text/event-stream'
+                        },
                         body: JSON.stringify({
                             description: description,
                             test_cases: cases.map(c => ({
@@ -492,8 +511,17 @@
                                 is_public: c.is_public,
                             }))
                         })
+                    }, {
+                        onError: event => {
+                            autoStreamError = new Error(event.message || event.error || '自动验证失败');
+                        },
+                        onDone: payload => {
+                            data = payload.result || payload;
+                        }
                     });
-                    const data = await resp.json();
+
+                    if (autoStreamError) throw autoStreamError;
+                    data = data || {};
 
                     if (!data.success) {
                         validateResult.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.message}</div>`;

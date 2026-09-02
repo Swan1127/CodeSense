@@ -4,10 +4,8 @@
 """
 import json
 import logging
-import requests
 from typing import List, Dict
 
-from services.api_keys import api_keys
 from utils.sandbox_runner import run_test_cases
 
 logger = logging.getLogger(__name__)
@@ -45,51 +43,39 @@ def _generate_solution_code(description: str, solution_index: int, api_key: str,
         prompt = base_prompt
 
     try:
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-        data = {
-            "model": "glm-4.5-flash",
-            "messages": [
+        from services.llm_client import SharedLLMClient
+
+        content = SharedLLMClient().chat(
+            messages=[
                 {
                     "role": "system",
                     "content": (
                         "你是一个C++编程专家。你只输出纯C++源代码，"
                         "不添加任何Markdown标记、代码块标记或解释文字。"
                         "确保代码可以直接用g++编译运行。"
-                    )
+                    ),
                 },
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": prompt},
             ],
-            "temperature": 0.5 + solution_index * 0.15 if not error_feedback else 0.3,
-            "max_tokens": 2000
-        }
-        from services.llm_client import safe_zhipu_post
-        response = safe_zhipu_post(
-            "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-            headers=headers,
-            json_data=data,
-            timeout=90
+            temperature=0.5 + solution_index * 0.15 if not error_feedback else 0.3,
+            max_tokens=2000,
+            provider="zhipu",
         )
-        if response.status_code == 200:
-            result = response.json()
-            content = result["choices"][0]["message"]["content"].strip()
-            # 清理可能的 Markdown 代码块标记
-            if content.startswith("```cpp"):
-                content = content[6:]
-            elif content.startswith("```c++"):
-                content = content[6:]
-            elif content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            return content.strip()
-        else:
-            logger.error(f"AI生成代码失败: HTTP {response.status_code}")
+        if not content:
             return ""
+        # 清理可能的 Markdown 代码块标记
+        content = content.strip()
+        if content.startswith("```cpp"):
+            content = content[6:]
+        elif content.startswith("```c++"):
+            content = content[6:]
+        elif content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        return content.strip()
     except Exception as e:
-        logger.error(f"AI生成代码异常: {str(e)}")
+        logger.error(f"AI生成代码异常: {type(e).__name__}")
         return ""
 
 
@@ -135,8 +121,9 @@ def validate_test_cases(
             'summary': '没有测试用例可供验证'
         }
 
-    api_key = api_keys.get_key('zhipu')
-    if not api_key:
+    from services.llm_client import SharedLLMClient
+    shared_client = SharedLLMClient()
+    if not shared_client.is_available():
         return {
             'valid': False,
             'solutions': [],
@@ -148,7 +135,7 @@ def validate_test_cases(
 
     for i in range(num_solutions):
         logger.info(f"正在生成第 {i + 1}/{num_solutions} 套验证代码...")
-        code = _generate_solution_code(description, i, api_key)
+        code = _generate_solution_code(description, i, "")
 
         if not code:
             solutions.append({
@@ -220,8 +207,9 @@ def auto_generate_expected_outputs(
     if not test_inputs:
         return {'success': False, 'test_cases': [], 'solutions': [], 'summary': '没有测试输入'}
 
-    api_key = api_keys.get_key('zhipu')
-    if not api_key:
+    from services.llm_client import SharedLLMClient
+    shared_client = SharedLLMClient()
+    if not shared_client.is_available():
         return {'success': False, 'test_cases': [], 'solutions': [], 'summary': 'AI服务未配置'}
 
     # 伪装测试用例，不比对期望输出
@@ -244,7 +232,7 @@ def auto_generate_expected_outputs(
 
         if state['error'] or not state['code']:
             logger.info(f"正在生成标准解题代码 (尝试 {attempt+1})...")
-            code = _generate_solution_code(description, 0, api_key, state['error'])
+            code = _generate_solution_code(description, 0, "", state['error'])
             if not code:
                 state['error'] = 'AI未能生成代码'
                 continue

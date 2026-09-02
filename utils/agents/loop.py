@@ -37,6 +37,7 @@ _PUBLIC_STATE_FIELDS = frozenset({
 _PATCHABLE_STATE_FIELDS = frozenset({
     "phase", "learning_evidence", "concept_coverage", "coverage_score",
     "unresolved_concepts", "ready_for_code", "pending_probe",
+    "student_probe_intent",
     "code_review_status", "status",
 })
 _VALID_PHASES = frozenset({"student_dialogue", "code_review"})
@@ -190,6 +191,24 @@ class AgentLoop:
             decision = self._decide(input_kind, tool_results, request_id, snapshot, step)
             if isinstance(decision, AgentResult):
                 return decision
+            if (
+                self.role is AgentRole.TEACHER_AGENT
+                and internal_signals.get("student_probe")
+                and decision.tool_calls
+            ):
+                # A successful probe request already hands control to the
+                # orchestrator. Do not let a model keep issuing tools while
+                # trying to manufacture the student's follow-up in this turn.
+                bounded_decision = AgentDecision(
+                    message=decision.message.strip()
+                    or "我会继续从教师角度检查你的理解；如需同伴提问，系统会单独展示。",
+                )
+                return self._finish_public_response(
+                    bounded_decision,
+                    snapshot,
+                    request_id,
+                    internal_signals,
+                )
             safe_decision_message = _sanitize_public_response(
                 decision.message, self.spec.max_output_chars,
             )
@@ -278,6 +297,13 @@ class AgentLoop:
                         return self._finish_fix(result, snapshot, request_id, internal_signals)
                     if terminal_kind == "student_probe":
                         return self._finish_probe(result, snapshot, request_id)
+                    if (
+                        self.role is AgentRole.TEACHER_AGENT
+                        and result.signal_type == "student_probe"
+                    ):
+                        # Emit at most one student intervention for a teacher
+                        # turn, even if the model batches multiple requests.
+                        break
 
         return self._failure("MAX_AGENT_STEPS", request_id)
 
@@ -288,10 +314,15 @@ class AgentLoop:
         request_id: str,
         snapshot: MemorySnapshot,
         step: int,
+        *,
+        system_prompt_suffix: str = "",
     ) -> AgentDecision | AgentResult:
         try:
+            system_prompt = self.spec.system_prompt
+            if system_prompt_suffix:
+                system_prompt = f"{system_prompt}\n\n{system_prompt_suffix}"
             decision = self.model.decide(
-                system_prompt=self.spec.system_prompt,
+                system_prompt=system_prompt,
                 context=self._build_context(snapshot, input_kind=input_kind),
                 tool_specs=self.tools.specs_for(self.role),
                 tool_results=tool_results,
@@ -351,6 +382,13 @@ class AgentLoop:
         return json.dumps(prompt, ensure_ascii=False)
 
     def _tool_context(self, snapshot: MemorySnapshot, request_id: str, input_kind: str) -> ToolContext:
+        recent_public_questions = [
+            str(item.get("content") or "")
+            for item in snapshot.visible_messages.get(AgentRole.STUDENT_AGENT, [])
+            if isinstance(item, Mapping)
+            and item.get("event_type") == "agent_message"
+            and str(item.get("content") or "").strip()
+        ][-8:]
         return ToolContext(
             session_id=self.session_id,
             request_id=request_id,
@@ -363,6 +401,7 @@ class AgentLoop:
             reference_code=self.spec.reference_code,
             coverage_config=self.spec.coverage_config,
             trigger=dict(self._active_trigger) if isinstance(self._active_trigger, Mapping) else None,
+            recent_public_questions=recent_public_questions,
         )
 
     def _execute_tool(
@@ -462,7 +501,7 @@ class AgentLoop:
                 return None
             if name == "ready_for_code" and type(value) is not bool:
                 return None
-            if name == "pending_probe" and not _valid_pending_probe(value):
+            if name in {"pending_probe", "student_probe_intent"} and not _valid_pending_probe(value):
                 return None
             if name == "code_review_status" and (
                 not isinstance(value, str) or value not in _VALID_CODE_REVIEW_STATUSES
@@ -500,9 +539,7 @@ class AgentLoop:
         internal_signals: Optional[Dict[str, Any]] = None,
     ) -> AgentResult:
         state = snapshot.agent_states.setdefault(self.role, AgentState())
-        response = _sanitize_public_response(
-            decision.message, self.spec.max_output_chars,
-        )
+        response = self._sanitize_response(decision.message)
         state.last_decision = response
         state.goal_status = GoalStatus.COMPLETE if snapshot.state.status == "complete" else GoalStatus.IN_PROGRESS
         result = AgentResult(
@@ -514,6 +551,9 @@ class AgentLoop:
         )
         self._persist_completion(result, snapshot, request_id)
         return result
+
+    def _sanitize_response(self, value: Any) -> str:
+        return _sanitize_public_response(value, self.spec.max_output_chars)
 
     def _advance_successful_chat(
         self,
@@ -532,9 +572,7 @@ class AgentLoop:
         state.agent_id = self.role.value
         state.turn_index += 1
         state.last_user_message = user_message
-        state.last_decision = _sanitize_public_response(
-            last_decision, self.spec.max_output_chars,
-        )
+        state.last_decision = self._sanitize_response(last_decision)
         evidence = snapshot.state.learning_evidence
         state.current_focus = (
             str(evidence[-1].get("concept") or snapshot.state.phase)
@@ -609,8 +647,8 @@ class AgentLoop:
     def _finish_probe(
         self, tool_result: ToolResult, snapshot: MemorySnapshot, request_id: str,
     ) -> AgentResult:
-        message = _sanitize_public_response(
-            str(tool_result.public_content.get("message", "")), self.spec.max_output_chars,
+        message = self._sanitize_response(
+            str(tool_result.public_content.get("message", ""))
         )
         result = AgentResult(
             success=True,

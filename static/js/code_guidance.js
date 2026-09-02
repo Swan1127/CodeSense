@@ -126,21 +126,29 @@ function updateGuidanceFeedback() {
     lastGuidanceRequest = Date.now();
     const currentRequest = lastGuidanceRequest;
     
-    // 发送到后端API
-    fetch('/api/get_coding_guidance', {
+    // 发送到后端API。优先使用统一 SSE，边生成边展示指导内容。
+    let guidanceText = '';
+    let streamError = null;
+    window.consumeSSE('/api/get_coding_guidance', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream'
         },
         body: JSON.stringify(requestData)
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('请求失败: ' + response.status);
+    }, {
+        onDelta: event => {
+            if (currentRequest !== lastGuidanceRequest) return;
+            guidanceText += event.content || event.token || '';
+            guidanceLoading.style.display = 'none';
+            guidanceContent.innerHTML = formatMarkdown(guidanceText);
+        },
+        onError: event => {
+            streamError = new Error(event.message || event.error || '获取指导失败');
         }
-        return response.json();
     })
     .then(data => {
+        if (streamError) throw streamError;
         // 如果不是最新请求，丢弃结果
         if (currentRequest !== lastGuidanceRequest) {
             console.log('丢弃过时的指导结果');
@@ -150,8 +158,10 @@ function updateGuidanceFeedback() {
         // 更新UI
         guidanceLoading.style.display = 'none';
         
-        if (data.success) {
-            guidanceContent.innerHTML = formatMarkdown(data.guidance);
+        const finalGuidance = data.guidance ||
+            (data.data && data.data.guidance) || data.content || guidanceText;
+        if (data.success !== false && finalGuidance) {
+            guidanceContent.innerHTML = formatMarkdown(finalGuidance);
             // 高亮代码块
             document.querySelectorAll('#guidance-feedback-content pre code').forEach((block) => {
                 hljs.highlightBlock(block);
@@ -261,4 +271,4 @@ function debounce(func, wait) {
 
 // 导出函数
 window.updateGuidanceFeedback = updateGuidanceFeedback;
-window.debouncedUpdateGuidance = debounce(updateGuidanceFeedback, 2000); 
+window.debouncedUpdateGuidance = debounce(updateGuidanceFeedback, 2000);

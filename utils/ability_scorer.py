@@ -35,7 +35,10 @@ class AbilityScorer:
                 return 0.0
             
             # 获取学生的提交记录
-            submissions = list(user.submissions.order_by(Submission.submitted_at).all())
+            submissions = list(user.submissions.with_entities(
+                Submission.submitted_at,
+                Submission.score,
+            ).order_by(Submission.submitted_at).all())
             
             if not submissions:
                 return 0.0
@@ -74,22 +77,26 @@ class AbilityScorer:
             return {'avg_submissions': 1, 'avg_score': 2.5, 'total_students': 1}
         
         try:
-            # 获取班级学生列表
-            class_students = User.query.filter_by(class_name=class_name, usertype='学生').all()
+            # 只取统计所需的标量列，避免加载用户对象和密码哈希。
+            class_students = User.query.filter_by(
+                class_name=class_name,
+                usertype='学生',
+            ).with_entities(User.student_id, User.submit_count).all()
             if not class_students:
                 return {'avg_submissions': 1, 'avg_score': 2.5, 'total_students': 1}
             
             # 计算班级统计数据
-            total_submissions = sum(s.submit_count for s in class_students)
+            total_submissions = sum(s.submit_count or 0 for s in class_students)
             avg_submissions = total_submissions / len(class_students) if class_students else 1
             
             # 计算班级平均分
-            all_scores = []
-            for student in class_students:
-                student_submissions = student.submissions.all()
-                if student_submissions:
-                    student_avg = sum(s.score for s in student_submissions if s.score) / len(student_submissions)
-                    all_scores.append(student_avg)
+            all_scores = [row.average_score for row in db.session.query(
+                Submission.student_id,
+                db.func.avg(Submission.score).label('average_score'),
+            ).filter(
+                Submission.student_id.in_([student_id for student_id, _ in class_students]),
+                Submission.score.isnot(None),
+            ).group_by(Submission.student_id).all()]
             
             avg_score = sum(all_scores) / len(all_scores) if all_scores else 2.5
             
@@ -224,7 +231,10 @@ class AbilityScorer:
                 return {k: 0.0 for k in ['algorithm', 'style', 'functionality', 'efficiency', 'readability']}
             
             # 获取所有提交 (不要一开始就过滤掉没有 ai_feedback 的，否则会导致基础分无法回算)
-            all_submissions = list(user.submissions.all())
+            all_submissions = list(user.submissions.with_entities(
+                Submission.ai_feedback,
+                Submission.score,
+            ).all())
             if not all_submissions:
                 return {k: 0.0 for k in ['algorithm', 'style', 'functionality', 'efficiency', 'readability']}
             

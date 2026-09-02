@@ -212,36 +212,41 @@
 
         try {
             console.log("Sending AI prompt:", promptText);
-            const response = await fetch("{{ url_for('assignments.generate_assignment') }}", {
+            let generatedTitle = '';
+            let generatedDescription = '';
+            let streamError = null;
+            await window.consumeSSE("{{ url_for('assignments.generate_assignment') }}", {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'text/event-stream'
                 },
                 body: JSON.stringify({ prompt: promptText })
+            }, {
+                onError: event => {
+                    streamError = new Error(event.message || event.error || '生成失败');
+                },
+                onDone: data => {
+                    generatedTitle = data.title || (data.result && data.result.title) || '';
+                    generatedDescription = data.description || (data.result && data.result.description) || '';
+                }
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            console.log("AI result received:", data);
-
-            if (data.success) {
+            if (streamError) throw streamError;
+            if (generatedTitle) {
                 const titleEl = document.getElementById('title');
                 const descEl = document.getElementById('description');
 
-                if (titleEl) titleEl.value = data.title;
+                if (titleEl) titleEl.value = generatedTitle;
                 if (descEl) {
-                    descEl.value = data.description;
+                    descEl.value = generatedDescription;
                     // 如果存在 SimpleMDE 或其他编辑器，可能需要触发其更新
                     // descEl.dispatchEvent(new Event('change'));
                 }
                 console.log("Form fields updated successfully");
             } else {
-                alert(data.error || "生成失败");
+                alert("生成失败：AI没有返回有效的题目内容");
             }
         } catch (e) {
             console.error("AI Generation error:", e);

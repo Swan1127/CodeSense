@@ -14,6 +14,34 @@ from services.llm_client import SharedLLMClient
 # 代码物理隔离过滤器（第二层防护）
 # ============================================================
 
+def _single_text_stream(text: str):
+    """Expose a fallback message through the same iterator interface."""
+    if text:
+        yield text
+
+
+def _stream_chat_response(client: SharedLLMClient, messages: List[Dict],
+                          fallback: str, *, temperature: float,
+                          max_tokens: int):
+    """Stream a chat response and fall back if the provider returns nothing."""
+    if not client.is_available():
+        yield from _single_text_stream(fallback)
+        return
+
+    emitted = False
+    try:
+        for chunk in client.chat_stream(
+            messages, temperature=temperature, max_tokens=max_tokens
+        ):
+            if chunk:
+                emitted = True
+                yield chunk
+    except Exception:
+        if emitted:
+            raise
+    if not emitted:
+        yield from _single_text_stream(fallback)
+
 def sanitize_response(text: str) -> str:
     """物理级代码过滤 — 从AI响应中移除所有代码片段
     
@@ -357,6 +385,127 @@ int main() {{
 # 阶段1: 自然语言描述评判
 # ============================================================
 
+# 阶段一的引导问答本身已经带有稳定的结构（问题 / 回答），不需要每次
+# 都把整段文本发给模型做一次 JSON 分类。先用轻量规则检查关键概念，
+# 既能把常见提交的响应时间从网络 RTT 降到本地计算，也避免因为模型
+# 临时超时而阻塞学习流程。无法识别的旧式自由文本仍保留 AI 评判兜底。
+_STAGE1_SIGNAL_ALIASES = {
+    "input": ("输入", "读入", "读取", "接收", "获取", "cin", "scanf"),
+    "process": (
+        "处理", "计算", "循环", "遍历", "迭代", "判断", "比较", "递推",
+        "递归", "相加", "前两项", "下一项", "更新", "状态转移", "斐波那契",
+        "排序", "搜索",
+    ),
+    "output": ("输出", "打印", "显示", "返回", "结果"),
+    "boundary": (
+        "边界", "特殊情况", "异常", "空列表", "为空", "为空时", "小于等于",
+        "大于等于", "不超过", "范围",
+    ),
+    "storage": ("数组", "列表", "变量", "存储", "保存", "vector", "容器", "队列", "栈", "哈希"),
+    "order": ("顺序", "下标", "依次", "逐个", "从前往后", "按序", "原顺序"),
+}
+
+_STAGE1_SIGNAL_LABELS = {
+    "input": "输入与数据读取",
+    "process": "核心处理或循环",
+    "output": "结果输出",
+    "boundary": "边界情况",
+    "storage": "变量或数据结构",
+    "order": "处理顺序",
+}
+
+
+def _stage1_answers(description: str) -> List[str]:
+    """提取阶段一结构化问答中的回答，避免把引导问题本身算成已掌握。"""
+    if not description:
+        return []
+
+    matches = re.findall(
+        r"【回答】\s*[:：]?\s*(.*?)(?=\n\s*【问题\s*\d+】|$)",
+        description,
+        flags=re.S,
+    )
+    if matches:
+        return [item.strip() for item in matches if item.strip()]
+    return [description.strip()] if description.strip() else []
+
+
+def _stage1_signals(text: str) -> set:
+    """返回文本中出现的概念类别，而不是依赖分词库。"""
+    normalized = re.sub(r"\s+", "", str(text or "")).lower()
+    signals = {
+        name
+        for name, aliases in _STAGE1_SIGNAL_ALIASES.items()
+        if any(alias.lower() in normalized for alias in aliases)
+    }
+
+    # 单独的 N / n 通常表示输入规模；它在结构化回答里是可靠信号，
+    # 但不能把任意数字都当成边界条件。
+    if re.search(r"(?<![a-z])n(?![a-z])", normalized):
+        signals.add("input")
+
+    # 处理中文数字与常见比较写法，覆盖“ N=0 / N 为 1”这类口语回答。
+    if re.search(r"(?<![a-z])n(?![a-z])(?:等于|为|是|=)?[01零一]", normalized):
+        signals.add("boundary")
+    if re.search(r"(?:前|数量|项数)(?:等于|为|是|=)?[01零一]", normalized):
+        signals.add("boundary")
+    if re.search(r"(?:<=|>=|小于|大于|不超过|至少|至多)", normalized):
+        signals.add("boundary")
+    return signals
+
+
+def _quick_stage1_evaluation(description: str, key_steps: List[str]) -> Optional[Tuple[float, str]]:
+    """对结构化阶段一回答做本地快速评判。
+
+    返回 ``None`` 表示文本不足以可靠判定，应交给 AI；返回二元组时
+    与 ``evaluate_description`` 的原有结果保持一致。
+    """
+    if "【回答】" not in str(description or "") or not key_steps:
+        return None
+
+    answers = _stage1_answers(description)
+    if not answers:
+        return None
+
+    student_signals = _stage1_signals(" ".join(answers))
+    if not student_signals:
+        return None
+
+    step_coverages = []
+    for step in key_steps:
+        step_signals = _stage1_signals(step)
+        if not step_signals:
+            # 极少数历史预设只有抽象短语；回答直接复述该短语时仍算覆盖。
+            step_text = re.sub(r"\s+", "", str(step or "")).lower()
+            answer_text = re.sub(r"\s+", "", " ".join(answers)).lower()
+            step_coverages.append(1.0 if step_text and step_text in answer_text else 0.0)
+            continue
+        step_coverages.append(len(step_signals & student_signals) / len(step_signals))
+
+    if not step_coverages:
+        return None
+
+    raw_score = round(sum(step_coverages) / len(step_coverages) * 100)
+    # 与原 AI 评判规则保持一致：初学者只要表达出一个核心方向，
+    # 简单题不因措辞不专业而被卡在及格线下。
+    score = float(max(50, min(100, raw_score)))
+    covered_labels = [
+        label for name, label in _STAGE1_SIGNAL_LABELS.items() if name in student_signals
+    ]
+    missing_signals = set().union(*(_stage1_signals(step) for step in key_steps)) - student_signals
+    missing_labels = [
+        label for name, label in _STAGE1_SIGNAL_LABELS.items() if name in missing_signals
+    ]
+
+    if score >= 80:
+        feedback = "快速检查完成：你已经覆盖了" + "、".join(covered_labels[:4]) + "，思路方向清晰，可以进入下一阶段。"
+    elif missing_labels:
+        feedback = "快速检查完成：目前已涉及" + "、".join(covered_labels[:3]) + "；建议再补充" + "、".join(missing_labels[:2]) + "。"
+    else:
+        feedback = "快速检查完成：已经表达出核心思路，可以继续完善步骤之间的衔接。"
+    return score, feedback
+
+
 def evaluate_description(description: str, key_steps: List[str], 
                         assignment_title: str) -> Tuple[float, str]:
     """
@@ -365,6 +514,10 @@ def evaluate_description(description: str, key_steps: List[str],
     Returns:
         (score: 0-100, feedback: str)
     """
+    quick_result = _quick_stage1_evaluation(description, key_steps)
+    if quick_result is not None:
+        return quick_result
+
     client = SharedLLMClient()
     if not client.is_available():
         raise RuntimeError("AI服务不可用，请检查API Key配置或稍后再试")
@@ -413,14 +566,16 @@ def evaluate_description(description: str, key_steps: List[str],
 
 
 def generate_stage1_hint(description: str, key_steps: List[str],
-                         assignment_title: str, hint_count: int) -> str:
+                         assignment_title: str, hint_count: int,
+                         _stream: bool = False) -> str:
     """
     阶段1引导提示 — 递进式放宽提示规则
     满足初学者的切实需求：提示足够明显，提供框架或参考描述模式
     """
     client = SharedLLMClient()
     if not client.is_available():
-        return "AI服务暂不可用，请试着分步描述：1.读入数据 2.核心计算处理 3.输出结果。"
+        fallback = "AI服务暂不可用，请试着分步描述：1.读入数据 2.核心计算处理 3.输出结果。"
+        return _single_text_stream(fallback) if _stream else fallback
 
     # 根据已请求次数放宽规则，提供明显且直接的引导
     guidance_rules = """
@@ -442,13 +597,19 @@ def generate_stage1_hint(description: str, key_steps: List[str],
 1. 依然不要输出具体的底层语法代码（如 C++ 语法），但可以自然地使用常见的数据结构和逻辑词汇（如队列、变量、循环、数组、判断）。
 2. 用极度鼓励、贴近初学者的口吻回答，字数控制在 150 字以内，排版清晰易读。"""
 
-    response = client.chat(
-        [{"role": "system", "content": "你是极具同理心的编程导师，善于给初学者极其明显的思路大纲和描述模板。"},
-         {"role": "user", "content": prompt}],
-        temperature=0.7, max_tokens=400
-    )
+    messages = [
+        {"role": "system", "content": "你是极具同理心的编程导师，善于给初学者极其明显的思路大纲和描述模板。"},
+        {"role": "user", "content": prompt},
+    ]
+    fallback = "建议分三步描述：1. 定义所需变量并读取输入；2. 遍历数据进行核心逻辑判断；3. 打印最终结果。"
+    if _stream:
+        return _stream_chat_response(
+            client, messages, fallback, temperature=0.7, max_tokens=400
+        )
 
-    return sanitize_response(response) if response else "建议分三步描述：1. 定义所需变量并读取输入；2. 遍历数据进行核心逻辑判断；3. 打印最终结果。"
+    response = client.chat(messages, temperature=0.7, max_tokens=400)
+
+    return sanitize_response(response) if response else fallback
 
 
 # ============================================================
@@ -457,16 +618,18 @@ def generate_stage1_hint(description: str, key_steps: List[str],
 
 def generate_stage2_hint(student_description: str, current_block_ids: List[str],
                          correct_blocks: List[Dict], assignment_title: str,
-                         hint_count: int) -> str:
+                         hint_count: int, _stream: bool = False) -> str:
     """
     阶段2引导提示 — 引用学生的自然语言描述，苏格拉底式引导
     """
     client = SharedLLMClient()
     if not client.is_available():
-        return "回想一下你在第一阶段描述的解题思路，下一步应该是什么？"
+        fallback = "回想一下你在第一阶段描述的解题思路，下一步应该是什么？"
+        return _single_text_stream(fallback) if _stream else fallback
 
     if hint_count >= 5:
-        return "你已经获取了很多提示了。静下心来，回忆你之前描述的解题步骤，一步一步来。"
+        fallback = "你已经获取了很多提示了。静下心来，回忆你之前描述的解题步骤，一步一步来。"
+        return _single_text_stream(fallback) if _stream else fallback
 
     # 判断学生当前完成了多少
     total = len(correct_blocks)
@@ -490,13 +653,47 @@ def generate_stage2_hint(student_description: str, current_block_ids: List[str],
 
 请给出引导性提示，不超过80字。"""
 
-    response = client.chat(
-        [{"role": "system", "content": "你是苏格拉底式的编程教育导师。" + ANTI_CODE_SYSTEM_PROMPT},
-         {"role": "user", "content": prompt}],
-        temperature=0.7, max_tokens=250
-    )
+    messages = [
+        {"role": "system", "content": "你是苏格拉底式的编程教育导师。" + ANTI_CODE_SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
+    fallback = "回想你在第一阶段描述的思路，下一步该做什么？"
+    if _stream:
+        return _stream_chat_response(
+            client, messages, fallback, temperature=0.7, max_tokens=250
+        )
 
-    return sanitize_response(response) if response else "回想你在第一阶段描述的思路，下一步该做什么？"
+    response = client.chat(messages, temperature=0.7, max_tokens=250)
+
+    return sanitize_response(response) if response else fallback
+
+
+def generate_stage1_hint_stream(description: str, key_steps: List[str],
+                                assignment_title: str, hint_count: int):
+    result = generate_stage1_hint(
+        description, key_steps, assignment_title, hint_count, _stream=True
+    )
+    if isinstance(result, str):
+        yield result
+    elif result:
+        yield from result
+
+
+def generate_stage2_hint_stream(student_description: str, current_block_ids: List[str],
+                                correct_blocks: List[Dict], assignment_title: str,
+                                hint_count: int):
+    result = generate_stage2_hint(
+        student_description,
+        current_block_ids,
+        correct_blocks,
+        assignment_title,
+        hint_count,
+        _stream=True,
+    )
+    if isinstance(result, str):
+        yield result
+    elif result:
+        yield from result
 
 
 
@@ -568,13 +765,15 @@ def _format_student_state_context(student_state: dict) -> str:
 def companion_agent_chat(messages: List[Dict], assignment_title: str,
                          key_steps: List[str], student_description: str,
                          current_stage: int = 1, stage2_state: dict = None,
-                         assignment_description: str = "", student_state: dict = None) -> str:
+                         assignment_description: str = "", student_state: dict = None,
+                         _stream: bool = False) -> str:
     """
     启发式自由对话Agent（伴学角色）— 在积木或思路阶段回答学生的自由提问
     """
     client = SharedLLMClient()
     if not client.is_available():
-        return "AI助手暂时不可用，请稍后重试。"
+        fallback = "AI助手暂时不可用，请稍后重试。"
+        return _single_text_stream(fallback) if _stream else fallback
 
     # 根据当前阶段和积木拼装状态生成动态诊断提示
     extra_context = ""
@@ -652,13 +851,41 @@ def companion_agent_chat(messages: List[Dict], assignment_title: str,
     for msg in messages[-10:]:
         chat_messages.append({"role": msg['role'], "content": msg['content']})
 
+    fallback = "你能详细说说你目前卡在哪一步的思考逻辑上吗？"
+    if _stream:
+        return _stream_chat_response(
+            client, chat_messages, fallback, temperature=0.7, max_tokens=600
+        )
+
     response = client.chat(chat_messages, temperature=0.7, max_tokens=600)
     if response:
         # 移出生图标记（画图功能已暂时下线，若模型输出则直接过滤掉）
         response = re.sub(r'\[GENERATE_IMAGE:\s*(.*?)\]', '', response)
         return sanitize_response(response)
         
-    return "你能详细说说你目前卡在哪一步的思考逻辑上吗？"
+    return fallback
+
+
+def companion_agent_chat_stream(messages: List[Dict], assignment_title: str,
+                                key_steps: List[str], student_description: str,
+                                current_stage: int = 1, stage2_state: dict = None,
+                                assignment_description: str = "",
+                                student_state: dict = None):
+    result = companion_agent_chat(
+        messages,
+        assignment_title,
+        key_steps,
+        student_description,
+        current_stage=current_stage,
+        stage2_state=stage2_state,
+        assignment_description=assignment_description,
+        student_state=student_state,
+        _stream=True,
+    )
+    if isinstance(result, str):
+        yield result
+    elif result:
+        yield from result
 
 
 # ============================================================

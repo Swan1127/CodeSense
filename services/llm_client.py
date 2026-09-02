@@ -1,33 +1,211 @@
-"""
-共享 LLM 客户端服务
-单例模式，避免多重初始化浪费资源
-"""
-from typing import Optional, Tuple, Dict, Any
-from enum import Enum
-import traceback
+"""共享 LLM 客户端服务。
 
-# 导入 API 密钥管理器
+所有需要调用大模型的功能都应经过这里。除了统一 provider 选择，这一层
+还负责有限重试、并发上限、熔断冷却、缓存以及 provider 故障切换。
+"""
+
+from dataclasses import dataclass, field
+from enum import Enum
+import hashlib
+import json
+import logging
+import os
+import random
+import threading
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
 from services.api_keys import api_keys
 
 
+logger = logging.getLogger(__name__)
+
+
 class LLMProvider(Enum):
-    """支持的 LLM Provider"""
+    """支持的 LLM provider。"""
+
     ZHIPU = "zhipu"
     OPENAI = "openai"
 
 
-class SharedLLMClient:
-    """
-    共享 LLM 客户端单例
+class LLMServiceError(RuntimeError):
+    """不暴露 provider 原始异常内容的流式服务错误。"""
 
-    使用方式:
-        llm_client = SharedLLMClient()
-        if llm_client.is_available():
-            score, feedback = llm_client.evaluate_code(code, title)
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
+class _EmptyResponseError(RuntimeError):
+    """Provider 返回成功状态但没有可用文本。"""
+
+
+@dataclass
+class _ProviderHealth:
+    consecutive_failures: int = 0
+    opened_until: float = 0.0
+    last_error: str = ""
+
+
+@dataclass
+class _ProviderState:
+    provider: LLMProvider
+    client: Any
+    model: str
+    health: _ProviderHealth = field(default_factory=_ProviderHealth)
+
+
+@dataclass
+class _InflightCall:
+    """同一进程内相同请求的 single-flight 状态。"""
+
+    event: threading.Event = field(default_factory=threading.Event)
+    result: Optional[str] = None
+
+
+_RETRYABLE_STATUS_CODES = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+_DEFAULT_PROVIDER_ORDER = (LLMProvider.ZHIPU, LLMProvider.OPENAI)
+
+
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _status_code(error: Any) -> Optional[int]:
+    for candidate in (
+        getattr(error, "status_code", None),
+        getattr(error, "status", None),
+        getattr(getattr(error, "response", None), "status_code", None),
+    ):
+        try:
+            if candidate is not None:
+                return int(candidate)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _error_label(error: Optional[Exception]) -> str:
+    if error is None:
+        return "UNKNOWN"
+    status = _status_code(error)
+    suffix = f" status={status}" if status is not None else ""
+    return f"{type(error).__name__}{suffix}"
+
+
+def _is_rate_limit(error: Optional[Exception]) -> bool:
+    if error is None:
+        return False
+    if _status_code(error) == 429:
+        return True
+    text = f"{type(error).__name__} {error}".lower()
+    return any(
+        marker in text
+        for marker in (
+            "429",
+            "1305",
+            "rate limit",
+            "rate_limit",
+            "too many requests",
+            "apireachlimiterror",
+            "访问量过大",
+            "频率",
+        )
+    )
+
+
+def _is_retryable_error(error: Optional[Exception]) -> bool:
+    if error is None:
+        return False
+    if isinstance(error, _EmptyResponseError):
+        return True
+    status = _status_code(error)
+    if status in _RETRYABLE_STATUS_CODES:
+        return True
+    if status is not None and status < 500:
+        return False
+    if isinstance(error, (TimeoutError, ConnectionError, OSError)):
+        return True
+    text = f"{type(error).__name__} {error}".lower()
+    return any(
+        marker in text
+        for marker in (
+            "timeout",
+            "timed out",
+            "connection reset",
+            "connection aborted",
+            "connection refused",
+            "broken pipe",
+            "temporarily unavailable",
+            "service unavailable",
+            "winerror 10013",
+            "cannot connect",
+            "eof",
+            "overloaded",
+            "too many requests",
+            "rate limit",
+            "访问量过大",
+        )
+    )
+
+
+def _retry_after_seconds(error: Optional[Exception]) -> Optional[float]:
+    response = getattr(error, "response", None) if error else None
+    headers = getattr(response, "headers", None)
+    if not headers:
+        return None
+    value = headers.get("Retry-After") or headers.get("retry-after")
+    try:
+        return max(0.0, min(60.0, float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _message_content(response: Any) -> str:
+    choices = response.get("choices") if isinstance(response, dict) else getattr(response, "choices", None)
+    if not choices:
+        return ""
+    first = choices[0]
+    message = first.get("message") if isinstance(first, dict) else getattr(first, "message", None)
+    content = message.get("content") if isinstance(message, dict) else getattr(message, "content", None)
+    if isinstance(content, str):
+        return content.strip()
+    return str(content).strip() if content is not None else ""
+
+
+def _stream_chunk_content(chunk: Any) -> str:
+    choices = chunk.get("choices") if isinstance(chunk, dict) else getattr(chunk, "choices", None)
+    if not choices:
+        return ""
+    first = choices[0]
+    delta = first.get("delta") if isinstance(first, dict) else getattr(first, "delta", None)
+    content = delta.get("content") if isinstance(delta, dict) else getattr(delta, "content", None)
+    return content if isinstance(content, str) else ""
+
+
+class SharedLLMClient:
+    """带容错和故障切换的共享 LLM 客户端单例。
+
+    ``_client``、``_provider`` 和 ``_model_name`` 是历史兼容属性，项目旧
+    调用点仍可以读取它们；新的请求统一从 ``_provider_states`` 选择健康
+    provider，不会因某一次网络抖动永久失效。
     """
+
     last_user_request_time = 0.0
-    _instance: Optional['SharedLLMClient'] = None
-    _initialized: bool = False
+    _instance: Optional["SharedLLMClient"] = None
+    _initialized = False
 
     def __new__(cls):
         if cls._instance is None:
@@ -35,295 +213,574 @@ class SharedLLMClient:
         return cls._instance
 
     def __init__(self):
-        if self._initialized:
+        if getattr(self, "_initialized", False):
             return
-
         self._client = None
-        self._provider: LLMProvider = None
-        self._model_name: str = ""
-        self._available: bool = False
+        self._provider: Optional[LLMProvider] = None
+        self._model_name = ""
+        self._available = False
         self._redis_cache = None
+        self._provider_states: Dict[LLMProvider, _ProviderState] = {}
+        self._provider_order: List[LLMProvider] = []
+        self._credentials_signature: Tuple[str, str] = ("", "")
+        self._state_lock = threading.RLock()
+        self._cache_lock = threading.RLock()
+        self._local_cache: Dict[str, Tuple[float, str]] = {}
+        self._inflight_lock = threading.RLock()
+        self._inflight: Dict[str, _InflightCall] = {}
+        self._request_semaphore = threading.BoundedSemaphore(
+            _env_int("AI_MAX_CONCURRENT_REQUESTS", 3, minimum=1, maximum=32)
+        )
+        self._retry_attempts = _env_int("AI_RETRY_ATTEMPTS", 3, minimum=1, maximum=6)
+        self._retry_base_delay = _env_float(
+            "AI_RETRY_BASE_DELAY_SECONDS", 0.8, minimum=0.05, maximum=10.0
+        )
+        self._retry_max_delay = _env_float(
+            "AI_RETRY_MAX_DELAY_SECONDS", 8.0, minimum=0.1, maximum=60.0
+        )
+        self._circuit_failure_threshold = _env_int(
+            "AI_CIRCUIT_FAILURE_THRESHOLD", 2, minimum=1, maximum=10
+        )
+        self._circuit_cooldown = _env_float(
+            "AI_CIRCUIT_COOLDOWN_SECONDS", 30.0, minimum=1.0, maximum=600.0
+        )
+        self._request_queue_timeout = _env_float(
+            "AI_REQUEST_QUEUE_TIMEOUT_SECONDS", 2.0, minimum=0.1, maximum=30.0
+        )
+        self._background_priority_window = _env_float(
+            "AI_BACKGROUND_PRIORITY_WINDOW_SECONDS", 3.0, minimum=0.0, maximum=30.0
+        )
+        self._background_max_wait = _env_float(
+            "AI_BACKGROUND_MAX_WAIT_SECONDS", 4.0, minimum=0.0, maximum=60.0
+        )
+        self._cache_ttl = _env_int(
+            "AI_CACHE_TTL_SECONDS", 86400, minimum=60, maximum=604800
+        )
+        self._singleflight_wait = _env_float(
+            "AI_SINGLEFLIGHT_WAIT_SECONDS", 90.0, minimum=1.0, maximum=300.0
+        )
+        self._last_error = ""
         self._init_redis()
         self._init_client()
         self._initialized = True
 
     def _init_redis(self):
-        """初始化 Redis 缓存连接"""
-        import os
-        redis_url = os.environ.get('REDIS_URL') or 'redis://127.0.0.1:6379/0'
+        redis_url = os.environ.get("REDIS_URL") or "redis://127.0.0.1:6379/0"
         try:
             import redis
+
             self._redis_cache = redis.from_url(redis_url, socket_timeout=1)
             self._redis_cache.ping()
-            print(f"[OK] LLM 接口缓存启用: {redis_url}")
-        except Exception:
+            print("[OK] LLM 接口缓存启用")
+        except Exception as exc:
             self._redis_cache = None
+            logger.info(
+                "LLM Redis cache unavailable; using local cache: %s",
+                type(exc).__name__,
+            )
 
     def _init_client(self):
-        """初始化 LLM 客户端"""
-        if not api_keys.has_any_key:
-            print("⚠️  没有可用的 API 密钥，LLM 客户端不可用")
-            return
-
-        # 确定使用的 provider
-        if api_keys.has_zhipu:
-            self._provider = LLMProvider.ZHIPU
-            self._init_zhipu_client()
-        elif api_keys.has_openai:
-            self._provider = LLMProvider.OPENAI
-            self._init_openai_client()
-        else:
-            print("⚠️  没有可用的 API 密钥")
+        try:
+            api_keys.refresh()
+        except Exception as exc:
+            logger.warning("AI credential refresh failed: %s", type(exc).__name__)
+        with self._state_lock:
+            self._provider_states = {}
+            self._provider_order = []
+            self._provider = None
+            self._client = None
+            self._model_name = ""
             self._available = False
+            self._credentials_signature = (api_keys.zhipu_key, api_keys.openai_key)
+        if not api_keys.has_any_key:
+            print("[WARN] 没有可用的 API 密钥，LLM 客户端不可用")
+            return
+        for provider in self._configured_provider_order():
+            if provider is LLMProvider.ZHIPU and api_keys.has_zhipu:
+                self._init_zhipu_client()
+            elif provider is LLMProvider.OPENAI and api_keys.has_openai:
+                self._init_openai_client()
+        with self._state_lock:
+            self._available = bool(self._provider_states)
+            if self._provider_order:
+                self._set_active(self._provider_states[self._provider_order[0]])
+        if not self._available:
+            print("[WARN] 已配置密钥，但没有成功初始化可用的 LLM provider")
+
+    def _configured_provider_order(self) -> List[LLMProvider]:
+        raw_order = os.environ.get("AI_PROVIDER_ORDER", "zhipu,openai")
+        result: List[LLMProvider] = []
+        for value in raw_order.split(","):
+            try:
+                provider = LLMProvider(value.strip().lower())
+            except ValueError:
+                continue
+            if provider not in result:
+                result.append(provider)
+        for provider in _DEFAULT_PROVIDER_ORDER:
+            if provider not in result:
+                result.append(provider)
+        return result or list(_DEFAULT_PROVIDER_ORDER)
+
+    def _register_provider(self, provider: LLMProvider, client: Any, model: str) -> None:
+        with self._state_lock:
+            self._provider_states[provider] = _ProviderState(provider, client, model)
+            if provider not in self._provider_order:
+                self._provider_order.append(provider)
+        print(f"[OK] 共享 {provider.value} AI 客户端初始化成功")
 
     def _init_zhipu_client(self):
-        """初始化智谱 AI 客户端"""
         try:
             from zhipuai import ZhipuAI
 
-            api_key = api_keys.zhipu_key
-            if not api_key:
-                print("⚠️  智谱 AI API 密钥为空")
-                self._available = False
+            if not api_keys.zhipu_key:
                 return
-
-            self._client = ZhipuAI(api_key=api_key)
-            self._model_name = "glm-4.5-flash"
-            self._available = True
-            print("✅ 共享智谱 AI 客户端初始化成功")
+            kwargs: Dict[str, Any] = {"api_key": api_keys.zhipu_key}
+            if os.environ.get("ZHIPU_BASE_URL"):
+                kwargs["base_url"] = os.environ["ZHIPU_BASE_URL"]
+            self._register_provider(
+                LLMProvider.ZHIPU,
+                ZhipuAI(**kwargs),
+                os.environ.get("ZHIPU_MODEL", "glm-4.5-flash"),
+            )
         except ImportError:
-            print("⚠️  未安装 zhipuai 库")
-            self._available = False
-        except Exception as e:
-            print(f"⚠️  智谱 AI 客户端初始化失败: {e}")
-            self._available = False
+            print("[WARN] 未安装 zhipuai 库")
+        except Exception as exc:
+            print(f"[WARN] 智谱 AI 客户端初始化失败: {type(exc).__name__}")
+            logger.warning("Zhipu client initialization failed", exc_info=True)
 
     def _init_openai_client(self):
-        """初始化 OpenAI 客户端"""
         try:
             from openai import OpenAI
 
-            api_key = api_keys.openai_key
-            if not api_key:
-                print("⚠️  OpenAI API 密钥为空")
-                self._available = False
+            if not api_keys.openai_key:
                 return
-
-            self._client = OpenAI(api_key=api_key)
-            self._model_name = "gpt-4-turbo"
-            self._available = True
-            print("✅ 共享 OpenAI 客户端初始化成功")
+            kwargs: Dict[str, Any] = {"api_key": api_keys.openai_key}
+            if os.environ.get("OPENAI_BASE_URL"):
+                kwargs["base_url"] = os.environ["OPENAI_BASE_URL"]
+            self._register_provider(
+                LLMProvider.OPENAI,
+                OpenAI(**kwargs),
+                os.environ.get("OPENAI_MODEL", "gpt-4-turbo"),
+            )
         except ImportError:
-            print("⚠️  未安装 openai 库")
-            self._available = False
-        except Exception as e:
-            print(f"⚠️  OpenAI 客户端初始化失败: {e}")
-            self._available = False
+            print("[WARN] 未安装 openai 库")
+        except Exception as exc:
+            print(f"[WARN] OpenAI 客户端初始化失败: {type(exc).__name__}")
+            logger.warning("OpenAI client initialization failed", exc_info=True)
+
+    def _refresh_configuration(self) -> None:
+        try:
+            api_keys.refresh()
+        except Exception:
+            return
+        signature = (api_keys.zhipu_key, api_keys.openai_key)
+        if signature == self._credentials_signature:
+            return
+        with self._state_lock:
+            if signature != self._credentials_signature:
+                self._init_client()
 
     def is_available(self) -> bool:
-        """检查客户端是否可用"""
-        return self._available and self._client is not None
+        self._refresh_configuration()
+        with self._state_lock:
+            return bool(self._provider_states)
 
     @property
     def provider(self) -> Optional[str]:
-        """获取当前 provider"""
         return self._provider.value if self._provider else None
 
     @property
     def model_name(self) -> str:
-        """获取模型名称"""
         return self._model_name
 
-    def chat(self, messages: list, temperature: float = 0.7, max_tokens: int = 2000) -> Optional[str]:
-        """
-        发送对话请求
+    def set_model(self, model: str) -> None:
+        value = str(model or "").strip()
+        if not value:
+            return
+        with self._state_lock:
+            if self._provider in self._provider_states:
+                self._provider_states[self._provider].model = value
+            self._model_name = value
 
-        Args:
-            messages: 消息列表 [{"role": "system"/"user", "content": "..."}]
-            temperature: 温度参数
-            max_tokens: 最大 token 数
+    def _set_active(self, state: _ProviderState) -> None:
+        self._provider = state.provider
+        self._client = state.client
+        self._model_name = state.model
 
-        Returns:
-            响应内容，或 None（失败时）
-        """
+    def chat(
+        self,
+        messages: list,
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        *,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Optional[str]:
         if not self.is_available():
-            print("[!] LLM 客户端不可用")
+            print("[WARN] LLM 客户端不可用")
             return None
+        cache_key = self._cache_key(messages, temperature, max_tokens, provider, model)
+        cached = self._cache_get(cache_key)
+        if cached:
+            return cached
 
-        # 尝试从 Redis 缓存中获取响应
-        cache_key = None
-        if self._redis_cache:
-            try:
-                import hashlib
-                import json
-                serialized = json.dumps({"m": messages, "t": temperature, "max": max_tokens}, sort_keys=True)
-                cache_key = f"llm_cache:{hashlib.md5(serialized.encode('utf-8')).hexdigest()}"
-                cached_res = self._redis_cache.get(cache_key)
-                if cached_res:
-                    return cached_res.decode('utf-8')
-            except Exception:
-                pass
+        # 缓存未命中时合并同一进程内的并发相同请求，防止页面重复点击、
+        # 多个后台触发器同时把同一份 prompt 发给 provider。
+        inflight_lock = getattr(self, "_inflight_lock", None)
+        if inflight_lock is None:
+            # 保持对旧测试/第三方通过 object.__new__ 构造客户端的兼容。
+            inflight_lock = threading.RLock()
+            self._inflight_lock = inflight_lock
+            self._inflight = {}
+        with inflight_lock:
+            inflight = self._inflight.get(cache_key)
+            leader = inflight is None
+            if leader:
+                inflight = _InflightCall()
+                self._inflight[cache_key] = inflight
+        if not leader:
+            if not inflight.event.wait(getattr(self, "_singleflight_wait", 90.0)):
+                logger.warning("LLM single-flight wait timed out")
+                return None
+            return self._cache_get(cache_key) or inflight.result
 
-        import threading
-        import time
+        self._mark_request_priority()
+        result = None
+        try:
+            for state in self._candidate_states(provider):
+                content = self._chat_with_provider(
+                    state,
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=self._model_for_state(state, model, provider),
+                )
+                if content:
+                    result = content
+                    self._cache_set(cache_key, content)
+                    return content
+            logger.warning("All configured LLM providers failed for one request")
+            return None
+        finally:
+            with inflight_lock:
+                current = self._inflight.get(cache_key)
+                if current is inflight:
+                    inflight.result = result
+                    self._inflight.pop(cache_key, None)
+                    inflight.event.set()
 
-        is_worker = threading.current_thread().name.startswith('worker-')
-        if not is_worker:
-            SharedLLMClient.last_user_request_time = time.time()
-        else:
-            # Worker thread yields to active user requests
-            while True:
-                elapsed = time.time() - SharedLLMClient.last_user_request_time
-                if elapsed < 10.0:
-                    print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
-                    time.sleep(2.0)
+    def chat_stream(
+        self,
+        messages: list,
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        *,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+    ):
+        if not self.is_available():
+            print("[WARN] LLM 客户端不可用")
+            return
+        cache_key = self._cache_key(messages, temperature, max_tokens, provider, model)
+        cached = self._cache_get(cache_key)
+        if cached:
+            for index in range(0, len(cached), 64):
+                yield cached[index:index + 64]
+            return
+        self._mark_request_priority()
+        for state in self._candidate_states(provider):
+            emitted = False
+            chunks: List[str] = []
+            last_error: Optional[Exception] = None
+            for attempt in range(self._retry_attempts):
+                acquired = self._request_semaphore.acquire(timeout=self._request_queue_timeout)
+                if not acquired:
+                    last_error = TimeoutError("AI_REQUEST_QUEUE_TIMEOUT")
                 else:
+                    try:
+                        response = self._create_completion(
+                            state,
+                            messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            stream=True,
+                            model=self._model_for_state(state, model, provider),
+                        )
+                        for chunk in response:
+                            content = _stream_chunk_content(chunk)
+                            if content:
+                                emitted = True
+                                chunks.append(content)
+                                yield content
+                        if not chunks:
+                            raise _EmptyResponseError("empty stream")
+                        content = "".join(chunks)
+                        self._record_success(state)
+                        self._cache_set(cache_key, content)
+                        return
+                    except Exception as exc:
+                        last_error = exc
+                    finally:
+                        self._request_semaphore.release()
+                if emitted:
+                    self._record_failure(state, last_error)
+                    raise LLMServiceError("STREAM_INTERRUPTED") from last_error
+                if not last_error or not _is_retryable_error(last_error):
                     break
+                if attempt < self._retry_attempts - 1:
+                    self._maybe_use_fallback_model(state, last_error)
+                    time.sleep(self._retry_delay(attempt, last_error))
+            self._record_failure(state, last_error)
+        logger.warning("All configured LLM providers failed before stream output")
 
-        import time
-        max_retries = 5
-        base_delay = 2  # 基础延迟秒数
-        current_model = self._model_name
-
-        for attempt in range(max_retries):
-            if is_worker:
-                while True:
-                    elapsed = time.time() - SharedLLMClient.last_user_request_time
-                    if elapsed < 10.0:
-                        print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
-                        time.sleep(2.0)
-                    else:
-                        break
-            try:
-                content = None
-                if self._provider == LLMProvider.ZHIPU:
-                    # Disable thinking tokens to save token budget and prevent empty response contents
-                    response = self._client.chat.completions.create(
-                        model=current_model,
-                        messages=messages,
+    def _chat_with_provider(
+        self,
+        state: _ProviderState,
+        messages: list,
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: Optional[str] = None,
+    ) -> Optional[str]:
+        last_error: Optional[Exception] = None
+        for attempt in range(self._retry_attempts):
+            acquired = self._request_semaphore.acquire(timeout=self._request_queue_timeout)
+            if not acquired:
+                last_error = TimeoutError("AI_REQUEST_QUEUE_TIMEOUT")
+            else:
+                try:
+                    content = self._chat_once(
+                        state,
+                        messages,
                         temperature=temperature,
                         max_tokens=max_tokens,
-                        extra_body={"thinking": {"type": "disabled"}}
+                        model=model,
                     )
-                    content = response.choices[0].message.content
+                    self._record_success(state)
+                    return content
+                except Exception as exc:
+                    last_error = exc
+                finally:
+                    self._request_semaphore.release()
+            if not last_error or not _is_retryable_error(last_error):
+                break
+            if attempt < self._retry_attempts - 1:
+                self._maybe_use_fallback_model(state, last_error)
+                delay = self._retry_delay(attempt, last_error)
+                logger.warning(
+                    "LLM %s request failed (%s); retrying in %.2fs (%d/%d)",
+                    state.provider.value,
+                    _error_label(last_error),
+                    delay,
+                    attempt + 1,
+                    self._retry_attempts,
+                )
+                time.sleep(delay)
+        self._record_failure(state, last_error)
+        return None
 
-                elif self._provider == LLMProvider.OPENAI:
-                    response = self._client.chat.completions.create(
-                        model=current_model,
-                        messages=messages,
-                        temperature=temperature,
-                        max_tokens=max_tokens
-                    )
-                    content = response.choices[0].message.content
+    def _chat_once(self, state, messages, *, temperature, max_tokens, model=None):
+        response = self._create_completion(
+            state,
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=False,
+            model=model,
+        )
+        content = _message_content(response)
+        if not content:
+            raise _EmptyResponseError("empty response")
+        return content
 
-                # 成功获取后，如果启用了 Redis，则写入缓存（缓存有效期 24 小时）
-                if content and self._redis_cache and cache_key:
-                    try:
-                        self._redis_cache.setex(cache_key, 3600 * 24, content)
-                    except Exception:
-                        pass
+    def _model_for_state(
+        self,
+        state: _ProviderState,
+        requested_model: Optional[str],
+        preferred_provider: Optional[str],
+    ) -> Optional[str]:
+        """Keep a provider-specific model from leaking into failover calls."""
 
-                return content
+        if not requested_model:
+            return None
+        target_provider = None
+        if preferred_provider:
+            try:
+                target_provider = LLMProvider(str(preferred_provider).lower())
+            except ValueError:
+                target_provider = None
+        if target_provider is None:
+            with self._state_lock:
+                target_provider = self._provider
+        if target_provider is None or state.provider is target_provider:
+            return requested_model
+        return None
 
-            except Exception as e:
-                err_str = str(e)
-                # 判断是否是限流或速率限制错误 (如 429, 1305, rate limit, 访问量过大, 频率限制, Too Many Requests)
-                is_rate_limit = (
-                    "429" in err_str or
-                    "1305" in err_str or
-                    "rate limit" in err_str.lower() or
-                    "访问量过大" in err_str or
-                    "频率" in err_str or
-                    "Too Many Requests" in err_str or
-                    "APIReachLimitError" in type(e).__name__ or
-                    "rate_limit" in type(e).__name__.lower()
+    def _create_completion(self, state, messages, *, temperature, max_tokens, stream, model=None):
+        kwargs: Dict[str, Any] = {
+            "model": model or state.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if stream:
+            kwargs["stream"] = True
+        if state.provider is LLMProvider.ZHIPU:
+            kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        return state.client.chat.completions.create(**kwargs)
+
+    def _candidate_states(self, preferred_provider=None) -> List[_ProviderState]:
+        now = time.monotonic()
+        with self._state_lock:
+            order: List[LLMProvider] = []
+            preferred = None
+            if preferred_provider:
+                try:
+                    preferred = LLMProvider(str(preferred_provider).lower())
+                except ValueError:
+                    preferred = None
+            if preferred in self._provider_states:
+                order.append(preferred)
+            if self._provider in self._provider_states and self._provider not in order:
+                order.append(self._provider)
+            order.extend(provider for provider in self._provider_order if provider not in order)
+            return [
+                self._provider_states[provider]
+                for provider in order
+                if self._provider_states[provider].health.opened_until <= now
+            ]
+
+    def _record_success(self, state: _ProviderState) -> None:
+        with self._state_lock:
+            state.health = _ProviderHealth()
+            self._available = True
+            self._set_active(state)
+
+    def _record_failure(self, state: _ProviderState, error: Optional[Exception]) -> None:
+        label = _error_label(error) if error else "UNKNOWN"
+        with self._state_lock:
+            state.health.consecutive_failures += 1
+            state.health.last_error = label
+            self._last_error = label
+            if state.health.consecutive_failures >= self._circuit_failure_threshold:
+                state.health.opened_until = time.monotonic() + self._circuit_cooldown
+                logger.warning(
+                    "LLM provider %s circuit opened for %.1fs (%s)",
+                    state.provider.value,
+                    self._circuit_cooldown,
+                    label,
                 )
 
-                if is_rate_limit and attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)
-                    # 自动将 Zhipu 降级为 glm-4.5-flash
-                    if self._provider == LLMProvider.ZHIPU and current_model != "glm-4.5-flash":
-                        print(f"LLM API 触发限流且访问量过大，将模型从 {current_model} 降级为 glm-4.5-flash")
-                        current_model = "glm-4.5-flash"
-                        self._model_name = "glm-4.5-flash"
-                        delay = 0.5  # 降级为 flash 模型后快速重试
-                        
-                    print(f"LLM API 触发限流 (429/1305/访问过大)，将在 {delay} 秒后重试 (使用模型: {current_model}, 尝试 {attempt+1}/{max_retries})...")
-                    time.sleep(delay)
-                    continue
-                else:
-                    print(f"LLM API 调用失败: {e}")
-                    print(traceback.format_exc())
-                    return None
-
-    def chat_stream(self, messages: list, temperature: float = 0.7, max_tokens: int = 2000):
-        """
-        发送流式对话请求
-        """
-        if not self.is_available():
-            print("[!] LLM 客户端不可用")
+    def _maybe_use_fallback_model(self, state: _ProviderState, error: Exception) -> None:
+        if state.provider is not LLMProvider.ZHIPU or not _is_rate_limit(error):
             return
+        fallback = os.environ.get("ZHIPU_FALLBACK_MODEL", "glm-4.5-flash").strip()
+        if fallback and state.model != fallback:
+            state.model = fallback
+            with self._state_lock:
+                if self._provider is state.provider:
+                    self._model_name = fallback
 
-        import threading
-        import time
+    def _retry_delay(self, attempt: int, error: Optional[Exception]) -> float:
+        retry_after = _retry_after_seconds(error)
+        exponential = min(
+            self._retry_max_delay,
+            self._retry_base_delay * (2 ** max(0, attempt)),
+        )
+        delay = max(exponential, retry_after or 0.0)
+        jitter = random.uniform(0.0, min(0.25, delay * 0.2))
+        return min(self._retry_max_delay, delay + jitter)
 
-        is_worker = threading.current_thread().name.startswith('worker-')
+    def _mark_request_priority(self) -> None:
+        is_worker = threading.current_thread().name.startswith("worker-")
+        now = time.time()
         if not is_worker:
-            SharedLLMClient.last_user_request_time = time.time()
-        else:
-            # Worker thread yields to active user requests
-            while True:
-                elapsed = time.time() - SharedLLMClient.last_user_request_time
-                if elapsed < 10.0:
-                    print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request. Sleeping 2s...")
-                    time.sleep(2.0)
-                else:
-                    break
+            SharedLLMClient.last_user_request_time = now
+            return
+        deadline = time.monotonic() + self._background_max_wait
+        while (
+            time.time() - SharedLLMClient.last_user_request_time < self._background_priority_window
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.25)
 
-        current_model = self._model_name
-        try:
-            if self._provider == LLMProvider.ZHIPU:
-                response = self._client.chat.completions.create(
-                    model=current_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    extra_body={"thinking": {"type": "disabled"}},
-                    stream=True
-                )
-                for chunk in response:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
+    def _cache_key(self, messages, temperature, max_tokens, provider=None, model=None):
+        with self._state_lock:
+            models = [
+                (provider_name.value, self._provider_states[provider_name].model)
+                for provider_name in self._provider_order
+                if provider_name in self._provider_states
+            ]
+        serialized = json.dumps(
+            {
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "models": models,
+                "preferred_provider": provider,
+                "preferred_model": model,
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        )
+        return f"llm_cache:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
 
-            elif self._provider == LLMProvider.OPENAI:
-                response = self._client.chat.completions.create(
-                    model=current_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stream=True
-                )
-                for chunk in response:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
+    def _cache_get(self, cache_key: str) -> Optional[str]:
+        if self._redis_cache:
+            try:
+                cached = self._redis_cache.get(cache_key)
+                if cached:
+                    return cached.decode("utf-8") if isinstance(cached, bytes) else str(cached)
+            except Exception as exc:
+                logger.debug("Redis LLM cache read failed: %s", type(exc).__name__)
+        now = time.time()
+        with self._cache_lock:
+            entry = self._local_cache.get(cache_key)
+            if entry:
+                expires_at, value = entry
+                if expires_at > now:
+                    return value
+                self._local_cache.pop(cache_key, None)
+        return None
 
-        except Exception as e:
-            import traceback
-            print(f"LLM API 流式调用失败: {e}")
-            print(traceback.format_exc())
+    def _cache_set(self, cache_key: str, content: str) -> None:
+        if not content:
+            return
+        if self._redis_cache:
+            try:
+                self._redis_cache.setex(cache_key, self._cache_ttl, content)
+                return
+            except Exception as exc:
+                logger.debug("Redis LLM cache write failed: %s", type(exc).__name__)
+        with self._cache_lock:
+            if len(self._local_cache) >= 128:
+                self._local_cache.pop(next(iter(self._local_cache)))
+            self._local_cache[cache_key] = (time.time() + self._cache_ttl, content)
 
+    def health_snapshot(self) -> Dict[str, Any]:
+        """Return a redacted runtime health snapshot for diagnostics/UI."""
+        now = time.monotonic()
+        with self._state_lock:
+            providers = {}
+            for provider, state in self._provider_states.items():
+                providers[provider.value] = {
+                    "model": state.model,
+                    "configured": True,
+                    "circuit_open": state.health.opened_until > now,
+                    "consecutive_failures": state.health.consecutive_failures,
+                    "last_error": state.health.last_error,
+                }
+            return {
+                "available": bool(self._provider_states),
+                "active_provider": self.provider,
+                "active_model": self.model_name,
+                "providers": providers,
+            }
 
     def evaluate_code(self, code: str, assignment_title: str = None) -> Tuple[int, str]:
-        """
-        评估代码
-
-        Args:
-            code: 代码内容
-            assignment_title: 题目标题
-
-        Returns:
-            (score: 0-5, feedback: str)
-        """
+        """使用 LLM 评估代码。"""
         if not self.is_available():
             return 3, "LLM 服务不可用，使用默认评分"
 
@@ -331,210 +788,186 @@ class SharedLLMClient:
 评分标准: 1-5分，5分最高。请先给出分数，再用"分析："分隔详细反馈。
 
 格式: "分数：X\n分析：..."""
-
-
         user_prompt = f"题目：{assignment_title or '未指定'}\n\n代码：\n{code}"
-
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
-
         response = self.chat(messages, temperature=0.2)
         if not response:
             return 3, "LLM 响应失败，使用默认评分"
 
-        # 解析分数
         import re
-        score_match = re.search(r'分数[：:]\s*(\d+)', response)
-        if score_match:
-            score = int(score_match.group(1))
-            score = max(0, min(5, score))
-        else:
-            score = 3  # 默认中等评分
 
-        # 提取反馈
-        if "分析：" in response:
-            feedback = response.split("分析：", 1)[1].strip()
-        else:
-            feedback = response
-
+        score_match = re.search(r"分数[：:]\s*(\d+)", response)
+        score = max(0, min(5, int(score_match.group(1)))) if score_match else 3
+        feedback = response.split("分析：", 1)[1].strip() if "分析：" in response else response
         return score, feedback
 
     def generate_image(self, prompt: str) -> Optional[str]:
-        """
-        根据提示词生成图像
-        
-        Args:
-            prompt: 图像生成提示词
-            
-        Returns:
-            生成的图像 URL，或 None（失败时）
-        """
+        """调用当前 provider 的图像生成接口。"""
         if not self.is_available():
-            print("⚠️  LLM 客户端不可用，无法生成图像")
+            print("[WARN] LLM 客户端不可用，无法生成图像")
             return None
-            
-        import threading
-        import time
-
-        is_worker = threading.current_thread().name.startswith('worker-')
-        if not is_worker:
-            SharedLLMClient.last_user_request_time = time.time()
-        else:
-            while True:
-                elapsed = time.time() - SharedLLMClient.last_user_request_time
-                if elapsed < 10.0:
-                    print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
-                    time.sleep(2.0)
+        self._mark_request_priority()
+        for state in self._candidate_states():
+            acquired = self._request_semaphore.acquire(timeout=self._request_queue_timeout)
+            if not acquired:
+                continue
+            try:
+                if state.provider is LLMProvider.ZHIPU:
+                    response = state.client.images.generations(
+                        model=os.environ.get("ZHIPU_IMAGE_MODEL", "cogview-4"),
+                        prompt=prompt,
+                        size="1024x1024",
+                    )
                 else:
-                    break
-
-        try:
-            if self._provider == LLMProvider.ZHIPU:
-                # 智谱 AI CogView-4 图像生成（2026年最新版，¥0.06/次）
-                response = self._client.images.generations(
-                    model="cogview-4",
-                    prompt=prompt,
-                    size="1024x1024"
-                )
-                if response and response.data:
+                    response = state.client.images.generate(
+                        model=os.environ.get("OPENAI_IMAGE_MODEL", "dall-e-3"),
+                        prompt=prompt,
+                        size="1024x1024",
+                        n=1,
+                    )
+                if response and getattr(response, "data", None):
+                    self._record_success(state)
                     return response.data[0].url
-            elif self._provider == LLMProvider.OPENAI:
-                # OpenAI DALL-E-3 图像生成
-                response = self._client.images.generate(
-                    model="dall-e-3",
-                    prompt=prompt,
-                    size="1024x1024",
-                    n=1
-                )
-                if response and response.data:
-                    return response.data[0].url
-        except Exception as e:
-            print(f"图像生成失败: {e}")
-            print(traceback.format_exc())
-            return None
+            except Exception as exc:
+                self._record_failure(state, exc)
+            finally:
+                self._request_semaphore.release()
+        return None
 
 
-# 全局单例访问点
 llm_client = SharedLLMClient()
 
 
-def safe_zhipu_post(url, headers, json_data, timeout=30, stream=False):
-    """
-    统一的智谱 API POST 请求发送工具，支持 429 和 1305 高并发降级 glm-4.5-flash 与自动重试。
-    """
-    import requests
-    import time
-    import json
-    import copy
-    
-    import threading
-    import time
-    
-    is_worker = threading.current_thread().name.startswith('worker-')
-    if not is_worker:
-        SharedLLMClient.last_user_request_time = time.time()
-    else:
-        while True:
-            elapsed = time.time() - SharedLLMClient.last_user_request_time
-            if elapsed < 10.0:
-                print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
-                time.sleep(2.0)
-            else:
-                break
+_http_session_local = threading.local()
 
-    data_copy = copy.deepcopy(json_data)
-    current_model = data_copy.get("model", "glm-4.5-flash")
-    max_retries = 5
-    base_delay = 2
-    
-    for attempt in range(max_retries):
-        if is_worker:
-            while True:
-                elapsed = time.time() - SharedLLMClient.last_user_request_time
-                if elapsed < 10.0:
-                    print(f"[Priority Control] Background worker {threading.current_thread().name} yielding to active user request (last request {elapsed:.1f}s ago). Sleeping 2s...")
-                    time.sleep(2.0)
-                else:
-                    break
+
+def _thread_http_session():
+    """Return one pooled requests session per worker thread."""
+    session = getattr(_http_session_local, "session", None)
+    if session is not None:
+        return session
+    import requests
+    from requests.adapters import HTTPAdapter
+
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        pool_connections=_env_int("AI_HTTP_POOL_CONNECTIONS", 8, minimum=1, maximum=64),
+        pool_maxsize=_env_int("AI_HTTP_POOL_MAXSIZE", 8, minimum=1, maximum=64),
+        max_retries=0,
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    _http_session_local.session = session
+    return session
+
+
+def _response_error_details(response: Any) -> Tuple[Optional[str], str]:
+    try:
+        payload = response.json()
+    except Exception:
+        return None, ""
+    if not isinstance(payload, dict):
+        return None, ""
+    error = payload.get("error")
+    if isinstance(error, dict):
+        code = str(error.get("code")) if error.get("code") is not None else None
+        return code, str(error.get("message") or "")
+    code = str(payload.get("code")) if payload.get("code") is not None else None
+    return code, str(payload.get("message") or "")
+
+
+def _http_retry_delay(attempt: int, error: Optional[Exception]) -> float:
+    retry_after = _retry_after_seconds(error)
+    base = _env_float("AI_RETRY_BASE_DELAY_SECONDS", 0.8, minimum=0.05, maximum=10.0)
+    maximum = _env_float("AI_RETRY_MAX_DELAY_SECONDS", 8.0, minimum=0.1, maximum=60.0)
+    delay = max(min(maximum, base * (2 ** max(0, attempt))), retry_after or 0.0)
+    return min(maximum, delay + random.uniform(0.0, min(0.25, delay * 0.2)))
+
+
+def safe_zhipu_post(url, headers, json_data, timeout=30, stream=False):
+    """发送智谱请求并处理瞬时网络错误、限流和 1305。
+
+    非重试型 HTTP 错误返回 response；网络错误在最后一次失败时抛出，
+    调用方可以据此返回合适的 SSE/HTTP 错误。
+    """
+    import copy
+    import requests
+
+    try:
+        llm_client._mark_request_priority()
+    except Exception:
+        pass
+
+    payload = copy.deepcopy(json_data or {})
+    current_model = str(payload.get("model") or "glm-4.5-flash")
+    attempts = _env_int("AI_HTTP_RETRY_ATTEMPTS", 3, minimum=1, maximum=6)
+    fallback_model = os.environ.get("ZHIPU_FALLBACK_MODEL", "glm-4.5-flash").strip()
+    session = _thread_http_session()
+    last_response = None
+    last_error: Optional[Exception] = None
+
+    for attempt in range(attempts):
+        payload["model"] = current_model
+        if "thinking" not in payload:
+            payload["thinking"] = {"type": "disabled"}
+        response = None
         try:
-            data_copy["model"] = current_model
-            # Disable thinking tokens for direct HTTP POST requests
-            if "thinking" not in data_copy:
-                data_copy["thinking"] = {"type": "disabled"}
-            response = requests.post(
+            response = session.post(
                 url,
                 headers=headers,
-                json=data_copy,
+                json=payload,
                 timeout=timeout,
-                stream=stream
+                stream=stream,
             )
-            
-            # 判断是否是限流或错误状态码
-            if response.status_code == 429:
-                raise requests.exceptions.HTTPError("HTTP 429 Too Many Requests", response=response)
-            
-            # 检查非流式响应体是否包含 1305 访问量过大错误
-            if not stream:
+            last_response = response
+            code, message = _response_error_details(response)
+            status = getattr(response, "status_code", None)
+            is_rate_limit = str(code) == "1305" or _is_rate_limit(response)
+            retryable = is_rate_limit or _is_retryable_error(response)
+            if status is not None and int(status) < 400 and not is_rate_limit:
+                return response
+            if not retryable:
+                return response
+            last_error = requests.exceptions.HTTPError(
+                f"Zhipu request failed: {code or status or 'unknown'} {message}".strip(),
+                response=response,
+            )
+        except Exception as exc:
+            last_error = exc
+            last_response = getattr(exc, "response", None)
+            if not _is_retryable_error(exc) and not _is_rate_limit(exc):
+                raise
+
+        if attempt >= attempts - 1:
+            if last_response is not None:
+                return last_response
+            if last_error is not None:
+                raise last_error
+            return None
+
+        if last_error is not None and _is_rate_limit(last_error) and fallback_model:
+            if current_model != fallback_model:
+                current_model = fallback_model
                 try:
-                    res_json = response.json()
-                    if isinstance(res_json, dict):
-                        err_code = res_json.get("error", {}).get("code") or res_json.get("code")
-                        err_msg = res_json.get("error", {}).get("message") or res_json.get("message")
-                        if str(err_code) == "1305":
-                            raise requests.exceptions.HTTPError(f"Zhipu Error 1305: {err_msg}", response=response)
+                    llm_client.set_model(fallback_model)
                 except Exception:
                     pass
-            else:
-                # 流式请求如果返回错误状态码，也尝试解析 1305
-                if response.status_code != 200:
-                    try:
-                        res_json = response.json()
-                        if isinstance(res_json, dict):
-                            err_code = res_json.get("error", {}).get("code") or res_json.get("code")
-                            if str(err_code) == "1305":
-                                raise requests.exceptions.HTTPError(f"Zhipu Error 1305: {res_json}", response=response)
-                    except Exception:
-                        pass
-                    response.raise_for_status()
-            
-            return response
-            
-        except Exception as e:
-            err_str = str(e)
-            if hasattr(e, 'response') and e.response is not None:
-                try:
-                    err_str += " " + e.response.text
-                except Exception:
-                    pass
-            
-            is_rate_limit = (
-                "429" in err_str or
-                "1305" in err_str or
-                "rate limit" in err_str.lower() or
-                "访问量过大" in err_str or
-                "频率" in err_str or
-                "Too Many Requests" in err_str or
-                "APIReachLimitError" in type(e).__name__ or
-                "rate_limit" in type(e).__name__.lower()
-            )
-            
-            if is_rate_limit and attempt < max_retries - 1:
-                if current_model != "glm-4.5-flash":
-                    print(f"[safe_zhipu_post] 触发限流，模型从 {current_model} 降级为 glm-4.5-flash")
-                    current_model = "glm-4.5-flash"
-                    # 更新 SharedLLMClient 的全局默认模型
-                    llm_client._model_name = "glm-4.5-flash"
-                    delay = 0.5
-                else:
-                    delay = base_delay * (2 ** attempt)
-                    print(f"[safe_zhipu_post] 触发限流，将在 {delay} 秒后重试 {current_model} (尝试 {attempt+1}/{max_retries})...")
-                    time.sleep(delay)
-                continue
-            else:
-                if attempt >= max_retries - 1:
-                    print(f"[safe_zhipu_post] 达到最大重试次数，最后使用的模型是: {current_model}")
-                if hasattr(e, 'response') and e.response is not None:
-                    return e.response
-                raise e
+        delay = _http_retry_delay(attempt, last_error)
+        logger.warning(
+            "Zhipu HTTP request failed (%s); retrying in %.2fs (%d/%d)",
+            _error_label(last_error),
+            delay,
+            attempt + 1,
+            attempts,
+        )
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
+        time.sleep(delay)
+
+    return last_response

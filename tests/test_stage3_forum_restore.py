@@ -216,6 +216,9 @@ def test_start_session_restores_public_forum_state_and_safe_coverage_summary(sta
             }],
         },
     }
+    assert response.json["user_goal"]["id"] == "stage3-teach-and-repair"
+    assert response.json["user_goal"]["progress_percent"] == 40
+    assert response.json["user_goal"]["next_action"].startswith("请回答小明")
     assert {item["content"] for item in response.json["teacher_history"]} >= {"旧老师提问", "论坛提问", "论坛回答"}
     assert {item["content"] for item in response.json["student_history"]} >= {
         "请你解释为什么最后一个索引不能取到 n。",
@@ -367,7 +370,7 @@ def test_start_session_defaults_old_stage3_sessions_without_coverage(stage3_rest
     assert response.status_code == 200
     assert response.json["resumed"] is True
     assert response.json["forum_state"] == {
-        "target_role": "teacher_agent",
+        "target_role": "auto",
         "reply_to_event_id": None,
         "coverage_summary": {
             "coverage_score": 0.0,
@@ -417,7 +420,7 @@ def test_start_session_returns_stable_empty_forum_restore_for_new_session(tmp_pa
     assert response.json["student_history"] == []
     assert response.json["buggy_code_info"] is None
     assert response.json["forum_state"] == {
-        "target_role": "teacher_agent",
+        "target_role": "auto",
         "reply_to_event_id": None,
         "coverage_summary": {
             "coverage_score": 0.0,

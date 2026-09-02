@@ -11,6 +11,24 @@ from services.api_keys import api_keys
 guidance_generator = None
 initialized = False
 
+
+def _stream_evaluator_response(prompt, fallback):
+    """Yield raw evaluator chunks and retain a deterministic fallback."""
+    if not guidance_generator:
+        yield fallback
+        return
+
+    emitted = False
+    try:
+        for chunk in guidance_generator.stream_llm_response(prompt):
+            if chunk:
+                emitted = True
+                yield chunk
+    except Exception:
+        if emitted:
+            raise
+        yield fallback
+
 def initialize_guidance_system():
     """初始化编程指导系统"""
     global guidance_generator, initialized
@@ -339,7 +357,7 @@ def generate_rule_based_guidance(code, assignment_title, assignment_description,
     
     return guidance
 
-def generate_guidance(code, assignment_title, assignment_description, language="cpp"):
+def generate_guidance(code, assignment_title, assignment_description, language="cpp", _stream=False):
     """
     根据学生的代码和作业要求，生成指导建议
     """
@@ -376,6 +394,14 @@ def generate_guidance(code, assignment_title, assignment_description, language="
 
 语气轻松友好，可以用表情符号。
 """
+            if _stream:
+                return _stream_evaluator_response(
+                    prompt,
+                    generate_rule_based_guidance(
+                        code, assignment_title, assignment_description, language
+                    ),
+                )
+
             # 调用大模型生成指导
             response = guidance_generator.get_llm_response(prompt)
             
@@ -394,7 +420,7 @@ def generate_guidance(code, assignment_title, assignment_description, language="
         # 使用基于规则的生成器
         return generate_rule_based_guidance(code, assignment_title, assignment_description, language)
 
-def generate_answer_to_question(code, question, assignment_title, assignment_description, language="cpp"):
+def generate_answer_to_question(code, question, assignment_title, assignment_description, language="cpp", _stream=False):
     """
     根据学生的提问和代码生成回答
     code: 学生当前编写的代码
@@ -459,6 +485,14 @@ def generate_answer_to_question(code, question, assignment_title, assignment_des
 """
             print(f"发送问题到大模型API，提示词长度: {len(prompt)}")
             
+            if _stream:
+                return _stream_evaluator_response(
+                    prompt,
+                    generate_rule_based_answer(
+                        code, question, assignment_title, assignment_description, language
+                    ),
+                )
+
             # 调用大模型生成回答
             response = guidance_generator.get_llm_response(prompt)
             
@@ -481,6 +515,34 @@ def generate_answer_to_question(code, question, assignment_title, assignment_des
         # 使用基于规则的生成器
         print("大模型未初始化，使用规则生成器回答问题")
         return generate_rule_based_answer(code, question, assignment_title, assignment_description, language)
+
+
+def generate_guidance_stream(code, assignment_title, assignment_description, language="cpp"):
+    """Stream programming guidance while keeping the existing API intact."""
+    result = generate_guidance(
+        code, assignment_title, assignment_description, language, _stream=True
+    )
+    if isinstance(result, str):
+        yield result
+    elif result:
+        yield from result
+
+
+def generate_answer_to_question_stream(code, question, assignment_title,
+                                       assignment_description, language="cpp"):
+    """Stream an answer to a code question while keeping JSON callers intact."""
+    result = generate_answer_to_question(
+        code,
+        question,
+        assignment_title,
+        assignment_description,
+        language,
+        _stream=True,
+    )
+    if isinstance(result, str):
+        yield result
+    elif result:
+        yield from result
 
 def generate_rule_based_answer(code, question, assignment_title, assignment_description, language="cpp"):
     """
@@ -620,4 +682,4 @@ def generate_rule_based_answer(code, question, assignment_title, assignment_desc
     answer += "\n### 学习提示\n"
     answer += "记住，编程是一个循序渐进的过程，遇到困难是正常的，也是学习的重要部分。尝试理解每一步的原理，而不仅仅是得到正确结果。"
     
-    return answer 
+    return answer

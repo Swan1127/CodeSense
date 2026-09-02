@@ -1471,24 +1471,32 @@
             requestData.advanced = true;
         }
 
-        // 发送API请求
-        fetch('/api/code_advice', {
+        // 发送API请求：使用统一 SSE 逐步展示分析报告
+        var streamedAdvice = '';
+        var streamError = null;
+        window.consumeSSE('/api/code_advice', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'text/event-stream'
             },
             body: JSON.stringify(requestData)
+        }, {
+            onDelta: function (event) {
+                streamedAdvice += event.content || event.token || '';
+                if (streamedAdvice) displayAIAdvice({ advice: streamedAdvice });
+            },
+            onError: function (event) {
+                streamError = new Error(event.message || event.error || '获取建议失败');
+            }
         })
-            .then(function (response) {
-                if (!response.ok) {
-                    throw new Error("服务器响应错误: " + response.status);
-                }
-                return response.json();
-            })
             .then(function (data) {
-                if (data.success) {
-                    displayAIAdvice(data.data);
+                if (streamError) throw streamError;
+                var finalData = data.data || data;
+                var advice = finalData.advice || data.content || streamedAdvice;
+                if (data.success !== false && advice) {
+                    displayAIAdvice({ ...finalData, advice: advice });
                 } else {
                     showAIError(data.message || '获取建议失败');
                 }

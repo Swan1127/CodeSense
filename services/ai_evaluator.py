@@ -1,12 +1,6 @@
 from typing import Dict, List, Generator
-import os
 import json
-import requests
-from dotenv import load_dotenv
 import re
-
-# 加载环境变量
-load_dotenv()
 
 # 导入统一的 API 密钥管理器
 from services.api_keys import api_keys
@@ -49,40 +43,23 @@ class AIEvaluator:
 """
 
         try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}"
-            }
-            data = {
-                "model": "glm-4.5-flash",
-                "messages": [
+            from services.llm_client import SharedLLMClient
+
+            content = SharedLLMClient().chat(
+                messages=[
                     {"role": "system", "content": "你是一个专业的代码评估专家，擅长分析代码质量和编程能力。"},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
-                "temperature": 0.7,
-                "max_tokens": 1000
-            }
-            from services.llm_client import safe_zhipu_post
-            response = safe_zhipu_post(
-                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers=headers,
-                json_data=data,
-                timeout=30
+                temperature=0.7,
+                max_tokens=1000,
+                provider="zhipu",
+                model="glm-4.5-flash",
             )
-            if response.status_code == 200:
-                result = response.json()
-                result_content = result["choices"][0]["message"]["content"]
-                result_json = json.loads(result_content)
-                return result_json
-            else:
-                print(f"智谱API请求失败: {response.status_code} - {response.text}")
-                return {
-                    "algorithm_score": 60, "style_score": 60,
-                    "functionality_score": 60, "efficiency_score": 60,
-                    "readability_score": 60, "feedback": "评估过程中出现错误，请稍后重试。"
-                }
+            if content:
+                return json.loads(content)
+            raise RuntimeError("AI服务未返回有效内容")
         except Exception as e:
-            print(f"AI评估出错: {str(e)}")
+            print(f"AI评估出错: {type(e).__name__}")
             return {
                 "algorithm_score": 60, "style_score": 60,
                 "functionality_score": 60, "efficiency_score": 60,
@@ -150,13 +127,11 @@ class AIEvaluator:
 {raw_text}
 \"\"\""""
         try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}"
-            }
-            data = {
-                "model": "glm-4.5-flash",
-                "messages": [
+            from services.llm_client import SharedLLMClient
+
+            client = SharedLLMClient()
+            for chunk in client.chat_stream(
+                messages=[
                     {
                         "role": "system",
                         "content": (
@@ -169,45 +144,19 @@ class AIEvaluator:
                             "test_cases的input和output中绝对禁止出现省略号(...)、省略、以此类推等缩写，必须写出完整数据。"
                             "为确保数据完整，测试用例的输入规模要小（如n≤20）。"
                             "你必须且只能输出合法的 JSON，不得在 JSON 前后添加任何解释文字或 Markdown 代码块标记。"
-                        )
+                        ),
                     },
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
-                "temperature": 0.4,
-                "max_tokens": 3000,
-                "stream": True
-            }
-            from services.llm_client import safe_zhipu_post
-            response = safe_zhipu_post(
-                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers=headers,
-                json_data=data,
-                timeout=90,
-                stream=True
-            )
-            response.raise_for_status()
-
-            for line in response.iter_lines():
-                if line:
-                    decoded_line = line.decode('utf-8')
-                    if decoded_line.startswith('data:'):
-                        json_str = decoded_line[len('data:'):].strip()
-                        if json_str and json_str != '[DONE]':
-                            try:
-                                chunk = json.loads(json_str)
-                                if chunk.get('choices'):
-                                    content = chunk['choices'][0]['delta'].get('content', '')
-                                    if content:
-                                        yield content
-                            except json.JSONDecodeError:
-                                print(f"Skipping non-JSON SSE line: {json_str}")
-                                continue
-        except requests.exceptions.RequestException as e:
-            print(f"API request failed: {e}")
-            yield json.dumps({"error": f"API请求失败: {str(e)}"})
-        except Exception as e:
-            print(f"An exception occurred during streaming: {e}")
-            yield json.dumps({"error": f"发生错误: {str(e)}"})
+                temperature=0.4,
+                max_tokens=3000,
+                provider="zhipu",
+            ):
+                if chunk:
+                    yield chunk
+        except Exception as exc:
+            print(f"作业格式化流式请求失败: {type(exc).__name__}")
+            raise RuntimeError("作业格式化 AI 服务调用失败") from exc
 
     def analyze_ability_trend(self, submissions: List[Dict]) -> Dict:
         """分析编程能力发展趋势"""
@@ -237,86 +186,64 @@ class AIEvaluator:
 }}
 
 请确保返回的是纯JSON格式，不要包含markdown代码块标记或其他格式。
-"""
+        """
 
         try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}"
-            }
-            data = {
-                "model": "glm-4.5-flash",
-                "messages": [
-                    {"role": "system", "content": "你是一个专业的编程教育专家，擅长分析学习趋势和提供改进建议。请严格按照JSON格式返回结果。"},
-                    {"role": "user", "content": prompt}
+            from services.llm_client import SharedLLMClient
+
+            result_content = SharedLLMClient().chat(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你是一个专业的编程教育专家，擅长分析学习趋势和提供改进建议。请严格按照JSON格式返回结果。",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
-                "temperature": 0.7,
-                "max_tokens": 2000
-            }
-            from services.llm_client import safe_zhipu_post
-            response = safe_zhipu_post(
-                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers=headers,
-                json_data=data,
-                timeout=30
+                temperature=0.7,
+                max_tokens=2000,
+                provider="zhipu",
             )
-            if response.status_code == 200:
-                result = response.json()
-                print(f"🔍 完整API响应: {json.dumps(result, ensure_ascii=False, indent=2)}")
-                if "choices" not in result or len(result["choices"]) == 0:
-                    raise Exception("API响应格式错误：缺少choices字段")
-                if "message" not in result["choices"][0]:
-                    raise Exception("API响应格式错误：缺少message字段")
-                message = result["choices"][0]["message"]
-                result_content = message.get("content", "") or message.get("reasoning_content", "")
-                print(f"📄 API返回内容长度: {len(result_content) if result_content else 0}")
-                print(f"📄 API返回内容前200字符: {result_content[:200] if result_content else '(空内容)'}")
-                if not result_content or not result_content.strip():
-                    raise Exception("API返回空内容")
-                if result["choices"][0].get("finish_reason") == "length":
-                    reasoning_content = message.get("reasoning_content", "")
-                    if reasoning_content:
-                        return self._extract_from_natural_language(reasoning_content)
-                content_trimmed = result_content.strip()
-                if not content_trimmed.startswith('{'):
-                    return self._extract_from_natural_language(content_trimmed)
-                cleaned_content = content_trimmed
-                if cleaned_content.startswith('```json'):
-                    cleaned_content = cleaned_content[7:]
+            if not result_content or not result_content.strip():
+                raise RuntimeError("AI服务未返回有效内容")
+
+            print(f"AI能力趋势分析返回内容长度: {len(result_content)}")
+            content_trimmed = result_content.strip()
+            if not content_trimmed.startswith('{'):
+                return self._extract_from_natural_language(content_trimmed)
+            cleaned_content = content_trimmed
+            if cleaned_content.startswith('```json'):
+                cleaned_content = cleaned_content[7:]
+                if cleaned_content.endswith('```'):
+                    cleaned_content = cleaned_content[:-3]
+            elif cleaned_content.startswith('```'):
+                lines = cleaned_content.split('\n')
+                if len(lines) > 1:
+                    cleaned_content = '\n'.join(lines[1:])
                     if cleaned_content.endswith('```'):
                         cleaned_content = cleaned_content[:-3]
-                elif cleaned_content.startswith('```'):
-                    lines = cleaned_content.split('\n')
-                    if len(lines) > 1:
-                        cleaned_content = '\n'.join(lines[1:])
-                        if cleaned_content.endswith('```'):
-                            cleaned_content = cleaned_content[:-3]
-                cleaned_content = cleaned_content.strip()
-                try:
-                    result_dict = json.loads(cleaned_content)
-                    if 'suggestions' in result_dict and isinstance(result_dict['suggestions'], list):
-                        result_dict['suggestions'] = [self._clean_suggestion(s) for s in result_dict['suggestions']]
-                    return result_dict
-                except Exception as e:
-                    json_match = re.search(r'({.*})', cleaned_content.replace('\n', ''), re.DOTALL)
-                    if json_match:
-                        try:
-                            result_dict = json.loads(json_match.group(1))
-                            if 'suggestions' in result_dict and isinstance(result_dict['suggestions'], list):
-                                result_dict['suggestions'] = [self._clean_suggestion(s) for s in result_dict['suggestions']]
-                            return result_dict
-                        except Exception:
-                            pass
-                    return {
-                        "trend": f"分析过程中出现解析错误: {str(e)[:100]}",
-                        "improvement": "请检查API返回格式或稍后重试",
-                        "suggestions": ["检查网络连接", "确认API密钥有效", "稍后重试"]
-                    }
-            else:
-                print(f"智谱API请求失败: {response.status_code} - {response.text}")
-                return {"trend": "分析过程中出现错误", "improvement": "请稍后重试", "suggestions": []}
+            cleaned_content = cleaned_content.strip()
+            try:
+                result_dict = json.loads(cleaned_content)
+                if 'suggestions' in result_dict and isinstance(result_dict['suggestions'], list):
+                    result_dict['suggestions'] = [self._clean_suggestion(s) for s in result_dict['suggestions']]
+                return result_dict
+            except Exception as e:
+                json_match = re.search(r'({.*})', cleaned_content.replace('\n', ''), re.DOTALL)
+                if json_match:
+                    try:
+                        result_dict = json.loads(json_match.group(1))
+                        if 'suggestions' in result_dict and isinstance(result_dict['suggestions'], list):
+                            result_dict['suggestions'] = [self._clean_suggestion(s) for s in result_dict['suggestions']]
+                        return result_dict
+                    except Exception:
+                        pass
+                return {
+                    "trend": f"分析过程中出现解析错误: {str(e)[:100]}",
+                    "improvement": "请检查API返回格式或稍后重试",
+                    "suggestions": ["检查网络连接", "确认API密钥有效", "稍后重试"]
+                }
         except Exception as e:
-            print(f"能力趋势分析出错: {str(e)}")
+            print(f"能力趋势分析出错: {type(e).__name__}")
             return {"trend": "分析过程中出现错误", "improvement": "请稍后重试", "suggestions": []}
 
     def _clean_suggestion(self, suggestion: str) -> str:
@@ -423,55 +350,30 @@ class AIEvaluator:
 提交记录数量：{len(submissions)}条
 
 提交详情：
-{json.dumps(submissions[:10], ensure_ascii=False, indent=2)}
+        {json.dumps(submissions[:10], ensure_ascii=False, indent=2)}
 
 请从能力发展趋势、改进建议、具体行动措施三个方面进行深入分析。
 用中文输出，语言简洁专业，直接输出分析内容，不要JSON格式。
 """
         try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}"
-            }
-            data = {
-                "model": "glm-4.5-flash",
-                "messages": [
-                    {"role": "system", "content": "你是一个专业的编程教育专家，擅长分析学生的学习趋势和提供有针对性的改进建议。请用简洁专业的中文直接输出分析内容。"},
-                    {"role": "user", "content": prompt}
+            from services.llm_client import SharedLLMClient
+
+            for content in SharedLLMClient().chat_stream(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你是一个专业的编程教育专家，擅长分析学生的学习趋势和提供有针对性的改进建议。请用简洁专业的中文直接输出分析内容。",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
-                "temperature": 0.7,
-                "max_tokens": 2000,
-                "stream": True
-            }
-            from services.llm_client import safe_zhipu_post
-            response = safe_zhipu_post(
-                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers=headers, json_data=data, stream=True, timeout=(10, 120)
-            )
-            if response.status_code == 200:
-                chunk_count = 0
-                for line in response.iter_lines():
-                    if line:
-                        line_str = line.decode('utf-8')
-                        if line_str.startswith('data: '):
-                            data_str = line_str[6:].strip()
-                            if data_str == '[DONE]':
-                                break
-                            try:
-                                chunk_data = json.loads(data_str)
-                                if 'choices' in chunk_data and chunk_data['choices']:
-                                    content = chunk_data['choices'][0].get('delta', {}).get('content', '')
-                                    if content:
-                                        chunk_count += 1
-                                        yield content
-                            except json.JSONDecodeError:
-                                continue
-            else:
-                raise RuntimeError(
-                    f"能力分析 API 请求失败: HTTP {response.status_code}"
-                )
+                temperature=0.7,
+                max_tokens=2000,
+                provider="zhipu",
+            ):
+                if content:
+                    yield content
         except Exception as e:
-            print(f"流式分析出错: {str(e)}")
+            print(f"流式分析出错: {type(e).__name__}")
             raise RuntimeError("能力分析 AI 服务调用失败") from e
 
     def detect_code_knowledge_points(self, code: str, assignment_title: str) -> List[Dict]:
@@ -494,40 +396,35 @@ dynamic_memory, linked_list, tree, sorting, searching, recursion
 请以JSON格式返回：
 [
   {{"knowledge_point": "pointer", "weight": 1.5, "difficulty": 1.2}}
-]
+        ]
 """
         try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}"
-            }
-            data = {
-                "model": "glm-4.5-flash",
-                "messages": [
-                    {"role": "system", "content": "你是一个C语言专家，擅长识别代码中的知识点。请严格按照JSON格式返回结果。"},
-                    {"role": "user", "content": prompt}
+            from services.llm_client import SharedLLMClient
+
+            content = SharedLLMClient().chat(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你是一个C语言专家，擅长识别代码中的知识点。请严格按照JSON格式返回结果。",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
-                "temperature": 0.3,
-                "max_tokens": 500
-            }
-            from services.llm_client import safe_zhipu_post
-            response = safe_zhipu_post(
-                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers=headers, json_data=data, timeout=15
+                temperature=0.3,
+                max_tokens=500,
+                provider="zhipu",
             )
-            if response.status_code == 200:
-                result = response.json()
-                content = result['choices'][0]['message']['content'].strip()
-                if content.startswith('```json'):
-                    content = content[7:]
-                if content.startswith('```'):
-                    content = content[3:]
-                if content.endswith('```'):
-                    content = content[:-3]
-                return json.loads(content.strip())
-            return []
+            if not content:
+                return []
+            content = content.strip()
+            if content.startswith('```json'):
+                content = content[7:]
+            if content.startswith('```'):
+                content = content[3:]
+            if content.endswith('```'):
+                content = content[:-3]
+            return json.loads(content.strip())
         except Exception as e:
-            print(f"知识点检测失败: {str(e)}")
+            print(f"知识点检测失败: {type(e).__name__}")
             return self._infer_knowledge_points_from_title(assignment_title)
 
     def _infer_knowledge_points_from_title(self, title: str) -> List[Dict]:

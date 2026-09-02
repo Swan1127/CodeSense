@@ -4,6 +4,8 @@ API 密钥管理服务
 """
 from typing import Optional
 import os
+import threading
+from pathlib import Path
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -24,9 +26,48 @@ class APIKeyManager:
         if self._initialized:
             return
 
+        self._lock = threading.RLock()
         self._zhipu_key: str = os.environ.get('ZHIPU_API_KEY', '')
         self._openai_key: str = os.environ.get('OPENAI_API_KEY', '')
+        self._dotenv_path = self._find_dotenv()
+        self._dotenv_mtime = self._read_dotenv_mtime()
         self._initialized = True
+
+    @staticmethod
+    def _find_dotenv():
+        """Locate the project dotenv file once instead of searching per request."""
+
+        candidate = Path(os.getcwd()) / '.env'
+        if candidate.is_file():
+            return candidate
+        candidate = Path(__file__).resolve().parent.parent / '.env'
+        return candidate if candidate.is_file() else None
+
+    def _read_dotenv_mtime(self):
+        if not self._dotenv_path:
+            return None
+        try:
+            return self._dotenv_path.stat().st_mtime_ns
+        except OSError:
+            return None
+
+    def refresh(self) -> bool:
+        """Reload credentials added to the process after module import.
+
+        Environment variables still take precedence over ``.env`` values.  The
+        method intentionally returns only whether the effective credentials
+        changed; key material is never logged or returned.
+        """
+        with self._lock:
+            before = (self._zhipu_key, self._openai_key)
+            current_mtime = self._read_dotenv_mtime()
+            if current_mtime != self._dotenv_mtime:
+                if self._dotenv_path:
+                    load_dotenv(dotenv_path=self._dotenv_path, override=False)
+                self._dotenv_mtime = current_mtime
+            self._zhipu_key = os.environ.get('ZHIPU_API_KEY', '')
+            self._openai_key = os.environ.get('OPENAI_API_KEY', '')
+            return before != (self._zhipu_key, self._openai_key)
 
     @property
     def zhipu_key(self) -> str:

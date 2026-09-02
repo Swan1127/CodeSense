@@ -7,10 +7,14 @@ CodeSense 酷森思 - 基于机器学习的代码能力评价系统
 import os
 import sys
 import logging
+import gzip
+import re
+import threading
+import time
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from logging import FileHandler
 
-from flask import Flask, request, session, flash, redirect, url_for
+from flask import Flask, request, session, flash, redirect, url_for, g, jsonify
 from flask_login import LoginManager
 # Flask-Session导入优化
 try:
@@ -34,15 +38,65 @@ from config import config
 from models import db, init_db
 from services.api_keys import api_keys  # 导入 API 密钥管理器
 
+
+def _env_bool(name, default=False):
+    """读取布尔环境变量，非法值时使用安全默认值。"""
+
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+
+def _redact_connection_url(value):
+    """日志中只显示连接地址，不泄露数据库/Redis密码。"""
+
+    if not value:
+        return value
+    # 覆盖 user:password@ 和常见 query 参数形式；不记录密钥原文。
+    redacted = re.sub(r'(?<=://)([^:/@]+):([^@]+)@', r'\1:***@', str(value))
+    redacted = re.sub(
+        r'((?:password|passwd|token|secret|api[_-]?key)=)[^&]+',
+        r'\1***',
+        redacted,
+        flags=re.IGNORECASE,
+    )
+    return redacted
+
+
+def _configure_database_engine(app):
+    """Apply bounded, database-specific SQLAlchemy engine settings."""
+
+    uri = str(app.config.get('SQLALCHEMY_DATABASE_URI') or '')
+    if uri.startswith('sqlite:'):
+        # SQLite is used by local/demo sessions. A busy timeout avoids quick
+        # "database is locked" failures while keeping the demo isolated.
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'connect_args': {
+                'check_same_thread': False,
+                'timeout': 15,
+            }
+        }
+        return
+
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+        'pool_recycle': app.config['DB_POOL_RECYCLE'],
+        'pool_size': app.config['DB_POOL_SIZE'],
+        'max_overflow': app.config['DB_MAX_OVERFLOW'],
+        'pool_timeout': app.config['DB_POOL_TIMEOUT'],
+        'pool_reset_on_return': 'rollback',
+    }
+
 # 环境变量检查和警告
 def check_environment_variables():
     """检查关键环境变量并提供警告"""
     warnings = []
 
     # 检查数据库配置
-    db_url = os.environ.get('DATABASE_URL')
+    db_url = os.environ.get('DATABASE_URL') or os.environ.get('DEV_DATABASE_URL')
     if not db_url:
-        warnings.append("DATABASE_URL 未设置，将使用默认MySQL配置")
+        warnings.append("未设置 DATABASE_URL/DEV_DATABASE_URL，将使用本地 SQLite 数据库")
 
     # 检查SECRET_KEY
     secret_key = os.environ.get('SECRET_KEY')
@@ -85,9 +139,14 @@ def setup_logging(app):
         log_level = logging.INFO
         print("✓ 生产模式：启用INFO级别日志")
     
-    # 清除默认的handlers
-    if app.logger.hasHandlers():
-        app.logger.handlers.clear()
+    # 清除重复初始化留下的 handlers，并主动关闭文件句柄。测试套件和
+    # Gunicorn 的应用探测都可能多次创建 app，不能让每次创建都叠加一份日志。
+    for handler in list(app.logger.handlers):
+        app.logger.removeHandler(handler)
+        try:
+            handler.close()
+        except Exception:
+            pass
     
     # 1. 应用主日志文件 - 按日期轮转
     app_log_handler = TimedRotatingFileHandler(
@@ -112,23 +171,31 @@ def setup_logging(app):
     error_log_handler.setFormatter(formatter)
     app.logger.addHandler(error_log_handler)
     
-    # 3. 访问日志处理器
-    if app.debug:
-        # 在开发/调试模式下，使用简单的文件处理器以避免Windows上的文件锁定问题
-        access_log_handler = FileHandler(
-            os.path.join(log_dir, 'access.log'), encoding='utf-8'
-        )
-        print("✓ 开发模式：为访问日志启用 FileHandler")
+    # 3. 访问日志处理器。生产环境通常交给 Gunicorn/Nginx 记录；关闭时
+    # 使用 NullHandler，避免每个 worker 无意义地打开并持有 access.log。
+    access_log_enabled = app.config.get(
+        'ACCESS_LOG_ENABLED', _env_bool('ACCESS_LOG_ENABLED', app.debug)
+    )
+    if access_log_enabled:
+        if app.debug:
+            # 在开发/调试模式下，使用简单的文件处理器以避免Windows上的文件锁定问题
+            access_log_handler = FileHandler(
+                os.path.join(log_dir, 'access.log'), encoding='utf-8'
+            )
+            print("✓ 开发模式：为访问日志启用 FileHandler")
+        else:
+            # 在生产模式下，使用按时间轮转的处理器
+            access_log_handler = TimedRotatingFileHandler(
+                os.path.join(log_dir, 'access.log'),
+                when='midnight',
+                interval=1,
+                backupCount=7,
+                encoding='utf-8'
+            )
+            print("✓ 生产模式：为访问日志启用 TimedRotatingFileHandler")
     else:
-        # 在生产模式下，使用按时间轮转的处理器
-        access_log_handler = TimedRotatingFileHandler(
-            os.path.join(log_dir, 'access.log'),
-            when='midnight',
-            interval=1,
-            backupCount=7,
-            encoding='utf-8'
-        )
-        print("✓ 生产模式：为访问日志启用 TimedRotatingFileHandler")
+        access_log_handler = logging.NullHandler()
+        print("✓ 访问日志已关闭：由外部 Web 服务器负责记录")
     access_log_handler.setLevel(logging.INFO)
     access_formatter = logging.Formatter(
         '%(asctime)s %(message)s'
@@ -138,6 +205,13 @@ def setup_logging(app):
     # 创建访问日志记录器
     access_logger = logging.getLogger('access')
     access_logger.setLevel(logging.INFO)
+    access_logger.propagate = False
+    for handler in list(access_logger.handlers):
+        access_logger.removeHandler(handler)
+        try:
+            handler.close()
+        except Exception:
+            pass
     access_logger.addHandler(access_log_handler)
     
     # 4. 控制台输出 (仅在开发模式)
@@ -151,11 +225,21 @@ def setup_logging(app):
     # 设置应用日志级别
     app.logger.setLevel(log_level)
     
-    # 添加请求日志记录
+    app.config.setdefault('ACCESS_LOG_ENABLED', _env_bool('ACCESS_LOG_ENABLED', app.debug))
+    app.config.setdefault('SLOW_REQUEST_MS', 800)
+    app.extensions['codesense_metrics'] = {
+        'started_at': time.monotonic(),
+        'lock': threading.Lock(),
+        'requests': 0,
+        'errors': 0,
+        'slow_requests': 0,
+    }
+
+    # 只保留一条精简的响应日志，并记录慢请求计数。逐请求写入完整
+    # User-Agent 会放大磁盘 I/O，生产环境默认由 Gunicorn/Nginx 记录访问日志。
     @app.before_request
-    def log_request_info():
-        if request.endpoint not in ['static', 'favicon']:  # 忽略静态文件请求
-            access_logger.info(f'{request.remote_addr} - "{request.method} {request.path}" - User-Agent: {request.headers.get("User-Agent", "N/A")}')
+    def start_request_timer():
+        g.codesense_request_started = time.perf_counter()
     
     # 单点登录校验
     @app.before_request
@@ -196,8 +280,27 @@ def setup_logging(app):
     
     @app.after_request
     def log_response_info(response):
-        if request.endpoint not in ['static', 'favicon']:  # 忽略静态文件请求
-            access_logger.info(f'Response: {response.status_code} - {request.remote_addr} - "{request.method} {request.path}"')
+        started = getattr(g, 'codesense_request_started', None)
+        duration_ms = ((time.perf_counter() - started) * 1000) if started else 0
+        is_static = request.endpoint in ['static', 'favicon']
+        metrics = app.extensions.get('codesense_metrics')
+        if metrics:
+            with metrics['lock']:
+                metrics['requests'] += 1
+                if response.status_code >= 500:
+                    metrics['errors'] += 1
+                if duration_ms >= app.config['SLOW_REQUEST_MS']:
+                    metrics['slow_requests'] += 1
+
+        if not is_static:
+            line = (
+                f'{request.remote_addr} "{request.method} {request.path}" '
+                f'{response.status_code} {duration_ms:.0f}ms'
+            )
+            if app.config.get('ACCESS_LOG_ENABLED'):
+                access_logger.info(line)
+            elif duration_ms >= app.config['SLOW_REQUEST_MS']:
+                app.logger.warning('慢请求: %s', line)
         return response
     
     # 记录应用启动日志
@@ -223,6 +326,18 @@ def create_app(config_name='default'):
     
     # 从配置对象中加载配置
     app.config.from_object(config[config_name])
+
+    # FLASK_DEBUG 只影响 app.run 时还不够；日志级别、模板缓存和
+    # 调试中间件都应使用同一份明确配置。
+    if 'FLASK_DEBUG' in os.environ:
+        app.config['DEBUG'] = _env_bool('FLASK_DEBUG', app.config.get('DEBUG', False))
+
+    # 必须在 db.init_app 前设置 engine options，否则 Flask-SQLAlchemy 会
+    # 立即创建一个没有连接池边界的 engine。
+    _configure_database_engine(app)
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = app.config.get(
+        'STATIC_CACHE_SECONDS', 0
+    )
     
     # 动态会话配置
     app.config['SESSION_PERMANENT'] = False
@@ -238,14 +353,19 @@ def create_app(config_name='default'):
         app.config['SESSION_TYPE'] = 'redis'
         app.config['SESSION_REDIS'] = r
         app.config['SESSION_KEY_PREFIX'] = 'codesense_session:'
-        print(f"[OK] Redis 会话后端加载成功: {redis_url}")
+        app.extensions['codesense_session_redis'] = r
+        print(f"[OK] Redis 会话后端加载成功: {_redact_connection_url(redis_url)}")
     except Exception as e:
         # 降级到文件系统会话
         app.config['SESSION_TYPE'] = 'filesystem'
-        app.config['SESSION_FILE_DIR'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flask_session')
+        app.config['SESSION_FILE_DIR'] = os.environ.get(
+            'SESSION_FILE_DIR',
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flask_session'),
+        )
         app.config['SESSION_KEY_PREFIX'] = 'flask_session:'
         # 确保session目录存在
         os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
+        app.extensions['codesense_session_redis'] = None
         print(f"[!] Redis 连接失败或未安装，已自动降级至文件系统会话 (filesystem): {str(e)}")
     
     # 设置Cookie安全选项
@@ -267,7 +387,10 @@ def create_app(config_name='default'):
     print("\n正在配置应用日志系统...")
     setup_logging(app)
     app.logger.info(f"应用启动 - 配置: {config_name}")
-    app.logger.info(f"数据库 URI: {app.config.get('SQLALCHEMY_DATABASE_URI')}")
+    app.logger.info(
+        "数据库连接: %s",
+        _redact_connection_url(app.config.get('SQLALCHEMY_DATABASE_URI')),
+    )
     app.logger.info(f"实例路径: {app.instance_path}")
     
     # 初始化扩展
@@ -329,12 +452,68 @@ def create_app(config_name='default'):
     app.register_blueprint(classes)
     app.register_blueprint(thinking)  # /thinking/*
     app.register_blueprint(grades)
+
+    @app.after_request
+    def compress_text_response(response):
+        """压缩普通 HTML/JSON 响应；不触碰 SSE 和其它流式响应。"""
+
+        if not app.config.get('ENABLE_RESPONSE_COMPRESSION'):
+            return response
+        if response.is_streamed or response.status_code in (204, 304):
+            return response
+        if response.headers.get('Content-Encoding'):
+            return response
+        if 'gzip' not in request.headers.get('Accept-Encoding', '').lower():
+            return response
+        content_type = (response.content_type or '').lower()
+        compressible = (
+            content_type.startswith('text/')
+            or 'application/json' in content_type
+            or 'application/javascript' in content_type
+            or 'application/xml' in content_type
+        )
+        if not compressible:
+            return response
+        body = response.get_data()
+        if len(body) < 1024:
+            return response
+        response.set_data(gzip.compress(body, compresslevel=6))
+        response.headers['Content-Encoding'] = 'gzip'
+        response.headers['Vary'] = 'Accept-Encoding'
+        response.headers.pop('Content-Length', None)
+        return response
+
+    @app.get('/healthz')
+    def healthz():
+        """轻量存活探针，不访问数据库，供负载均衡器快速检查。"""
+
+        started_at = app.extensions.get('codesense_metrics', {}).get('started_at')
+        uptime = max(0, int(time.monotonic() - started_at)) if started_at else 0
+        return jsonify({'status': 'ok', 'uptime_seconds': uptime})
+
+    @app.get('/readyz')
+    def readyz():
+        """就绪探针：只检查应用真正依赖的数据库连接。"""
+
+        try:
+            db.session.execute(db.text('SELECT 1'))
+            db_status = 'ok'
+            status_code = 200
+        except Exception:
+            db.session.rollback()
+            db_status = 'unavailable'
+            status_code = 503
+        return jsonify({'status': 'ready' if status_code == 200 else 'not_ready',
+                        'checks': {'database': db_status}}), status_code
     
     # 初始化数据库
     with app.app_context():
-        app.logger.info("开始初始化数据库...")
-        init_db(app)
-        app.logger.info("数据库初始化完成")
+        if app.config.get('DB_AUTO_INIT', True):
+            app.logger.info("开始初始化数据库...")
+            init_db(app)
+            app.logger.info("数据库初始化完成")
+        else:
+            app.logger.info("生产模式跳过启动期数据库建表/迁移；请先运行 database_maintenance.py")
         try:
             from services.demo_database import cleanup_expired_demo_runs
             removed_demo_runs = cleanup_expired_demo_runs()
@@ -349,17 +528,21 @@ def create_app(config_name='default'):
     # 评估时按需使用启发式规则和已配置的 AI 服务。
     app.logger.info("使用启发式规则和已配置的 AI 服务进行代码评估")
     
-    # 初始化异步任务系统
-    print("\n正在初始化异步任务系统...")
-    try:
-        from utils.async_tasks import init_async_tasks
-        init_async_tasks(app)
-        print("✓ 异步任务系统初始化成功")
-        app.logger.info("异步任务系统初始化成功")
-    except Exception as e:
-        error_msg = f"异步任务系统初始化失败: {str(e)}"
-        print(f"× {error_msg}")
-        app.logger.error(error_msg, exc_info=True)
+    # 初始化异步任务系统。生产环境可通过环境变量关闭进程内队列，
+    # 交给 Celery/RQ 等独立 worker；这样不会让每个 Web worker 各自复制一套任务线程。
+    if app.config.get('ASYNC_TASKS_ENABLED', True):
+        print("\n正在初始化异步任务系统...")
+        try:
+            from utils.async_tasks import init_async_tasks
+            init_async_tasks(app)
+            print("✓ 异步任务系统初始化成功")
+            app.logger.info("异步任务系统初始化成功")
+        except Exception as e:
+            error_msg = f"异步任务系统初始化失败: {str(e)}"
+            print(f"× {error_msg}")
+            app.logger.error(error_msg, exc_info=True)
+    else:
+        app.logger.info("异步任务系统已按配置关闭")
     
     # 记录应用完全初始化完成
     app.logger.info("Flask应用完全初始化完成，准备接受请求")

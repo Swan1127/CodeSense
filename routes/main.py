@@ -5,9 +5,10 @@ import datetime
 import csv
 import io
 import json  # 添加json模块导入
-from flask import Blueprint, render_template, redirect, url_for, flash, session, request, jsonify, Response
+from flask import Blueprint, render_template, redirect, url_for, flash, session, request, jsonify, Response, current_app
 from flask_login import login_required, current_user
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 from models import (
     db,
     User,
@@ -117,14 +118,14 @@ def home():
             # 如果没有班级，则没有作业
             assigned_assignments_query = assigned_assignments_query.filter(db.false())
         
-        # 获取所有分配的作业 ID（用于平均分和提交记录显示）
-        all_assigned_ids = [a.id for a in assigned_assignments_query.all()]
+        # 首页只需要作业 ID 和少量近期记录，不要把所有作业/代码正文
+        # 一次性加载进 ORM identity map。
+        all_assigned_ids = [row[0] for row in assigned_assignments_query.with_entities(Assignment.id).all()]
 
         # 过滤出当前有效的作业（未过截止日期的或无截至日期的）
-        active_assignments = assigned_assignments_query.filter(
+        active_assignment_ids = [row[0] for row in assigned_assignments_query.filter(
             (Assignment.due_date >= now) | (Assignment.due_date.is_(None))
-        ).all()
-        active_assignment_ids = [a.id for a in active_assignments]
+        ).with_entities(Assignment.id).all()]
 
         # 2. 首页统计保留历史作业，避免截止日期过滤让学生误以为数据被清空。
         # 当前有效作业仍单独保留，供页面展示“当前未截止”信息。
@@ -132,10 +133,13 @@ def home():
         active_assignments_count = len(active_assignment_ids)
 
         # “已提交”显示所有历史作业中已经提交过的独立题目数量。
-        submissions_count = db.session.query(func.count(func.distinct(Submission.assignment_id))).filter(
+        submitted_assignment_ids = [row[0] for row in db.session.query(
+            Submission.assignment_id
+        ).filter(
             Submission.student_id == student_id,
             Submission.assignment_id.in_(all_assigned_ids)
-        ).scalar() or 0
+        ).distinct().all()]
+        submissions_count = len(submitted_assignment_ids)
 
         # 平均得分的计算范围仍保留为所有已分配给该学生的作业，以反映整体表现
         average_score_query = db.session.query(func.avg(Submission.score)).filter(
@@ -144,34 +148,20 @@ def home():
         ).scalar()
         average_score = average_score_query if average_score_query else 0
 
-        # 3. 获取用于显示的提交记录（历史记录不加过滤，让学生可以查看过去的所有提交）
+        # 3. 获取首页需要展示的最近记录。完整历史在“提交记录”页面分页查看；
+        # 限制这里的代码正文数量，避免一个学生的大量历史提交拖慢首页。
         submissions_query = Submission.query.filter(
             Submission.student_id == student_id,
             Submission.assignment_id.in_(all_assigned_ids)
         )
-        submissions = submissions_query.order_by(Submission.submitted_at.desc()).all()
-        
-
-        # 准备提交记录数据
-        submission_data = []
-        for sub in submissions:
-            if sub.code and sub.assignment:
-                submission_data.append({
-                    'assignment_title': sub.assignment.title,
-                    'code': sub.code,
-                    'score': sub.score,
-                    'submitted_at': sub.submitted_at.strftime('%Y-%m-%d %H:%M:%S')
-                })
+        submissions = submissions_query.options(
+            joinedload(Submission.assignment)
+        ).order_by(Submission.submitted_at.desc()).limit(5).all()
         
         # 异步架构：检查能力趋势分析任务状态
         from models import AbilityTrend
         trend_record = AbilityTrend.get_or_create(student_id)
         
-        print(f"🔍 检查趋势记录 - 状态: {trend_record.status}, 数据存在: {bool(trend_record.trend_data)}")
-        print(f"🔍 详细检查: trend_data类型={type(trend_record.trend_data)}, 长度={len(trend_record.trend_data) if trend_record.trend_data else 0}")
-        print(f"🔍 条件1 (status=='completed'): {trend_record.status == 'completed'}")
-        print(f"🔍 条件2 (trend_data存在): {bool(trend_record.trend_data)}")
-        print(f"🔍 条件3 (trend_data非空): {trend_record.trend_data is not None and len(str(trend_record.trend_data)) > 0}")
         
         # 修复条件判断逻辑
         if trend_record.status == 'failed':
@@ -191,12 +181,8 @@ def home():
                 # 添加状态信息供前端使用
                 ability_analysis['_status'] = 'completed'
                 ability_analysis['_last_updated'] = trend_record.last_updated.strftime('%Y-%m-%d %H:%M:%S') if trend_record.last_updated else None
-                print(f"✅ 使用已缓存的能力趋势分析结果 (状态: {trend_record.status})")
-                print(f"📊 趋势: {ability_analysis.get('trend', '')[:80]}...")
-                print(f"💡 建议: {ability_analysis.get('improvement', '')[:80]}...")
-                print(f"📝 措施数量: {len(ability_analysis.get('suggestions', []))}")
             except Exception as e:
-                print(f"❌ 解析趋势数据失败: {e}")
+                current_app.logger.warning("解析学生 %s 的能力趋势失败: %s", student_id, type(e).__name__)
                 # 解析失败时使用加载状态
                 ability_analysis = {
                     "trend": "解析趋势数据时出现问题，请点击刷新重试",
@@ -214,15 +200,6 @@ def home():
                 "_status": trend_record.status,  # 添加状态信息供前端使用
                 "_last_updated": trend_record.last_updated.strftime('%Y-%m-%d %H:%M:%S') if trend_record.last_updated else None
             }
-            print(f"⏳ 能力趋势分析状态: {trend_record.status}")
-            print(f"📈 显示默认加载状态")
-        
-        # 最终验证输出
-        print(f"🎯 最终结果预览:")
-        print(f"   趋势: {ability_analysis.get('trend', 'N/A')[:60]}...")
-        print(f"   建议: {ability_analysis.get('improvement', 'N/A')[:60]}...")
-        print(f"   措施: {len(ability_analysis.get('suggestions', []))} 条")
-        print(f"   状态: {ability_analysis.get('_status', 'unknown')}")
         
         # 获取最近的作业
         class_name = current_user.class_name
@@ -274,16 +251,11 @@ def home():
             }
         }
         
-        # 打印调试信息
-        print("雷达图数据:")
-        print(f"学生得分: {algorithm_score}, {style_score}, {functionality_score}, {efficiency_score}, {readability_score}")
-        print(f"班级平均: {class_algorithm_score}, {class_style_score}, {class_functionality_score}, {class_efficiency_score}, {class_readability_score}")
-        print(f"JSON数据: {json.dumps(skills_data)}")
-        
-        # 获取班级平均分数据以计算相对基准 φ_avg
-        class_averages = User.get_class_average_scores()
-        class_name = current_user.class_name
-        all_subs = Submission.query.filter_by(student_id=student_id).order_by(Submission.submitted_at.asc()).all()
+        # 使用前面已经计算出的班级平均分，避免重复执行一次全班统计。
+        all_subs = Submission.query.with_entities(
+            Submission.submitted_at,
+            Submission.score,
+        ).filter_by(student_id=student_id).order_by(Submission.submitted_at.asc()).all()
         
         # 使用统一的 maturity 计算器
         ability_scores = {
@@ -306,7 +278,7 @@ def home():
         maturity_score = maturity_result['maturity_score']
 
         # 计算学生已提交的作业 ID 集合（用于前端高亮已完成任务）
-        submitted_assignments = [sub.assignment_id for sub in submissions]
+        submitted_assignments = submitted_assignment_ids
 
         # 准备渲染数据
         context = {

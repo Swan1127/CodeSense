@@ -11,11 +11,16 @@ load_dotenv()
 # 添加当前目录到Python路径，确保可以正确导入模块
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# 使用环境变量选择配置；数据库和密钥由部署环境提供
-os.environ['FLASK_CONFIG'] = os.environ.get('FLASK_CONFIG') or 'development'
+# Gunicorn/WSGI 默认必须走生产配置：不在每个 worker 启动时建表、不开调试。
+# 本地直接运行 app.py 仍然使用 development 配置。
+os.environ['FLASK_CONFIG'] = os.environ.get('FLASK_CONFIG') or 'production'
 
 # 导入Flask应用
 from app import app as application
 
 if __name__ == '__main__':
-    application.run(debug=True, host='0.0.0.0', port=5000)
+    application.run(
+        debug=os.environ.get('FLASK_DEBUG', '0').lower() in ('1', 'true', 'yes'),
+        host=os.environ.get('HOST', '0.0.0.0'),
+        port=int(os.environ.get('PORT', '5000')),
+    )

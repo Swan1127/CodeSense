@@ -105,11 +105,14 @@ function handleQuestionSubmit() {
     
     console.log('准备发送问题请求，问题长度:', question.length, '代码长度:', code.length);
     
-    // 发送请求
-    fetch('/api/ask_question', {
+    // 发送请求：采用统一 SSE，让回答可以边生成边阅读。
+    let streamedAnswer = '';
+    let streamError = null;
+    window.consumeSSE('/api/ask_question', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream'
         },
         body: JSON.stringify({ 
             question: question, 
@@ -117,17 +120,20 @@ function handleQuestionSubmit() {
             assignment_id: assignmentId,
             language: currentLanguage
         })
-    })
-    .then(function(response) {
-        console.log('收到API响应状态:', response.status);
-        if (!response.ok) {
-            return response.json().then(function(errorData) {
-                throw new Error(errorData.message || `HTTP 错误! 状态: ${response.status}`);
-            });
+    }, {
+        onDelta: function(event) {
+            streamedAnswer += event.content || event.token || '';
+            if (streamedAnswer) {
+                hideAnswerLoadingState();
+                displayAnswer(streamedAnswer);
+            }
+        },
+        onError: function(event) {
+            streamError = new Error(event.message || event.error || '获取回答失败');
         }
-        return response.json();
     })
     .then(function(data) {
+        if (streamError) throw streamError;
         // 隐藏加载状态
         hideAnswerLoadingState();
         
@@ -150,6 +156,8 @@ function handleQuestionSubmit() {
                 // 纯文本响应
                 answerText = data;
                 console.log("直接获取字符串回答，长度:", answerText.length);
+            } else if (data.content || streamedAnswer) {
+                answerText = data.content || streamedAnswer;
             } else {
                 // 未知结构，尝试查看响应内容
                 console.error("未知的响应结构:", data);
@@ -439,11 +447,14 @@ function handleAskQuestion() {
     const assignmentIdElement = document.querySelector('input[name="assignment_id"]');
     const assignmentId = assignmentIdElement ? assignmentIdElement.value : null;
     
-    // 发送提问请求
-    fetch('/api/ask_question', {
+    // 发送提问请求（统一 SSE）
+    let streamedAnswer = '';
+    let streamError = null;
+    window.consumeSSE('/api/ask_question', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream'
         },
         body: JSON.stringify({
             question: question,
@@ -451,15 +462,21 @@ function handleAskQuestion() {
             language: language,
             assignment_id: assignmentId
         })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('请求失败: ' + response.status);
+    }, {
+        onDelta: event => {
+            streamedAnswer += event.content || event.token || '';
+            if (streamedAnswer) {
+                answerContainer.innerHTML = `<div class="card"><div class="card-body markdown-content">${formatMarkdown(streamedAnswer)}</div></div>`;
+            }
+        },
+        onError: event => {
+            streamError = new Error(event.message || event.error || '获取回答失败');
         }
-        return response.json();
     })
     .then(data => {
-        if (data.success) {
+        if (streamError) throw streamError;
+        const answer = data.answer || (data.data && data.data.answer) || data.content || streamedAnswer;
+        if (data.success !== false && answer) {
             // 显示回答
             answerContainer.innerHTML = `
                 <div class="card">
@@ -480,7 +497,7 @@ function handleAskQuestion() {
                         </div>
                     </div>
                     <div class="card-body markdown-content">
-                        ${formatMarkdown(data.answer)}
+                        ${formatMarkdown(answer)}
                     </div>
                 </div>
             `;
@@ -789,4 +806,4 @@ function addQuestionStyles() {
     `;
     
     document.head.appendChild(styleElement);
-} 
+}

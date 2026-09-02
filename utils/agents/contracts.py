@@ -19,6 +19,7 @@ class AgentRole(str, Enum):
 class Stage3Target(str, Enum):
     TEACHER_AGENT = "teacher_agent"
     STUDENT_AGENT = "student_agent"
+    AUTO = "auto"
     USER = "user"
     SYSTEM = "system"
 
@@ -178,6 +179,10 @@ class FeynmanState:
     unresolved_concepts: List[str] = field(default_factory=list)
     ready_for_code: bool = False
     pending_probe: Optional[Dict[str, Any]] = None
+    # A server-authorized intent for the next Student-Agent turn.  It is not a
+    # queued answer: the next selected agent always receives the newest user
+    # message as its input.
+    student_probe_intent: Optional[Dict[str, Any]] = None
     buggy_code_event_id: Optional[str] = None
     code_review_status: str = "pending"
     status: str = "in_progress"

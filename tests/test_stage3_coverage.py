@@ -304,6 +304,24 @@ def test_concrete_boundary_explanation_is_accepted_for_covered():
     assert decision.ready_for_code is True
 
 
+def test_multi_clause_code_explanation_without_explicit_causal_words_is_accepted():
+    state = FeynmanState(session_id=12)
+
+    decision = apply_coverage_assessment(
+        state,
+        ["循环边界"],
+        config=CoverageConfig(min_coverage=1.0),
+        concept="循环边界",
+        dimension="core",
+        assessment="covered",
+        evidence="我会先读入 N；N=0 没有项，N=1 只有 0，从 i=2 循环到 i<n，用前两项相加得到下一项。",
+        event_id="evt-1",
+    )
+
+    assert decision.concept_status == "covered"
+    assert decision.ready_for_code is True
+
+
 @pytest.mark.parametrize("assessment", ["covered", "partial"])
 def test_valid_paraphrase_without_old_marker_vocabulary_is_accepted(assessment):
     state = FeynmanState(session_id=12)

@@ -28,10 +28,11 @@
         solutionSortable: null,
         // Stage 3
         forumHistory: [],
-        forumTargetRole: 'teacher_agent',
+        forumTargetRole: 'auto',
         forumReplyContext: null,
         forumReplyEventId: null,
         forumCoverageSummary: null,
+        forumUserGoal: null,
         pendingForumRequestId: null,
         feynmanPhase: 'chat', // 'chat' | 'code_review' | 'completed'
         buggyCode: null,
@@ -72,6 +73,8 @@
         
         // Initialize Developer Debug Panel (localhost/127.0.0.1 only)
         initDevDebugConsole();
+        initCompanionCollapse();
+        initStage2PanelToggles();
     }
 
     function pollPresetStatus() {
@@ -110,7 +113,7 @@
                     state.teacherHistory = data.teacher_history || [];
                     state.studentHistory = data.student_history || [];
                     state.buggyCodeInfo = data.buggy_code_info || null;
-                    applyRestoredForumState(data.forum_state || null);
+                    applyRestoredForumState(data.forum_state || null, data.user_goal || null);
 
                     // 同步并重新启动计时器
                     if (state.timerInterval) {
@@ -125,7 +128,7 @@
                     state.studentHistory = [];
                     state.buggyCode = null;
                     state.buggyCodeInfo = null;
-                    applyRestoredForumState(data.forum_state || null);
+                    applyRestoredForumState(data.forum_state || null, data.user_goal || null);
                 }
 
                 initStage(state.currentStage);
@@ -158,22 +161,41 @@
             }
         }
 
-        // Toggle companion and student panels appropriately
+        // Toggle companion, dynamic goal, and stage guide panels appropriately
         const companionPanel = document.getElementById('ai-companion-panel');
-        const studentPanel = document.getElementById('student-agent-panel');
+        const goalPanel = document.getElementById('stage3-goal-panel');
+        const guidePanel = document.getElementById('student-agent-panel');
         if (stage === 3) {
             if (companionPanel) companionPanel.classList.remove('active');
-            if (studentPanel) studentPanel.classList.add('active');
+            if (goalPanel) goalPanel.classList.add('active');
+            if (guidePanel) guidePanel.classList.add('active');
         } else {
             if (companionPanel) companionPanel.classList.add('active');
-            if (studentPanel) studentPanel.classList.remove('active');
+            if (goalPanel) goalPanel.classList.remove('active');
+            if (guidePanel) guidePanel.classList.remove('active');
         }
 
         // Update body layout for stages
         const body = document.querySelector('.arena-body');
         if (body) {
             body.classList.toggle('stage-2-layout', stage === 2);
+            body.classList.toggle('stage-1-layout', stage === 1);
             body.classList.toggle('feynman-layout', stage === 3);
+            const companionToggle = document.getElementById('toggle-companion-panel');
+            if (companionToggle) {
+                companionToggle.hidden = stage === 3;
+            }
+            const previewToggle = document.getElementById('toggle-stage2-preview');
+            if (previewToggle) {
+                previewToggle.hidden = stage !== 2;
+            }
+            if (stage === 3) {
+                body.classList.remove('companion-collapsed');
+                body.classList.remove('preview-collapsed');
+            }
+            if (stage !== 2) {
+                body.classList.remove('preview-collapsed');
+            }
         }
 
         if (stage === 1) initStage1();
@@ -207,6 +229,53 @@
     // ============================================================
     // Stage 1: Natural Language Description
     // ============================================================
+    function initCompanionCollapse() {
+        const toggle = document.getElementById('toggle-companion-panel');
+        const body = document.querySelector('.arena-body');
+        if (!toggle || !body || toggle.dataset.bound === '1') return;
+
+        toggle.dataset.bound = '1';
+        toggle.addEventListener('click', () => {
+            const collapsed = body.classList.toggle('companion-collapsed');
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+            toggle.setAttribute('title', collapsed ? '展开 AI 伴学助手' : '收起 AI 伴学助手');
+            toggle.querySelector('span').textContent = collapsed ? '展开' : '收起';
+        });
+    }
+
+    function initStage2PanelToggles() {
+        const toggle = document.getElementById('toggle-stage2-preview');
+        const body = document.querySelector('.arena-body');
+        if (!toggle || !body || toggle.dataset.bound === '1') return;
+
+        toggle.dataset.bound = '1';
+        toggle.addEventListener('click', () => {
+            const collapsed = body.classList.toggle('preview-collapsed');
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+            toggle.setAttribute('title', collapsed ? '展开代码预览' : '收起代码预览');
+            toggle.querySelector('span').textContent = collapsed ? '展开' : '收起';
+        });
+    }
+
+    function updateStage1AnswerProgress() {
+        const answers = Array.from(document.querySelectorAll('.qa-answer-textarea'));
+        const progress = document.getElementById('stage1-answer-progress');
+        if (!progress) return;
+        const filled = answers.filter(item => item.value.trim()).length;
+        progress.textContent = `${filled}/${answers.length} 已填写`;
+    }
+
+    function updateStage2AnswerProgress() {
+        const steps = state.preset && Array.isArray(state.preset.quiz_steps)
+            ? state.preset.quiz_steps
+            : [];
+        const progress = document.getElementById('stage2-answer-progress');
+        if (!progress) return;
+        const answers = state.quizAnswers || {};
+        const answered = steps.filter(step => String(answers[step.step_id] || '').trim()).length;
+        progress.textContent = `${answered}/${steps.length} 已回答`;
+    }
+
     function initStage1() {
         const textarea = document.getElementById('description-input');
         const submitBtn = document.getElementById('stage1-submit');
@@ -236,10 +305,13 @@
             }
             if (algoSummaryContent) {
                 algoSummaryContent.innerText = state.preset.algorithm_summary;
-                algoSummaryContent.style.display = 'block'; // Default expanded
+                algoSummaryContent.style.display = 'none'; // 默认收起，把空间留给作答区
             }
             if (algoSummaryIcon) {
-                algoSummaryIcon.className = 'bi bi-chevron-up';
+                algoSummaryIcon.className = 'bi bi-chevron-down';
+            }
+            if (algoSummaryHeader) {
+                algoSummaryHeader.setAttribute('aria-expanded', 'false');
             }
             if (stage1Instruction) {
                 stage1Instruction.style.display = 'flex';
@@ -250,15 +322,19 @@
         }
 
         if (algoSummaryHeader) {
-            algoSummaryHeader.onclick = () => {
+            const toggleAlgorithmSummary = () => {
                 if (algoSummaryContent) {
-                    if (algoSummaryContent.style.display === 'none') {
-                        algoSummaryContent.style.display = 'block';
-                        if (algoSummaryIcon) algoSummaryIcon.className = 'bi bi-chevron-up';
-                    } else {
-                        algoSummaryContent.style.display = 'none';
-                        if (algoSummaryIcon) algoSummaryIcon.className = 'bi bi-chevron-down';
-                    }
+                    const expanded = algoSummaryContent.style.display === 'none';
+                    algoSummaryContent.style.display = expanded ? 'block' : 'none';
+                    algoSummaryHeader.setAttribute('aria-expanded', String(expanded));
+                    if (algoSummaryIcon) algoSummaryIcon.className = expanded ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+                }
+            };
+            algoSummaryHeader.onclick = toggleAlgorithmSummary;
+            algoSummaryHeader.onkeydown = event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleAlgorithmSummary();
                 }
             };
         }
@@ -266,6 +342,9 @@
         // Setup guided questions display & dynamic input boxes
         const questionsWrapper = document.getElementById('guided-questions-wrapper');
         const questionsList = document.getElementById('guided-questions-list');
+        const questionsHeader = document.getElementById('guided-questions-header');
+        const questionsContent = document.getElementById('guided-questions-content');
+        const questionsIcon = document.getElementById('guided-questions-icon');
         const questions = (state.preset && state.preset.guided_questions && state.preset.guided_questions.length > 0)
             ? state.preset.guided_questions
             : [
@@ -282,6 +361,18 @@
                 questionsList.appendChild(li);
             });
             questionsWrapper.style.display = 'block';
+        }
+
+        if (questionsHeader && questionsContent) {
+            const toggleGuidedQuestions = () => {
+                const expanded = questionsContent.hidden;
+                questionsContent.hidden = !expanded;
+                questionsHeader.setAttribute('aria-expanded', String(expanded));
+                if (questionsIcon) questionsIcon.className = expanded ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+            };
+            questionsContent.hidden = true;
+            questionsHeader.setAttribute('aria-expanded', 'false');
+            questionsHeader.onclick = toggleGuidedQuestions;
         }
 
         // Render dynamic textareas for questions
@@ -358,6 +449,7 @@
                     e.preventDefault();
                     showNotification('为了确保你真正理解解题思路，此处禁止拖放文本，请手动输入回答。', 'warning');
                 });
+                qTextarea.addEventListener('input', updateStage1AnswerProgress);
 
                 // Small voice input button row
                 const voiceRow = document.createElement('div');
@@ -383,6 +475,7 @@
             const firstBox = qaWrapper.querySelector('.qa-answer-textarea');
             if (firstBox) firstBox.focus();
         }
+        updateStage1AnswerProgress();
 
         // Initialize dynamic companion chat greeting for Stage 1
         const container = document.getElementById('companion-messages');
@@ -474,12 +567,12 @@
         const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="bi bi-hourglass-split rotating-icon"></i> 正在评判中，请稍候...';
+            submitBtn.innerHTML = '<i class="bi bi-hourglass-split rotating-icon"></i> 正在快速检查关键点...';
         }
         textareas.forEach(ta => ta.disabled = true);
 
         setLoading(true);
-        fetchJSON('/thinking/api/stage1/submit', {
+        fetchAIStream('/thinking/api/stage1/submit', {
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
@@ -542,18 +635,28 @@
         // Route hint request through AI Companion chat
         appendCompanionMessage('我在撰写思路描述时遇到困难，请给我一些引导提示。', 'student');
 
-        fetchJSON('/thinking/api/stage1/hint', {
+        let streamedHint = '';
+        let hintPreview = null;
+        fetchAIStream('/thinking/api/stage1/hint', {
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
                 description: aggregatedDescription
             })
+        }, {
+            onDelta: event => {
+                streamedHint += event.content || event.token || '';
+                if (!hintPreview) hintPreview = createCompanionStreamingMessage();
+                hintPreview(streamedHint);
+            }
         }).then(data => {
-            if (data.success) {
-                appendCompanionMessage(data.hint, 'ai');
+            const hint = data.hint || data.content || streamedHint;
+            if (data.success !== false && hint) {
+                if (!hintPreview) hintPreview = createCompanionStreamingMessage();
+                hintPreview(hint);
                 if (!state.companionMessages) state.companionMessages = [];
                 state.companionMessages.push({ role: 'user', content: '我在撰写思路描述时遇到困难，请给我一些引导提示。' });
-                state.companionMessages.push({ role: 'assistant', content: data.hint });
+                state.companionMessages.push({ role: 'assistant', content: hint });
             }
         }).catch(err => showError(err.message))
           .finally(() => setLoading(false));
@@ -645,7 +748,7 @@
                         </label>`;
                 });
                 answerHtml += '</div>';
-            } else if (step.type === 'fill_blank') {
+            } else if (step.type === 'fill_blank' || step.type === 'fill') {
                 const ctxBefore = step.context_before || '';
                 const ctxAfter = step.context_after || '';
                 const savedVal = state.quizAnswers[step.step_id] || '';
@@ -671,6 +774,7 @@
         });
 
         updateQuizPreview();
+        updateStage2AnswerProgress();
     }
 
     function onQuizAnswer(stepId, value, inputEl) {
@@ -686,11 +790,13 @@
             }
         }
         updateQuizPreview();
+        updateStage2AnswerProgress();
     }
 
     function onQuizFillInput(stepId, value) {
         state.quizAnswers[stepId] = value.trim();
         updateQuizPreview();
+        updateStage2AnswerProgress();
     }
 
     function getNormalizedIndent(indent) {
@@ -775,7 +881,7 @@
         }
 
         setLoading(true);
-        fetchJSON('/thinking/api/stage2/verify', {
+        fetchAIStream('/thinking/api/stage2/verify', {
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
@@ -841,19 +947,29 @@
             student_answer: answers[s.step_id] || null
         }));
 
-        fetchJSON('/thinking/api/stage2/hint', {
+        let streamedHint = '';
+        let hintPreview = null;
+        fetchAIStream('/thinking/api/stage2/hint', {
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
                 current_blocks: Object.keys(answers),
                 quiz_state: currentState
             })
+        }, {
+            onDelta: event => {
+                streamedHint += event.content || event.token || '';
+                if (!hintPreview) hintPreview = createCompanionStreamingMessage();
+                hintPreview(streamedHint);
+            }
         }).then(data => {
-            if (data.success) {
-                appendCompanionMessage(data.hint, 'ai');
+            const hint = data.hint || data.content || streamedHint;
+            if (data.success !== false && hint) {
+                if (!hintPreview) hintPreview = createCompanionStreamingMessage();
+                hintPreview(hint);
                 if (!state.companionMessages) state.companionMessages = [];
                 state.companionMessages.push({ role: 'user', content: '\u6211\u5728\u6784\u5efa\u7a0b\u5e8f\u65f6\u9047\u5230\u56f0\u96be\uff0c\u8bf7\u7ed9\u6211\u4e00\u4e9b\u5f15\u5bfc\u63d0\u793a\u3002' });
-                state.companionMessages.push({ role: 'assistant', content: data.hint });
+                state.companionMessages.push({ role: 'assistant', content: hint });
             }
         }).catch(err => showError(err.message))
           .finally(() => setLoading(false));
@@ -958,16 +1074,26 @@
             requestBody.stage2_state = requestBody.student_state.stage2;
         }
 
-        fetchJSON('/thinking/api/companion/chat', {
+        let streamedResponse = '';
+        let responsePreview = null;
+        fetchAIStream('/thinking/api/companion/chat', {
             method: 'POST',
             body: JSON.stringify(requestBody)
+        }, {
+            onDelta: event => {
+                streamedResponse += event.content || event.token || '';
+                if (!responsePreview) responsePreview = createCompanionStreamingMessage();
+                responsePreview(streamedResponse);
+            }
         }).then(data => {
             const typingEl = document.getElementById(typingId);
             if (typingEl) typingEl.remove();
 
-            if (data.success) {
-                messages.push({ role: 'assistant', content: data.response });
-                appendCompanionMessage(data.response, 'ai');
+            const responseText = data.response || data.content || streamedResponse;
+            if (data.success !== false && responseText) {
+                if (!responsePreview) responsePreview = createCompanionStreamingMessage();
+                responsePreview(responseText);
+                messages.push({ role: 'assistant', content: responseText });
             } else {
                 appendCompanionMessage('连接错误，请重试。', 'ai');
             }
@@ -996,6 +1122,51 @@
         container.scrollTop = container.scrollHeight;
     }
 
+    function createCompanionStreamingMessage() {
+        const container = document.getElementById('companion-messages');
+        if (!container) return () => {};
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'chat-message';
+        msgDiv.innerHTML = `
+            <div class="chat-avatar teacher">🤖</div>
+            <div class="chat-bubble ai"></div>
+        `;
+        container.appendChild(msgDiv);
+        const bubble = msgDiv.querySelector('.chat-bubble');
+        return text => {
+            if (bubble) bubble.innerHTML = renderMarkdown(text || '');
+            container.scrollTop = container.scrollHeight;
+        };
+    }
+
+    function defaultUserGoal(summary = defaultCoverageSummary()) {
+        const score = Number.isFinite(summary.coverage_score)
+            ? Math.max(0, Math.min(1, summary.coverage_score))
+            : 0;
+        const conceptCount = Array.isArray(summary.concept_coverage)
+            ? summary.concept_coverage.length
+            : 0;
+        return {
+            id: 'stage3-teach-and-repair',
+            title: '掌握关键思路并完成一次代码修复',
+            description: '先用自己的话解释关键点，再由小明从不同角度检查，达标后自动生成一份错误代码供你修复。',
+            status: 'in_progress',
+            progress_percent: Math.min(79, Math.round(score * 80)),
+            coverage_score: score,
+            coverage_threshold: 0.8,
+            covered_concepts: 0,
+            total_concepts: conceptCount,
+            current_milestone: 'understanding',
+            next_action: '先用自己的话说明一个关键知识点，系统会按检查点推进。',
+            steps: [
+                { id: 'understanding', label: '说明关键知识点', status: 'active' },
+                { id: 'peer_check', label: '小明完成多角度检查', status: 'todo' },
+                { id: 'buggy_code', label: '生成待修复代码', status: 'todo' },
+                { id: 'repair', label: '修复并通过验证', status: 'todo' },
+            ],
+        };
+    }
+
     function regeneratePreset() {
         if (!confirm('确定要应用最新大括号归拢规范，重新拆解并生成当前作业的代码积木吗？')) return;
 
@@ -1006,7 +1177,7 @@
         setLoading(true);
         showNotification('正在应用全新整合规则重构积木池，请稍候...', 'info');
 
-        fetchJSON('/thinking/api/generate_preset', {
+        fetchAIStream('/thinking/api/generate_preset', {
             method: 'POST',
             body: JSON.stringify({ assignment_id: parseInt(assignmentId) })
         }).then(data => {
@@ -1027,6 +1198,8 @@
         state.feynmanPhase = 'chat';
         state.pendingForumRequestId = null;
         bindForumControls();
+        bindForumStickyHead();
+        renderForumUserGoal();
         renderForumFeed();
         restoreForumReplyContext();
         updateForumTargetControls();
@@ -1037,6 +1210,15 @@
             state.feynmanPhase = 'code_review';
             state.buggyCode = state.buggyCodeInfo.buggy_code;
             showCodeReviewPanel(state.buggyCodeInfo.buggy_code);
+        } else if (
+            state.isResumed &&
+            state.forumUserGoal &&
+            state.forumUserGoal.status === 'ready_for_code'
+        ) {
+            // A previous automatic generation may have failed after the
+            // learning gate opened.  Resume the normal next action instead
+            // of leaving the learner in a chat composer with no code panel.
+            triggerCodeWritingPhase();
         }
     }
 
@@ -1088,7 +1270,7 @@
         updateForumComposerState();
         showTypingIndicator('forum');
 
-        fetchJSON('/thinking/api/stage3/forum/message', {
+        fetchAIStream('/thinking/api/stage3/forum/message', {
             method: 'POST',
             body: JSON.stringify(requestPayload)
         }).then(data => {
@@ -1128,7 +1310,7 @@
 
         showTypingIndicator('forum');
 
-        fetchJSON('/thinking/api/stage3/write_code', {
+        fetchAIStream('/thinking/api/stage3/write_code', {
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
@@ -1136,6 +1318,7 @@
             })
         }).then(data => {
             hideTypingIndicator('forum');
+            applyForumUserGoal(data && data.user_goal);
             if (data.success) {
                 state.buggyCode = data.buggy_code;
                 appendForumEvent({
@@ -1212,7 +1395,7 @@
         }
 
         setLoading(true);
-        fetchJSON('/thinking/api/stage3/fix_code', {
+        fetchAIStream('/thinking/api/stage3/fix_code', {
             method: 'POST',
             body: JSON.stringify({
                 session_id: state.sessionId,
@@ -1220,6 +1403,7 @@
                 request_id: newAgentRequestId('fix')
             })
         }).then(data => {
+            applyForumUserGoal(data && data.user_goal);
             if (data.success) {
                 if (data.correct) {
                     state.feynmanPhase = 'completed';
@@ -1296,6 +1480,7 @@
         const teacherBtn = document.getElementById('forum-target-teacher');
         const studentBtn = document.getElementById('forum-target-student');
         const clearReplyBtn = document.getElementById('forum-reply-clear');
+        const autoBtn = document.getElementById('forum-target-auto');
         const input = document.getElementById('forum-input');
 
         if (teacherBtn && !teacherBtn.dataset.bound) {
@@ -1305,6 +1490,10 @@
         if (studentBtn && !studentBtn.dataset.bound) {
             studentBtn.dataset.bound = 'true';
             studentBtn.addEventListener('click', () => setForumTarget('student_agent'));
+        }
+        if (autoBtn && !autoBtn.dataset.bound) {
+            autoBtn.dataset.bound = 'true';
+            autoBtn.addEventListener('click', () => setForumTarget('auto'));
         }
         if (clearReplyBtn && !clearReplyBtn.dataset.bound) {
             clearReplyBtn.dataset.bound = 'true';
@@ -1344,7 +1533,7 @@
                 localHistory,
                 localRequestId
             );
-            applyRestoredForumState(data.forum_state || null);
+            applyRestoredForumState(data.forum_state || null, data.user_goal || null);
             state.buggyCodeInfo = data.buggy_code_info || state.buggyCodeInfo;
             renderForumFeed();
             restoreForumReplyContext();
@@ -1518,8 +1707,18 @@
     function applyForumTurnPayload(rawPayload, context) {
         const payload = normalizeForumTurnPayload(rawPayload);
         if (!payload || !payload.primary) return;
+        if (payload.forum_state && typeof payload.forum_state === 'object') {
+            state.forumCoverageSummary = sanitizeCoverageSummary(payload.forum_state.coverage_summary);
+        }
+        applyForumUserGoal(payload.user_goal);
 
-        const parentRequestId = context.userEvent.parent_request_id || context.requestId;
+        const userEvent = context.userEvent || null;
+        const replyToEventId = userEvent
+            ? userEvent.event_id
+            : (context.replyToEventId || getPersistedForumReplyEventId());
+        const parentRequestId = userEvent
+            ? (userEvent.parent_request_id || context.requestId)
+            : null;
         const primaryEvent = appendForumEvent({
             event_id: `local-primary-${context.requestId}`,
             event_type: 'agent_message',
@@ -1530,7 +1729,7 @@
             visibility: 'public',
             content: safeForumText(payload.primary, forumFallbackText(payload.primary)),
             request_id: context.requestId,
-            reply_to_event_id: context.userEvent.event_id,
+            reply_to_event_id: replyToEventId,
             parent_request_id: parentRequestId,
         });
 
@@ -1539,32 +1738,18 @@
             setForumTarget('student_agent');
         }
 
-        const interventions = Array.isArray(payload.interventions) ? payload.interventions : [];
-        interventions.forEach((item, index) => {
-            const requestId = `${context.requestId}:intervention:${index}`;
-            const interventionEvent = appendForumEvent({
-                event_id: `local-intervention-${requestId}`,
-                event_type: 'agent_message',
-                role: item.agent || 'student_agent',
-                source_role: item.agent || 'student_agent',
-                target_role: 'user',
-                message_kind: forumMessageKindFromPayload(item),
-                visibility: 'public',
-                content: safeForumText(item, forumFallbackText(item)),
-                request_id: requestId,
-                reply_to_event_id: primaryEvent ? primaryEvent.event_id : context.userEvent.event_id,
-                parent_request_id: context.requestId,
-            });
-            handleForumAdvancement(item);
-            if (interventionEvent && interventionEvent.message_kind === 'student_probe') {
-                setForumTarget('student_agent');
-            }
-        });
     }
 
     function handleForumAdvancement(payload) {
         if (!payload) return;
-        const shouldShowCodeReview = payload.ui_action === 'show_code_review' || payload.ready_for_code === true;
+        const goalReadyForCode = Boolean(
+            payload.user_goal &&
+            typeof payload.user_goal === 'object' &&
+            payload.user_goal.status === 'ready_for_code'
+        );
+        const shouldShowCodeReview = payload.ui_action === 'show_code_review'
+            || payload.ready_for_code === true
+            || goalReadyForCode;
         if (typeof payload.buggy_code === 'string' && payload.buggy_code.trim()) {
             state.feynmanPhase = 'code_review';
             state.buggyCode = payload.buggy_code;
@@ -1624,11 +1809,13 @@
     }
 
     function normalizeForumTargetRole(role) {
-        return role === 'student_agent' ? 'student_agent' : 'teacher_agent';
+        if (role === 'student_agent') return 'student_agent';
+        if (role === 'auto') return 'auto';
+        return 'teacher_agent';
     }
 
     function normalizePublicRole(role) {
-        if (role === 'teacher_agent' || role === 'student_agent' || role === 'user' || role === 'system') {
+        if (role === 'teacher_agent' || role === 'student_agent' || role === 'auto' || role === 'user' || role === 'system') {
             return role;
         }
         if (role === 'student') {
@@ -1765,7 +1952,137 @@
                 ? rawSummary.unresolved_concepts.map(item => safeString(item)).filter(Boolean)
                 : [],
             concept_coverage: conceptCoverage,
+            student_probe_intent: sanitizeProbeTarget(rawSummary.student_probe_intent),
         };
+    }
+
+    function sanitizeProbeTarget(rawTarget) {
+        if (!rawTarget || typeof rawTarget !== 'object') return null;
+        const concept = safeString(rawTarget.concept);
+        const dimension = safeString(rawTarget.dimension);
+        return concept && dimension ? { concept, dimension } : null;
+    }
+
+    function sanitizeUserGoal(rawGoal, fallbackSummary = defaultCoverageSummary()) {
+        const fallback = defaultUserGoal(fallbackSummary);
+        if (!rawGoal || typeof rawGoal !== 'object') return fallback;
+        const rawSteps = Array.isArray(rawGoal.steps) ? rawGoal.steps : [];
+        const steps = rawSteps
+            .map(item => {
+                if (!item || typeof item !== 'object') return null;
+                const id = safeString(item.id);
+                const label = safeString(item.label);
+                const status = ['done', 'active', 'todo'].includes(item.status)
+                    ? item.status
+                    : 'todo';
+                return id && label ? { id, label, status } : null;
+            })
+            .filter(Boolean);
+        const numeric = (value, fallbackValue, minimum, maximum) => {
+            const number = Number(value);
+            return Number.isFinite(number)
+                ? Math.max(minimum, Math.min(maximum, number))
+                : fallbackValue;
+        };
+        return {
+            ...fallback,
+            id: safeString(rawGoal.id) || fallback.id,
+            title: safeString(rawGoal.title) || fallback.title,
+            description: safeString(rawGoal.description) || fallback.description,
+            status: ['in_progress', 'ready_for_code', 'complete'].includes(rawGoal.status)
+                ? rawGoal.status
+                : fallback.status,
+            progress_percent: Math.round(numeric(rawGoal.progress_percent, fallback.progress_percent, 0, 100)),
+            coverage_score: numeric(rawGoal.coverage_score, fallback.coverage_score, 0, 1),
+            coverage_threshold: numeric(rawGoal.coverage_threshold, fallback.coverage_threshold, 0, 1),
+            covered_concepts: Math.round(numeric(rawGoal.covered_concepts, fallback.covered_concepts, 0, 999)),
+            total_concepts: Math.round(numeric(rawGoal.total_concepts, fallback.total_concepts, 0, 999)),
+            current_milestone: safeString(rawGoal.current_milestone) || fallback.current_milestone,
+            next_action: safeString(rawGoal.next_action) || fallback.next_action,
+            steps: steps.length ? steps : fallback.steps,
+        };
+    }
+
+    function applyForumUserGoal(rawGoal) {
+        if (rawGoal && typeof rawGoal === 'object') {
+            state.forumUserGoal = sanitizeUserGoal(rawGoal, state.forumCoverageSummary || defaultCoverageSummary());
+        } else if (!state.forumUserGoal) {
+            state.forumUserGoal = defaultUserGoal(state.forumCoverageSummary || defaultCoverageSummary());
+        }
+        renderForumUserGoal();
+    }
+
+    function renderForumUserGoal() {
+        const card = document.getElementById('forum-goal-card');
+        if (!card) return;
+        const goal = state.forumUserGoal || defaultUserGoal(state.forumCoverageSummary || defaultCoverageSummary());
+        const title = document.getElementById('forum-goal-title');
+        const description = document.getElementById('forum-goal-description');
+        const status = document.getElementById('forum-goal-status');
+        const progressBar = document.getElementById('forum-goal-progress-bar');
+        const progressTrack = card.querySelector('.forum-goal-progress-track');
+        const progressLabel = document.getElementById('forum-goal-progress-label');
+        const coverageLabel = document.getElementById('forum-goal-coverage-label');
+        const nextAction = document.getElementById('forum-goal-next');
+        const steps = document.getElementById('forum-goal-steps');
+        const progress = Math.max(0, Math.min(100, Number(goal.progress_percent) || 0));
+        const statusLabels = {
+            in_progress: '学习中',
+            ready_for_code: '可以修复代码',
+            complete: '已完成',
+        };
+
+        if (title) title.textContent = goal.title;
+        if (description) description.textContent = goal.description;
+        if (status) {
+            status.className = `forum-goal-status is-${goal.status}`;
+            status.textContent = statusLabels[goal.status] || '学习中';
+        }
+        if (progressBar) progressBar.style.width = `${progress}%`;
+        if (progressTrack) progressTrack.setAttribute('aria-valuenow', String(progress));
+        if (progressLabel) progressLabel.textContent = `${progress}%`;
+        if (coverageLabel) {
+            coverageLabel.textContent = goal.total_concepts > 0
+                ? `${goal.covered_concepts}/${goal.total_concepts} 个关键点已覆盖`
+                : '等待关键点检查';
+        }
+        if (nextAction) nextAction.textContent = goal.next_action;
+        if (steps) {
+            steps.innerHTML = '';
+            goal.steps.forEach(item => {
+                const step = document.createElement('li');
+                step.className = `forum-goal-step is-${item.status}`;
+                step.textContent = item.label;
+                steps.appendChild(step);
+            });
+        }
+    }
+
+    function bindForumStickyHead() {
+        const feed = document.getElementById('forum-feed');
+        const stickyHead = document.getElementById('forum-sticky-head');
+        if (!feed || !stickyHead || stickyHead.dataset.scrollBound) return;
+
+        stickyHead.dataset.scrollBound = 'true';
+        const panelBody = stickyHead.closest('.panel-body');
+        const scrollTargets = [feed, panelBody].filter(
+            (target, index, targets) => target && targets.indexOf(target) === index
+        );
+        let frameId = null;
+        const updateStickyState = () => {
+            frameId = null;
+            const isScrolled = scrollTargets.some(target => target.scrollTop > 4);
+            stickyHead.classList.toggle('is-scrolled', isScrolled);
+        };
+
+        scrollTargets.forEach(target => {
+            target.addEventListener('scroll', () => {
+                if (frameId === null) {
+                    frameId = requestAnimationFrame(updateStickyState);
+                }
+            }, { passive: true });
+        });
+        updateStickyState();
     }
 
     function sanitizeConceptCoverageItem(rawItem) {
@@ -1789,14 +2106,21 @@
         };
     }
 
-    function applyRestoredForumState(rawState) {
+    function applyRestoredForumState(rawState, rawGoal = null) {
         const defaultState = {
-            target_role: 'teacher_agent',
+            target_role: 'auto',
             reply_to_event_id: null,
             coverage_summary: defaultCoverageSummary(),
         };
         const source = rawState && typeof rawState === 'object' ? rawState : defaultState;
         state.forumCoverageSummary = sanitizeCoverageSummary(source.coverage_summary);
+        const restoredGoal = rawGoal || source.user_goal;
+        if (restoredGoal && typeof restoredGoal === 'object') {
+            applyForumUserGoal(restoredGoal);
+        } else {
+            state.forumUserGoal = defaultUserGoal(state.forumCoverageSummary);
+            renderForumUserGoal();
+        }
         const restoredSelection = chooseRestoredForumComposerState(source);
         state.forumTargetRole = restoredSelection.target_role;
         state.forumReplyEventId = restoredSelection.reply_to_event_id;
@@ -1813,7 +2137,7 @@
                 reply_to_event_id: serverReplyEventId,
             };
         }
-        if (serverTargetRole === 'student_agent') {
+        if (serverTargetRole === 'student_agent' || serverTargetRole === 'auto') {
             return {
                 target_role: serverTargetRole,
                 reply_to_event_id: null,
@@ -1871,6 +2195,9 @@
         if (role === 'student_agent') {
             return { label: 'Student Agent', icon: '🧑‍🎓' };
         }
+        if (role === 'auto') {
+            return { label: '自动安排', icon: '🧭' };
+        }
         if (role === 'system') {
             return { label: 'System', icon: '🛠️' };
         }
@@ -1925,14 +2252,21 @@
     function updateForumTargetControls() {
         const teacherBtn = document.getElementById('forum-target-teacher');
         const studentBtn = document.getElementById('forum-target-student');
-        const isTeacherSelected = state.forumTargetRole !== 'student_agent';
+        const autoBtn = document.getElementById('forum-target-auto');
         if (teacherBtn) {
-            teacherBtn.classList.toggle('is-selected', isTeacherSelected);
-            teacherBtn.setAttribute('aria-pressed', String(isTeacherSelected));
+            const selected = state.forumTargetRole === 'teacher_agent';
+            teacherBtn.classList.toggle('is-selected', selected);
+            teacherBtn.setAttribute('aria-pressed', String(selected));
         }
         if (studentBtn) {
-            studentBtn.classList.toggle('is-selected', !isTeacherSelected);
-            studentBtn.setAttribute('aria-pressed', String(!isTeacherSelected));
+            const selected = state.forumTargetRole === 'student_agent';
+            studentBtn.classList.toggle('is-selected', selected);
+            studentBtn.setAttribute('aria-pressed', String(selected));
+        }
+        if (autoBtn) {
+            const selected = state.forumTargetRole === 'auto';
+            autoBtn.classList.toggle('is-selected', selected);
+            autoBtn.setAttribute('aria-pressed', String(selected));
         }
     }
 
@@ -2452,6 +2786,31 @@
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return res.json();
         });
+        renderForumProbeAction();
+    }
+
+    function fetchAIStream(url, options = {}, handlers = {}) {
+        if (typeof window.consumeSSE !== 'function') {
+            return fetchJSON(url, options);
+        }
+        let streamError = null;
+        const streamOptions = {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...(options.headers || {})
+            }
+        };
+        return window.consumeSSE(url, streamOptions, {
+            ...handlers,
+            onError: event => {
+                streamError = new Error(event.message || event.error || '流式请求失败');
+                if (handlers.onError) handlers.onError(event);
+            }
+        }).then(data => {
+            if (streamError) throw streamError;
+            return data || {};
+        });
     }
 
     function renderMarkdown(str) {
@@ -2869,12 +3228,13 @@
                     }
                     btnEl.disabled = true;
 
-                    fetchJSON('/thinking/api/stt/optimize', {
+                    fetchAIStream('/thinking/api/stt/optimize', {
                         method: 'POST',
                         body: JSON.stringify({ text: spokenText })
                     }).then(data => {
-                        if (data.success && data.optimized_text) {
-                            inputEl.value = baseValue + data.optimized_text;
+                        const optimizedText = data.optimized_text || data.content || '';
+                        if (data.success !== false && optimizedText) {
+                            inputEl.value = baseValue + optimizedText;
                             inputEl.dispatchEvent(new Event('input', { bubbles: true }));
                         }
                     }).catch(err => {

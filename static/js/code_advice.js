@@ -124,26 +124,32 @@ function getCodeAdvice() {
     
     console.log(`正在请求代码建议，代码长度: ${code.length}`);
     
-    // 发送API请求
-    fetch('/api/code_advice', {
+    // 发送API请求：报告也通过统一 SSE 增量展示。
+    let streamedAdvice = '';
+    let streamError = null;
+    window.consumeSSE('/api/code_advice', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'text/event-stream'
         },
         body: JSON.stringify(requestData)
-    })
-    .then(response => {
-        // 检查HTTP状态
-        if (!response.ok) {
-            throw new Error(`服务器响应错误: ${response.status} ${response.statusText}`);
+    }, {
+        onDelta: event => {
+            streamedAdvice += event.content || event.token || '';
+            if (streamedAdvice) displayAdvice(streamedAdvice);
+        },
+        onError: event => {
+            streamError = new Error(event.message || event.error || '获取建议失败');
         }
-        return response.json();
     })
     .then(data => {
-        if (data.success) {
+        if (streamError) throw streamError;
+        const advice = data.advice || (data.data && data.data.advice) || data.content || streamedAdvice;
+        if (data.success !== false && advice) {
             // 显示建议内容
-            displayAdvice(data.data.advice);
+            displayAdvice(advice);
         } else {
             // 显示错误信息
             showAdviceError(data.message || '获取建议失败，请稍后重试');
@@ -404,4 +410,4 @@ function showToast(message, type = 'info') {
             }, 500);
         }, 5000);
     }
-} 
+}

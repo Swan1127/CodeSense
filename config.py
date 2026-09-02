@@ -2,6 +2,29 @@ import os
 import secrets
 
 
+def _env_bool(name, default=False):
+    """Read a boolean environment variable without raising on bad input."""
+
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+
+def _env_int(name, default, minimum=None, maximum=None):
+    """Read a bounded integer environment variable."""
+
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
 class Config(object):
     """
     基础配置类
@@ -29,6 +52,30 @@ class Config(object):
     
     # 数据库配置
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_RECORD_QUERIES = False
+
+    # 数据库连接池。实际的 SQLAlchemy engine options 会在 app factory 中
+    # 根据 SQLite/MySQL 自动组装，避免把连接数乘到不可控。
+    DB_POOL_SIZE = _env_int('DB_POOL_SIZE', 3, minimum=1, maximum=32)
+    DB_MAX_OVERFLOW = _env_int('DB_MAX_OVERFLOW', 2, minimum=0, maximum=32)
+    DB_POOL_TIMEOUT = _env_int('DB_POOL_TIMEOUT', 10, minimum=1, maximum=120)
+    DB_POOL_RECYCLE = _env_int('DB_POOL_RECYCLE', 1800, minimum=60, maximum=86400)
+    DB_AUTO_INIT = _env_bool('AUTO_INIT_DB', True)
+    DB_ENSURE_INDEXES = _env_bool('DB_ENSURE_INDEXES', True)
+
+    # 进程内后台任务适合单机小规模部署。多 worker 生产环境建议改用
+    # 外部队列，并关闭每个 Web worker 的预扫描线程。
+    ASYNC_TASKS_ENABLED = _env_bool('ASYNC_TASKS_ENABLED', True)
+    ASYNC_WORKER_COUNT = _env_int('ASYNC_WORKER_COUNT', 1, minimum=0, maximum=8)
+    ASYNC_MAX_QUEUE_SIZE = _env_int('ASYNC_MAX_QUEUE_SIZE', 1000, minimum=10, maximum=10000)
+    PRESET_SCAN_ENABLED = _env_bool('PRESET_SCAN_ENABLED', True)
+    PRESET_SCAN_BATCH_SIZE = _env_int('PRESET_SCAN_BATCH_SIZE', 20, minimum=1, maximum=200)
+
+    # 请求与静态文件运行参数
+    ACCESS_LOG_ENABLED = _env_bool('ACCESS_LOG_ENABLED', True)
+    SLOW_REQUEST_MS = _env_int('SLOW_REQUEST_MS', 800, minimum=50, maximum=60000)
+    STATIC_CACHE_SECONDS = _env_int('STATIC_CACHE_SECONDS', 3600, minimum=0, maximum=31536000)
+    ENABLE_RESPONSE_COMPRESSION = _env_bool('ENABLE_RESPONSE_COMPRESSION', False)
     
     # AI API配置 - 从环境变量读取
     ZHIPU_API_KEY = os.environ.get('ZHIPU_API_KEY', '')
@@ -50,6 +97,9 @@ class Config(object):
 class DevelopmentConfig(Config):
     """开发环境配置"""
     DEBUG = True
+    STATIC_CACHE_SECONDS = _env_int('STATIC_CACHE_SECONDS', 0, minimum=0, maximum=31536000)
+    DB_AUTO_INIT = _env_bool('AUTO_INIT_DB', True)
+    DB_ENSURE_INDEXES = _env_bool('DB_ENSURE_INDEXES', True)
     
     # 开发环境数据库配置
     # 从环境变量读取，如果没有则使用本地开发默认值
@@ -70,6 +120,8 @@ class DevelopmentConfig(Config):
 class TestingConfig(Config):
     """测试环境配置"""
     TESTING = True
+    DB_AUTO_INIT = True
+    DB_ENSURE_INDEXES = True
     
     # 测试环境使用独立的SQLite数据库
     SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL') or \
@@ -86,6 +138,13 @@ class TestingConfig(Config):
 class ProductionConfig(Config):
     """生产环境配置"""
     DEBUG = False
+    # 生产进程不在每个 worker 启动时执行 create_all/ALTER TABLE；请先运行
+    # database_maintenance.py 完成一次性建表和索引维护。
+    DB_AUTO_INIT = _env_bool('AUTO_INIT_DB', False)
+    DB_ENSURE_INDEXES = _env_bool('DB_ENSURE_INDEXES', False)
+    ACCESS_LOG_ENABLED = _env_bool('ACCESS_LOG_ENABLED', False)
+    PRESET_SCAN_ENABLED = _env_bool('PRESET_SCAN_ENABLED', False)
+    ENABLE_RESPONSE_COMPRESSION = _env_bool('ENABLE_RESPONSE_COMPRESSION', True)
     
     # 生产环境必须从环境变量获取数据库配置
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')

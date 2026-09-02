@@ -146,10 +146,12 @@ def test_student_view_only_includes_student_target_messages_and_student_agent_re
     view = store.view_for(store.load(12), AgentRole.STUDENT_AGENT)
 
     assert [message["content"] for message in view.messages] == [
+        "老师，这个条件为什么错了？",
+        "因为这样会多访问一次数组。",
         "我理解成 i < n 才能保证索引不越界。",
         "再说说为什么最后一个合法索引不是 n。",
     ]
-    assert "因为这样会多访问一次数组。" not in str(view.to_prompt_dict())
+    assert "因为这样会多访问一次数组。" in str(view.to_prompt_dict())
 
 
 def test_forum_events_infer_legacy_target_from_panel_metadata():
@@ -204,8 +206,13 @@ def test_teacher_answer_does_not_become_student_agent_evidence():
 
     view = store.view_for(store.load(12), AgentRole.STUDENT_AGENT)
 
-    assert [message["content"] for message in view.messages] == ["我觉得终止条件应该更严格。"]
-    assert "标准答案是把 <= 改成 <。" not in str(view.to_prompt_dict())
+    assert [message["content"] for message in view.messages] == [
+        "我觉得终止条件应该更严格。",
+        "标准答案是把 <= 改成 <。",
+    ]
+    # Public forum memory is shared, but it is not credited as the learner's
+    # evidence by the server-side coverage projection.
+    assert "标准答案是把 <= 改成 <。" in str(view.to_prompt_dict())
     assert view.state.learning_evidence == [{"concept": "循环边界", "evidence": "来自学生自己的解释"}]
     assert Stage3MessageKind.STUDENT_PROBE.value not in [message["content"] for message in view.messages]
 

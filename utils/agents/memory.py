@@ -32,6 +32,7 @@ _COMPLETED_RESULT_EVENTS = frozenset({
 _REPLAYABLE_STATE_FIELDS = frozenset({
     "phase", "learning_evidence", "concept_coverage", "coverage_score",
     "unresolved_concepts", "ready_for_code", "pending_probe",
+    "student_probe_intent",
     "code_review_status", "status",
 })
 _STUDENT_SAFE_ARTIFACT_FIELDS = frozenset({"public_hint"})
@@ -414,13 +415,29 @@ def _message_visible_to_role(record: EventRecord, viewer_role: AgentRole) -> boo
     if record.event_type in {"agent_user_message", "chat"}:
         if target_role is None:
             return True
-        return target_role == viewer_role.value
+        if "target_role" not in record.metadata:
+            # Legacy panel-scoped records did not carry forum routing
+            # metadata.  Keep those historical messages scoped to their
+            # panel; new forum turns always write an explicit target and are
+            # shared below.
+            return target_role == viewer_role.value
+        # User messages are the canonical shared conversation memory.  The
+        # target_role controls which agent is invited to act, not which agent
+        # is allowed to remember what the learner just said.
+        return target_role in {role.value for role in AgentRole}
     if record.event_type == "agent_message":
         source_role = _source_role(record)
         if source_role == viewer_role.value:
             return True
         if target_role is None:
             return _agent_role(record.role) == viewer_role
+        if (
+            target_role == Stage3Target.USER.value
+            and "target_role" in record.metadata
+            and _visibility(record) == "public"
+        ):
+            # Every public reply is part of both agents' shared forum memory.
+            return True
         return target_role == viewer_role.value
     return False
 

@@ -3,11 +3,15 @@
 """
 import json  # 添加json导入
 import secrets
+import threading
+import time
 from datetime import datetime as dt
 from flask_sqlalchemy import SQLAlchemy
 from flask_sqlalchemy.session import Session as FlaskSQLAlchemySession
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin  # 添加UserMixin导入
+from sqlalchemy import Index, inspect
+from sqlalchemy.exc import SQLAlchemyError
 
 # 班级默认配置
 DEFAULT_GRADE = '2024'
@@ -24,6 +28,20 @@ class CodeSenseSession(FlaskSQLAlchemySession):
 
 
 db = SQLAlchemy(session_options={'class_': CodeSenseSession})
+
+
+def _database_cache_scope():
+    """Return a stable cache namespace for the current SQLAlchemy bind."""
+
+    try:
+        return str(db.session.get_bind().url)
+    except Exception:
+        return 'default'
+
+
+_CLASS_AVERAGE_CACHE = {}
+_CLASS_AVERAGE_CACHE_LOCK = threading.RLock()
+_CLASS_AVERAGE_CACHE_TTL = 15
 
 
 class Class(db.Model):
@@ -78,9 +96,23 @@ class Class(db.Model):
     
     def get_statistics(self):
         """获取班级统计信息"""
-        students = self.students.filter_by(usertype='学生').all()
-        
-        if not students:
+        # 用一次聚合查询替代“先取出所有学生再在 Python 中求和”。首页、
+        # 班级列表和教师仪表盘都会调用这里，学生规模增长时差异很明显。
+        student_stats = db.session.query(
+            db.func.count(User.student_id),
+            db.func.coalesce(db.func.sum(User.submit_count), 0),
+            db.func.coalesce(db.func.avg(User.user_ascore), 0),
+            db.func.coalesce(
+                db.func.sum(db.case((User.submit_count > 0, 1), else_=0)),
+                0,
+            ),
+        ).filter(
+            User.class_name == self.name,
+            User.usertype == '学生',
+        ).one()
+
+        student_count, total_submissions, avg_score, active_students = student_stats
+        if not student_count:
             return {
                 'student_count': 0,
                 'avg_score': 0.0,
@@ -89,21 +121,16 @@ class Class(db.Model):
                 'assignments_completed': 0
             }
         
-        # 计算统计数据
-        total_submissions = sum(s.submit_count for s in students)
-        avg_score = sum(s.user_ascore for s in students) / len(students) if students else 0.0
-        active_students = len([s for s in students if s.submit_count > 0])
-        
         # 计算完成作业数 - 使用当前模块避免循环导入
         assignments_completed = db.session.query(Submission.assignment_id).join(User)\
                                 .filter(User.class_name == self.name)\
                                 .distinct().count()
         
         return {
-            'student_count': len(students),
+            'student_count': int(student_count),
             'avg_score': round(avg_score, 2),
-            'total_submissions': total_submissions,
-            'active_students': active_students,
+            'total_submissions': int(total_submissions or 0),
+            'active_students': int(active_students or 0),
             'assignments_completed': assignments_completed
         }
     
@@ -122,15 +149,26 @@ class Class(db.Model):
         # 分页
         pagination = assignments_query.paginate(page=page, per_page=per_page, error_out=False)
         
+        assignment_ids = [assignment.id for assignment in pagination.items]
+        completed_by_assignment = {}
+        if assignment_ids:
+            rows = db.session.query(
+                Submission.assignment_id,
+                db.func.count(Submission.id),
+            ).join(User).filter(
+                User.class_name == self.name,
+                User.usertype == '学生',
+                Submission.assignment_id.in_(assignment_ids),
+            ).group_by(Submission.assignment_id).all()
+            completed_by_assignment = {assignment_id: int(count) for assignment_id, count in rows}
+
+        total = db.session.query(User.student_id).filter(
+            User.class_name == self.name,
+            User.usertype == '学生',
+        ).count()
         progress = []
         for assignment in pagination.items:
-            # 计算该作业的班级完成情况
-            completed = db.session.query(Submission).join(User)\
-                       .filter(User.class_name == self.name,
-                              Submission.assignment_id == assignment.id)\
-                       .count()
-            
-            total = self.students.filter_by(usertype='学生').count()
+            completed = completed_by_assignment.get(assignment.id, 0)
             progress.append({
                 'assignment': assignment,
                 'completed': completed,
@@ -152,12 +190,13 @@ class Class(db.Model):
                      .filter(User.usertype == '学生')\
                      .distinct().all()
         
+        existing_classes = {cls.name: cls for cls in Class.query.all()}
         for (class_name,) in class_names:
             if not class_name:
                 continue
                 
             # 检查班级是否已存在
-            existing_class = Class.query.filter_by(name=class_name).first()
+            existing_class = existing_classes.get(class_name)
             if not existing_class:
                 # 创建新班级
                 new_class = Class(
@@ -166,25 +205,38 @@ class Class(db.Model):
                     major=DEFAULT_MAJOR
                 )
                 db.session.add(new_class)
+                existing_classes[class_name] = new_class
         
-        db.session.commit()
+        db.session.flush()
         
         # 清理旧的无用伪造班级数据（比如“教师”、“管理员”这些由于以前错误逻辑被同步进来的空班级）
-        classes = Class.query.all()
-        for cls in classes:
-            # 如果这是名为“教师”、“管理员”、“管理部门”的班级，且班级里确实没有真正的学生，就删掉它
-            real_students_count = cls.students.filter_by(usertype='学生').count()
-            if real_students_count == 0 or cls.name in ['教师', '管理员', '管理部门']:
+        student_rows = db.session.query(
+            User.class_name,
+            db.func.count(User.student_id),
+            db.func.coalesce(db.func.sum(User.submit_count), 0),
+            db.func.coalesce(db.func.avg(User.user_ascore), 0),
+        ).filter(User.usertype == '学生').group_by(User.class_name).all()
+        student_stats = {
+            class_name: {
+                'student_count': int(student_count),
+                'total_submissions': int(total_submissions or 0),
+                'avg_score': float(avg_score or 0),
+            }
+            for class_name, student_count, total_submissions, avg_score in student_rows
+            if class_name
+        }
+
+        for cls in list(existing_classes.values()):
+            stats = student_stats.get(cls.name)
+            if not stats or cls.name in ['教师', '管理员', '管理部门']:
                 db.session.delete(cls)
                 continue
-                
-            stats = cls.get_statistics()
             cls.student_count = stats['student_count']
             cls.avg_score = stats['avg_score']
             cls.total_submissions = stats['total_submissions']
         
         db.session.commit()
-        return len(Class.query.all())
+        return len(student_stats)
 
 
 class User(db.Model, UserMixin):  # 添加UserMixin继承
@@ -292,56 +344,93 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
         返回:
             一个包含班级平均能力评分的字典
         """
+        cache_key = (_database_cache_scope(), course_id)
+        now = time.monotonic()
+        with _CLASS_AVERAGE_CACHE_LOCK:
+            cached = _CLASS_AVERAGE_CACHE.get(cache_key)
+            if cached and cached[0] > now:
+                return cached[1]
+
         try:
-            from utils.ability_scorer import ability_scorer
-            
-            # 获取所有有学生的班级
-            classes = db.session.query(User.class_name).filter(
+            # 原实现是“班级 -> 学生 -> 提交记录”的多层 N+1 查询。
+            # 这里只取评分 JSON 和总分，按学生先聚合，再按班级聚合，
+            # 保持每个学生等权，同时把首页查询压缩为一次数据库往返。
+            dimension_names = (
+                'algorithm', 'style', 'functionality', 'efficiency', 'readability'
+            )
+            rows = db.session.query(
+                User.student_id,
+                User.class_name,
+                Submission.ai_feedback,
+                Submission.score,
+            ).join(
+                Submission, Submission.student_id == User.student_id
+            ).filter(
+                User.usertype == '学生',
                 User.class_name.isnot(None),
-                User.usertype == '学生'
-            ).distinct().all()
-            
-            result = {}
-            
-            for (class_name,) in classes:
-                if not class_name:
+            ).all()
+
+            per_student = {}
+            for student_id, class_name, ai_feedback, score in rows:
+                item = per_student.setdefault(
+                    student_id,
+                    {'class_name': class_name, 'scores': {name: [] for name in dimension_names},
+                     'fallback_scores': []},
+                )
+                if score is not None:
+                    item['fallback_scores'].append(float(score) * 20)
+                if not ai_feedback:
                     continue
-                
-                # 获取该班级的学生
-                students = User.query.filter_by(class_name=class_name, usertype='学生').all()
-                
-                if not students:
+                try:
+                    feedback = json.loads(ai_feedback)
+                except (json.JSONDecodeError, TypeError, ValueError):
                     continue
-                
-                # 计算班级各项能力的平均分
-                total_scores = {
-                    'algorithm': 0.0,
-                    'style': 0.0,
-                    'functionality': 0.0,
-                    'efficiency': 0.0,
-                    'readability': 0.0
-                }
-                
-                valid_count = 0
-                for student in students:
+                for name in dimension_names:
+                    value = feedback.get(f'{name}_score')
                     try:
-                        scores = student.get_ability_scores()
-                        if any(scores.values()):  # 如果有有效评分
-                            for key in total_scores:
-                                total_scores[key] += scores.get(key, 0)
-                            valid_count += 1
-                    except Exception:
+                        if value is not None:
+                            item['scores'][name].append(float(value) * 20)
+                    except (TypeError, ValueError):
                         continue
-                
-                if valid_count > 0:
-                    # 计算平均值
-                    avg_scores = {key: value / valid_count for key, value in total_scores.items()}
-                    result[class_name] = avg_scores
-            
+
+            class_totals = {}
+            for item in per_student.values():
+                class_name = item['class_name']
+                values = {}
+                for name in dimension_names:
+                    values[name] = (
+                        sum(item['scores'][name]) / len(item['scores'][name])
+                        if item['scores'][name] else 0.0
+                    )
+                if not any(values.values()) and item['fallback_scores']:
+                    fallback = sum(item['fallback_scores']) / len(item['fallback_scores'])
+                    values = {name: fallback for name in dimension_names}
+                if not any(values.values()):
+                    continue
+                bucket = class_totals.setdefault(
+                    class_name,
+                    {'totals': {name: 0.0 for name in dimension_names}, 'count': 0},
+                )
+                for name in dimension_names:
+                    bucket['totals'][name] += values[name]
+                bucket['count'] += 1
+
+            result = {
+                class_name: {
+                    name: bucket['totals'][name] / bucket['count']
+                    for name in dimension_names
+                }
+                for class_name, bucket in class_totals.items()
+                if bucket['count']
+            }
+            with _CLASS_AVERAGE_CACHE_LOCK:
+                _CLASS_AVERAGE_CACHE[cache_key] = (
+                    now + _CLASS_AVERAGE_CACHE_TTL,
+                    result,
+                )
             return result
-            
+
         except Exception as e:
-            # 如果出错，返回空字典
             import logging
             logging.error(f"获取班级平均能力评分时出错: {e}")
             return {}
@@ -405,17 +494,30 @@ class Assignment(db.Model):
         target_classes = self.get_target_class_list()
         if not target_classes:
             return []
-        
+
+        totals = db.session.query(
+            User.class_name,
+            db.func.count(User.student_id),
+        ).filter(
+            User.class_name.in_(target_classes),
+            User.usertype == '学生',
+        ).group_by(User.class_name).all()
+        total_by_class = {class_name: int(count) for class_name, count in totals}
+
+        completed = db.session.query(
+            User.class_name,
+            db.func.count(Submission.id),
+        ).join(Submission, Submission.student_id == User.student_id).filter(
+            User.class_name.in_(target_classes),
+            User.usertype == '学生',
+            Submission.assignment_id == self.id,
+        ).group_by(User.class_name).all()
+        completed_by_class = {class_name: int(count) for class_name, count in completed}
+
         progress = []
         for class_name in target_classes:
-            # 获取该班级的学生数
-            total_students = User.query.filter_by(class_name=class_name, usertype='学生').count()
-            
-            # 获取该班级完成该作业的学生数
-            completed_students = db.session.query(Submission).join(User)\
-                               .filter(User.class_name == class_name,
-                                      Submission.assignment_id == self.id)\
-                               .count()
+            total_students = total_by_class.get(class_name, 0)
+            completed_students = completed_by_class.get(class_name, 0)
             
             progress.append({
                 'class_name': class_name,
@@ -605,23 +707,54 @@ class SystemConfig(db.Model):
     description = db.Column(db.String(200))
     type = db.Column(db.String(20), default='string')
     updated_at = db.Column(db.DateTime, default=dt.now, onupdate=dt.now)
-    
+
+    _cache = {}
+    _cache_lock = threading.RLock()
+    _cache_ttl_seconds = 30
+
+    @staticmethod
+    def _convert_value(config, default=None):
+        if not config:
+            return default
+        if config.type == 'int':
+            return int(config.value) if config.value else 0
+        if config.type == 'float':
+            return float(config.value) if config.value else 0.0
+        if config.type == 'bool':
+            return config.value.lower() in ('true', '1', 'yes', 'y') if config.value else False
+        return config.value
+
+    @staticmethod
+    def _cache_key(key):
+        """Scope cache entries to the currently bound database.
+
+        Public demo runs dynamically swap the SQLAlchemy bind, and tests often
+        create several temporary databases in one process. A plain key cache
+        could otherwise leak a setting between those databases.
+        """
+
+        try:
+            bind = db.session.get_bind()
+            scope = str(bind.url)
+        except Exception:
+            scope = 'default'
+        return scope, key
+
     @staticmethod
     def get_value(key, default=None):
         """获取配置值"""
+        now = time.monotonic()
+        cache_key = SystemConfig._cache_key(key)
+        with SystemConfig._cache_lock:
+            cached = SystemConfig._cache.get(cache_key)
+            if cached and cached[0] > now:
+                return cached[1]
+
         config = SystemConfig.query.filter_by(key=key).first()
-        if not config:
-            return default
-        
-        # 根据类型转换值
-        if config.type == 'int':
-            return int(config.value) if config.value else 0
-        elif config.type == 'float':
-            return float(config.value) if config.value else 0.0
-        elif config.type == 'bool':
-            return config.value.lower() in ('true', '1', 'yes', 'y') if config.value else False
-        else:
-            return config.value
+        value = SystemConfig._convert_value(config, default)
+        with SystemConfig._cache_lock:
+            SystemConfig._cache[cache_key] = (now + SystemConfig._cache_ttl_seconds, value)
+        return value
     
     @staticmethod
     def set_value(key, value, description=None, value_type='string'):
@@ -646,7 +779,17 @@ class SystemConfig(db.Model):
             config.type = value_type
         
         db.session.commit()
+        cache_key = SystemConfig._cache_key(key)
+        with SystemConfig._cache_lock:
+            SystemConfig._cache.pop(cache_key, None)
         return config
+
+    @staticmethod
+    def clear_cache():
+        """清空进程内配置缓存，供测试或运维更新后调用。"""
+
+        with SystemConfig._cache_lock:
+            SystemConfig._cache.clear()
 
 
 class StudentQuestion(db.Model):
@@ -701,83 +844,58 @@ class CodeAdviceRequest(db.Model):
 def init_db(app):
     """初始化数据库"""
     with app.app_context():
+        if not app.config.get('DB_AUTO_INIT', True):
+            return
+
         db.create_all()  # 创建数据库表
 
-        # 自动迁移：添加新列（列已存在时静默忽略）
+        # 兼容历史数据库：先用 inspector 判断缺列，再执行 ALTER，避免每次
+        # 启动都发送一串必然失败的 ALTER TABLE 请求。
+        column_migrations = {
+            'assignments': {
+                'due_date': 'ALTER TABLE assignments ADD COLUMN due_date DATETIME NULL',
+            },
+            'users': {
+                'current_session_id': 'ALTER TABLE users ADD COLUMN current_session_id VARCHAR(100) NULL',
+                'email': 'ALTER TABLE users ADD COLUMN email VARCHAR(120) NULL',
+                'avatar_path': 'ALTER TABLE users ADD COLUMN avatar_path VARCHAR(255) NULL',
+                'password_changed_at': 'ALTER TABLE users ADD COLUMN password_changed_at DATETIME NULL',
+            },
+            'classes': {
+                'teacher_bind_code': 'ALTER TABLE classes ADD COLUMN teacher_bind_code VARCHAR(20) NULL',
+                'teacher_bind_code_updated_at': 'ALTER TABLE classes ADD COLUMN teacher_bind_code_updated_at DATETIME NULL',
+                'school': "ALTER TABLE classes ADD COLUMN school VARCHAR(100) DEFAULT '酷森思大学'",
+                'college': "ALTER TABLE classes ADD COLUMN college VARCHAR(100) DEFAULT '计算机学院'",
+            },
+        }
         try:
-            with db.engine.connect() as conn:
-                try:
-                    conn.execute(db.text('ALTER TABLE assignments ADD COLUMN due_date DATETIME NULL'))
-                    conn.commit()
-                    print('已添加 assignments.due_date 列')
-                except Exception:
-                    pass  # 列已存在
-
-                try:
-                    conn.execute(db.text('ALTER TABLE users ADD COLUMN current_session_id VARCHAR(100) NULL'))
-                    conn.commit()
-                    print('已添加 users.current_session_id 列')
-                except Exception:
-                    pass  # 列已存在
-
-                try:
-                    conn.execute(db.text('ALTER TABLE users ADD COLUMN email VARCHAR(120) NULL'))
-                    conn.commit()
-                    print('已添加 users.email 列')
-                except Exception:
-                    pass  # 列已存在
-
-                try:
-                    conn.execute(db.text('ALTER TABLE users ADD COLUMN avatar_path VARCHAR(255) NULL'))
-                    conn.commit()
-                    print('已添加 users.avatar_path 列')
-                except Exception:
-                    pass  # 列已存在
-
-                try:
-                    conn.execute(db.text('ALTER TABLE users ADD COLUMN password_changed_at DATETIME NULL'))
-                    conn.commit()
-                    print('已添加 users.password_changed_at 列')
-                except Exception:
-                    pass  # 列已存在
-
-                try:
-                    conn.execute(db.text('ALTER TABLE classes ADD COLUMN teacher_bind_code VARCHAR(20) NULL'))
-                    conn.commit()
-                    print('已添加 classes.teacher_bind_code 列')
-                except Exception:
-                    pass  # 列已存在
-
-                try:
-                    conn.execute(db.text('ALTER TABLE classes ADD COLUMN teacher_bind_code_updated_at DATETIME NULL'))
-                    conn.commit()
-                    print('已添加 classes.teacher_bind_code_updated_at 列')
-                except Exception:
-                    pass  # 列已存在
-
-                try:
-                    conn.execute(db.text('ALTER TABLE classes ADD COLUMN school VARCHAR(100) DEFAULT "酷森思大学"'))
-                    conn.commit()
-                    print('已添加 classes.school 列')
-                except Exception:
-                    pass
-
-                try:
-                    conn.execute(db.text('ALTER TABLE classes ADD COLUMN college VARCHAR(100) DEFAULT "计算机学院"'))
-                    conn.commit()
-                    print('已添加 classes.college 列')
-                except Exception:
-                    pass
+            with db.engine.begin() as conn:
+                inspector = inspect(conn)
+                for table_name, migrations in column_migrations.items():
+                    existing_columns = {
+                        column['name'] for column in inspector.get_columns(table_name)
+                    }
+                    for column_name, statement in migrations.items():
+                        if column_name in existing_columns:
+                            continue
+                        conn.execute(db.text(statement))
+                        print(f'已添加 {table_name}.{column_name} 列')
         except Exception as e:
-            print(f'自动迁移跳过: {e}')
+            # 生产部署使用显式 maintenance 命令；开发环境仍保留兼容性降级。
+            print(f'自动迁移跳过: {type(e).__name__}: {e}')
+
+        if app.config.get('DB_ENSURE_INDEXES', True):
+            ensure_performance_indexes(app)
 
         try:
-            for cls in Class.query.all():
+            missing_bind_codes = Class.query.filter(Class.teacher_bind_code.is_(None)).all()
+            for cls in missing_bind_codes:
                 cls.ensure_teacher_bind_code()
-            db.session.commit()
+            if missing_bind_codes:
+                db.session.commit()
         except Exception as e:
             db.session.rollback()
-            print(f'班级绑定码初始化跳过: {e}')
+            print(f'班级绑定码初始化跳过: {type(e).__name__}: {e}')
 
         # 初始化系统设置
         default_settings = {
@@ -823,17 +941,21 @@ def init_db(app):
             }
         }
         
-        # 检查并添加默认设置
+        # 一次查询取出全部配置，避免每个默认项单独 SELECT。
+        existing_settings = {
+            item.key: item
+            for item in SystemConfig.query.filter(
+                SystemConfig.key.in_(list(default_settings))
+            ).all()
+        }
         for key, setting in default_settings.items():
-            config = SystemConfig.query.filter_by(key=key).first()
-            if not config:
-                config = SystemConfig(
+            if key not in existing_settings:
+                db.session.add(SystemConfig(
                     key=key,
                     value=setting['value'],
                     description=setting['description'],
                     type=setting['type']
-                )
-                db.session.add(config)
+                ))
         
         try:
             db.session.commit()
@@ -1296,3 +1418,54 @@ class TeacherAISuggestion(db.Model):
             return json.loads(self.suggestion_json)
         except (json.JSONDecodeError, TypeError):
             return {}
+
+
+# 高频列表、统计和阶段三恢复查询使用的组合索引。它们集中声明在模型末尾，
+# 既会进入新库 metadata，也可以由 ensure_performance_indexes 补到历史库。
+PERFORMANCE_INDEXES = (
+    Index('ix_users_class_name_usertype', User.class_name, User.usertype),
+    Index('ix_users_class_id_usertype', User.class_id, User.usertype),
+    Index('ix_assignments_creator_created', Assignment.creator_id, Assignment.created_time),
+    Index('ix_submissions_student_submitted', Submission.student_id, Submission.submitted_at),
+    Index('ix_submissions_assignment_submitted', Submission.assignment_id, Submission.submitted_at),
+    Index('ix_test_cases_assignment_order', TestCase.assignment_id, TestCase.order_index),
+    Index('ix_system_logs_user_created', SystemLog.user_id, SystemLog.created_at),
+    Index('ix_system_logs_type_created', SystemLog.log_type, SystemLog.created_at),
+    Index('ix_ability_trends_status_updated', AbilityTrend.status, AbilityTrend.last_updated),
+    Index('ix_student_questions_student_assignment_time', StudentQuestion.student_id, StudentQuestion.assignment_id, StudentQuestion.asked_at),
+    Index('ix_code_advice_student_time', CodeAdviceRequest.student_id, CodeAdviceRequest.requested_at),
+    Index('ix_assignment_kp_assignment_name', AssignmentKnowledgePoint.assignment_id, AssignmentKnowledgePoint.knowledge_point),
+    Index('ix_invite_tokens_used_expiry', InviteToken.is_used, InviteToken.expires_at),
+    Index('ix_thinking_sessions_student_assignment', ThinkingSession.student_id, ThinkingSession.assignment_id),
+    Index('ix_thinking_sessions_assignment_status', ThinkingSession.assignment_id, ThinkingSession.status),
+    Index('ix_thinking_logs_session_stage_time', ThinkingStageLog.session_id, ThinkingStageLog.stage, ThinkingStageLog.created_at),
+    Index('ix_teacher_ai_suggestions_teacher', TeacherAISuggestion.teacher_id),
+)
+
+
+def ensure_performance_indexes(app=None):
+    """Create declared indexes that are missing from an existing database.
+
+    ``checkfirst`` makes the operation idempotent. Errors are logged and do not
+    prevent a development server from starting; production should run the
+    explicit maintenance command before bringing workers online.
+    """
+
+    created = 0
+    try:
+        engine = db.engine
+        for index in PERFORMANCE_INDEXES:
+            try:
+                index.create(bind=engine, checkfirst=True)
+                created += 1
+            except SQLAlchemyError as exc:
+                if app is not None:
+                    app.logger.warning(
+                        '索引维护跳过 %s: %s', index.name, type(exc).__name__
+                    )
+        if app is not None and created:
+            app.logger.info('性能索引检查完成，共处理 %d 个索引', created)
+    except Exception as exc:
+        if app is not None:
+            app.logger.warning('性能索引检查失败: %s', type(exc).__name__)
+    return created

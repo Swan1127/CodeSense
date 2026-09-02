@@ -84,6 +84,7 @@ test_results*.txt
 test_single_result.txt
 original_hash.txt
 .superpowers-server.log
+stage3-live-app.*.log
 .pytest_cache/
 *.bak
 *.tmp

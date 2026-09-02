@@ -16,9 +16,14 @@ def _slice(text: str, start: str, end: str) -> str:
 def test_stage3_template_exposes_forum_dom_contract():
     required_ids = (
         'id="stage3-forum"',
+        'id="forum-sticky-head"',
+        'id="forum-goal-card"',
+        'id="forum-goal-progress-bar"',
+        'id="forum-goal-steps"',
         'id="forum-feed"',
         'id="forum-target-teacher"',
         'id="forum-target-student"',
+        'id="forum-target-auto"',
         'id="forum-input"',
         'id="forum-send"',
         'id="forum-reply-context"',
@@ -29,12 +34,57 @@ def test_stage3_template_exposes_forum_dom_contract():
 
     assert 'class="forum-feed"' in ARENA_TEMPLATE
     assert 'class="forum-reply-context"' in ARENA_TEMPLATE
+    assert "position: sticky" in THINKING_CSS
+    assert "top: 0" in THINKING_CSS
+    assert "translate3d(0, -2px, 0)" in THINKING_CSS
+    assert "backdrop-filter: blur(10px)" in THINKING_CSS
 
 
-def test_stage3_target_controls_default_to_teacher_with_visible_and_aria_state():
+def test_stage3_target_controls_remain_in_the_sticky_header():
+    sticky_block = _slice(
+        ARENA_TEMPLATE,
+        '<div class="forum-sticky-head"',
+        '<div class="forum-feed"',
+    )
+
+    assert 'class="forum-toolbar"' in sticky_block
+    assert 'class="forum-goal-card"' not in sticky_block
+    assert ".forum-sticky-head" in THINKING_CSS
+    assert "bindForumStickyHead" in THINKING_JS
+    assert "const scrollTargets = [feed, panelBody].filter" in THINKING_JS
+    assert "requestAnimationFrame(updateStickyState)" in THINKING_JS
+    assert "classList.toggle('is-scrolled', isScrolled)" in THINKING_JS
+
+
+def test_stage3_uses_the_right_rail_for_dynamic_goal_and_moves_guide_below_forum():
+    goal_panel_block = _slice(
+        ARENA_TEMPLATE,
+        'id="stage3-goal-panel"',
+        'id="student-agent-panel"',
+    )
+    forum_block = _slice(
+        ARENA_TEMPLATE,
+        'id="stage3-forum"',
+        '<div class="forum-feed"',
+    )
+
+    assert 'id="forum-goal-card"' in goal_panel_block
+    assert 'id="forum-goal-card"' not in forum_block
+    assert 'stage3-guide-drawer' in ARENA_TEMPLATE
+    assert ARENA_TEMPLATE.index('id="student-agent-panel"') > ARENA_TEMPLATE.index('</div><!-- .arena-body -->')
+    assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 420px)" in THINKING_CSS
+    assert "#stage3-goal-panel" in THINKING_CSS
+    assert "#stage3-goal-panel .forum-goal-steps" in THINKING_CSS
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in THINKING_CSS
+    assert "stage3-guide-drawer" in THINKING_CSS
+    assert "goalPanel.classList.add('active')" in ARENA_TEMPLATE
+    assert "tabRightBtn.textContent = '学习任务'" in ARENA_TEMPLATE
+
+
+def test_stage3_target_controls_default_to_auto_with_visible_and_aria_state():
     teacher_button = _slice(
         ARENA_TEMPLATE,
-        '<button type="button" class="forum-target-btn is-selected" id="forum-target-teacher"',
+        '<button type="button" class="forum-target-btn" id="forum-target-teacher"',
         '</button>',
     )
     student_button = _slice(
@@ -42,11 +92,18 @@ def test_stage3_target_controls_default_to_teacher_with_visible_and_aria_state()
         '<button type="button" class="forum-target-btn" id="forum-target-student"',
         '</button>',
     )
+    auto_button = _slice(
+        ARENA_TEMPLATE,
+        '<button type="button" class="forum-target-btn is-selected" id="forum-target-auto"',
+        '</button>',
+    )
 
     assert 'data-target-role="teacher_agent"' in teacher_button
-    assert 'aria-pressed="true"' in teacher_button
+    assert 'aria-pressed="false"' in teacher_button
     assert 'data-target-role="student_agent"' in student_button
     assert 'aria-pressed="false"' in student_button
+    assert 'data-target-role="auto"' in auto_button
+    assert 'aria-pressed="true"' in auto_button
     assert ".forum-target-btn.is-selected" in THINKING_CSS
     assert '.forum-target-btn[aria-pressed="true"]' in THINKING_CSS
 
@@ -68,31 +125,43 @@ def test_send_forum_message_posts_only_the_public_routing_payload():
     assert "JSON.stringify(requestPayload)" in THINKING_JS
 
 
-def test_stage3_forum_renders_primary_and_interventions_with_reply_context_and_action():
+def test_stage3_forum_renders_one_primary_reply_with_reply_context_and_action():
     assert "payload.primary" in THINKING_JS
-    assert "payload.interventions" in THINKING_JS
+    assert "payload.interventions" not in THINKING_JS
     assert "forum-role" in THINKING_JS
     assert "forumRelationLabel" in THINKING_JS
     assert "forum-reply-action" in THINKING_JS
     assert "reply_to_event_id" in THINKING_JS
     assert "message_kind" in THINKING_JS
+    assert "payload.user_goal" in THINKING_JS
+    assert "renderForumUserGoal" in THINKING_JS
 
 
 def test_stage3_forum_keeps_model_failures_visible_instead_of_dropping_empty_replies():
     assert "function forumFallbackText(payload)" in THINKING_JS
     assert "safeForumText(payload.primary, forumFallbackText(payload.primary))" in THINKING_JS
-    assert "safeForumText(item, forumFallbackText(item))" in THINKING_JS
     assert "当前暂时无法生成回复，请稍后重试。" in THINKING_JS
 
 
 def test_student_probe_switches_the_selected_target_to_student_agent():
     assert "primaryEvent.message_kind === 'student_probe'" in THINKING_JS
-    assert "interventionEvent.message_kind === 'student_probe'" in THINKING_JS
-    assert THINKING_JS.count("setForumTarget('student_agent')") >= 2
+    assert THINKING_JS.count("setForumTarget('student_agent')") >= 1
+
+
+def test_forum_uses_one_current_turn_and_exposes_auto_arbitration():
+    assert "function requestStudentProbe()" not in THINKING_JS
+    assert "'/thinking/api/stage3/forum/student-probe'" not in THINKING_JS
+    assert "target_role: targetRole" in THINKING_JS
+    assert "id=\"forum-target-auto\"" in ARENA_TEMPLATE
+    assert "按当前内容决定谁先回应" in ARENA_TEMPLATE
+    assert "interventions.forEach" not in THINKING_JS
 
 
 def test_buggy_code_and_ui_action_open_the_existing_repair_area():
     assert "payload.ui_action === 'show_code_review'" in THINKING_JS
+    assert "payload.user_goal.status === 'ready_for_code'" in THINKING_JS
+    assert "state.forumUserGoal.status === 'ready_for_code'" in THINKING_JS
+    assert "triggerCodeWritingPhase();" in THINKING_JS
     assert "showCodeReviewPanel(payload.buggy_code)" in THINKING_JS
     assert "triggerCodeWritingPhase()" in THINKING_JS
     assert "id=\"code-review-section\"" in ARENA_TEMPLATE

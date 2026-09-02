@@ -279,21 +279,20 @@ class CodeAdvisor:
             else:
                 # 如果没有专门的指导方法，使用通用API但用指导性提示词
                 if hasattr(self.llm, 'api_type') and self.llm.api_type == "zhipu":
-                    try:
-                        from services.llm_client import SharedLLMClient
-                        import time
-                        SharedLLMClient.last_user_request_time = time.time()
-                    except Exception:
-                        pass
-                    response = self.llm.client.chat.completions.create(
-                        model=self.llm.model_name,
+                    from services.llm_client import SharedLLMClient
+
+                    guidance_text = SharedLLMClient().chat(
                         messages=[
                             {"role": "system", "content": "你是一位耐心的编程导师"},
-                            {"role": "user", "content": guidance_prompt}
+                            {"role": "user", "content": guidance_prompt},
                         ],
-                        temperature=0.7,  # 较高温度让回答更有创意和启发性
+                        temperature=0.7,
+                        max_tokens=1200,
+                        provider=self.llm.api_type,
+                        model=getattr(self.llm, "model_name", None),
                     )
-                    guidance_text = response.choices[0].message.content
+                    if not guidance_text:
+                        raise RuntimeError("AI服务暂时不可用")
                     
                     return {
                         'overall_feedback': guidance_text,
@@ -354,23 +353,22 @@ class CodeAdvisor:
             else:
                 # 使用通用API
                 if hasattr(self.llm, 'api_type') and self.llm.api_type == "zhipu":
-                    try:
-                        from services.llm_client import SharedLLMClient
-                        import time
-                        SharedLLMClient.last_user_request_time = time.time()
-                    except Exception:
-                        pass
-                    api_response = self.llm.client.chat.completions.create(
-                        model=self.llm.model_name,
+                    from services.llm_client import SharedLLMClient
+
+                    response_text = SharedLLMClient().chat(
                         messages=[
                             {"role": "system", "content": "你是一个代码分析专家"},
-                            {"role": "user", "content": analysis_prompt}
+                            {"role": "user", "content": analysis_prompt},
                         ],
                         temperature=0.3,
+                        max_tokens=1600,
+                        provider=self.llm.api_type,
+                        model=getattr(self.llm, "model_name", None),
                     )
-                    
+                    if not response_text:
+                        raise RuntimeError("AI服务暂时不可用")
+
                     # 尝试解析JSON响应
-                    response_text = api_response.choices[0].message.content
                     try:
                         response = json.loads(response_text)
                     except json.JSONDecodeError:
@@ -953,4 +951,4 @@ def generate_code_advice(code: str,
             'functionality_score': 0,
             'efficiency_score': 0,
             'suggestions': ['系统处理出错，请稍后再试']
-        } 
+        }

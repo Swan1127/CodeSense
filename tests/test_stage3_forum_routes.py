@@ -160,6 +160,39 @@ def test_stage3_forum_message_rejects_cross_session_reply_event(stage3_forum_con
     assert response.json["error_code"] == "REPLY_EVENT_NOT_FOUND"
 
 
+def test_forum_student_reply_is_not_blocked_by_legacy_fuzzy_repetition_guard(stage3_forum_context):
+    app, _, session_id, _ = stage3_forum_context
+    with app.app_context():
+        db.session.add_all([
+            ThinkingStageLog(
+                session_id=session_id,
+                stage=3,
+                event_type="agent_user_message",
+                role="student",
+                content="我已经说明了 N=0 和 N=1 的边界条件。",
+                metadata_json=json.dumps({"request_id": "student-old-1"}),
+            ),
+            ThinkingStageLog(
+                session_id=session_id,
+                stage=3,
+                event_type="agent_message",
+                role="student_agent",
+                content="那再说说循环。",
+                metadata_json=json.dumps({"request_id": "student-old-1"}),
+            ),
+        ])
+        db.session.commit()
+
+        guarded = thinking_routes._stage3_student_message_guard(
+            session_id,
+            "我已经说明了 N=0 和 N=1 的边界条件。",
+            "student-new-1",
+            reply_to_event_id="student-probe-1",
+        )
+
+    assert guarded is None
+
+
 def test_stage3_forum_message_forwards_routing_metadata_and_filters_private_fields(stage3_forum_context, monkeypatch):
     app, client, session_id, _ = stage3_forum_context
     with app.app_context():
@@ -238,14 +271,10 @@ def test_stage3_forum_message_forwards_routing_metadata_and_filters_private_fiel
     }
     assert response.json["primary"]["response"] == "老师回答"
     assert response.json["primary"]["message"] == "公开主回复"
-    assert response.json["interventions"] == [{
-        "success": True,
-        "response": "再解释一下为什么最后一个索引不是 n。",
-        "agent": "student_agent",
-        "ui_action": "continue_chat",
-        "ready_for_code": False,
-        "state": {},
-    }]
+    assert response.json["user_goal"]["id"] == "stage3-teach-and-repair"
+    assert response.json["user_goal"]["progress_percent"] == 0
+    assert response.json["forum_state"]["coverage_summary"]["ready_for_code"] is False
+    assert response.json["interventions"] == []
     dumped = json.dumps(response.json, ensure_ascii=False)
     assert "internal_signals" not in dumped
     assert "tool_call" not in dumped

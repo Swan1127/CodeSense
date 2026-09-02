@@ -6,6 +6,7 @@ results deliberately keep private artifacts out of ``model_content``.
 
 from __future__ import annotations
 
+import difflib
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, FrozenSet, List, Mapping, Optional
@@ -24,6 +25,38 @@ MAX_PROBE_QUESTION_CHARS = 500
 _SAFE_CODE_REVIEW_MESSAGE = "我写了一版代码，请帮我检查。"
 _SAFE_PASSED_FEEDBACK = "修复已通过检查。"
 _SAFE_FAILED_FEEDBACK = "请继续检查代码逻辑。"
+_ASSESSMENT_ALIASES = {
+    "covered": "covered",
+    "correct": "covered",
+    "complete": "covered",
+    "understood": "covered",
+    "mastered": "covered",
+    "正确": "covered",
+    "掌握": "covered",
+    "已掌握": "covered",
+    "partial": "partial",
+    "partially": "partial",
+    "partially_correct": "partial",
+    "incomplete": "partial",
+    "部分": "partial",
+    "不完整": "partial",
+    "off_topic": "off_topic",
+    "off-topic": "off_topic",
+    "irrelevant": "off_topic",
+    "跑题": "off_topic",
+    "无关": "off_topic",
+}
+_PROBE_CONCEPT_SEMANTICS = (
+    ("input", ("输入", "读入", "input", "read")),
+    ("boundary", ("边界", "特殊", "极端", "异常", "n=0", "n=1", "n0", "n1")),
+    ("loop", ("循环", "迭代", "相邻", "前两项", "变量", "更新", "下一项", "loop")),
+    ("output", ("输出", "打印", "顺序", "output", "print")),
+)
+_PROBE_DIMENSION_SEMANTICS = {
+    "core": ("core", "核心", "基础", "基本", "原理"),
+    "edge_case": ("edge_case", "edge case", "边界", "特殊", "异常", "极端"),
+    "application": ("application", "应用", "场景", "实例", "实践"),
+}
 _SELF_CONFIRMING_PROBE_PATTERNS = (
     re.compile(r"我也(?:懂了|明白了|会了)"),
     re.compile(r"我知道答案"),
@@ -54,6 +87,8 @@ class ToolContext:
     target_role: str = ""
     coverage_config: CoverageConfig = field(default_factory=CoverageConfig)
     trigger: Optional[Dict[str, Any]] = None
+    recent_public_questions: List[str] = field(default_factory=list)
+    learner_name: str = "学习者"
 
 
 @dataclass(frozen=True)
@@ -180,10 +215,14 @@ def build_feynman_tool_registry(
         ), student_only, _ask_student_probe, side_effect=True,
     ))
     registry.register(ToolDefinition(
-        "assess_teaching_progress", "Assess learning coverage from the current student explanation.",
+        "assess_teaching_progress",
+        "Assess learning coverage from the current student explanation. Use covered, partial, or off_topic.",
         _object_schema(
             properties={
-                "assessment": _string_schema(32),
+                "assessment": {
+                    **_string_schema(32),
+                    "enum": ["covered", "partial", "off_topic"],
+                },
                 "evidence": _string_schema(MAX_EVIDENCE_CHARS),
             },
             required=["assessment", "evidence"],
@@ -261,18 +300,35 @@ def _record_learning_evidence(context: ToolContext, arguments: Dict[str, Any]) -
 
 
 def _request_student_probe(context: ToolContext, arguments: Dict[str, Any]) -> ToolResult:
-    concept = arguments["concept"].strip()
-    dimension = arguments["dimension"].strip()
+    existing_intent = getattr(context.memory.state, "student_probe_intent", None)
+    existing_probe = getattr(context.memory.state, "pending_probe", None)
+    if isinstance(existing_intent, Mapping) or isinstance(existing_probe, Mapping):
+        # A model may batch two requests, but the forum protocol admits only
+        # one next Student target.  Treat later requests as harmless no-ops so
+        # the valid first signal can still finish the current teacher turn.
+        return ToolResult(
+            ok=True,
+            model_content={"accepted": False, "already_scheduled": True},
+        )
+    concept = _resolve_probe_concept(arguments["concept"], context)
+    dimension = _resolve_probe_dimension(arguments["dimension"], context)
     goal = arguments["goal"].strip()
-    if concept not in _allowed_concepts(context):
+    if concept is None:
         return _error("INVALID_STUDENT_PROBE")
-    if dimension not in context.coverage_config.probe_dimensions:
+    if dimension is None:
         return _error("INVALID_STUDENT_PROBE")
     if not goal:
         return _error("INVALID_STUDENT_PROBE")
     return ToolResult(
         ok=True,
         model_content={"accepted": True},
+        state_patch={
+            "student_probe_intent": {
+                "concept": concept,
+                "dimension": dimension,
+                "goal": goal,
+            },
+        },
         internal_content={
             "concept": concept,
             "dimension": dimension,
@@ -287,11 +343,19 @@ def _ask_student_probe(context: ToolContext, arguments: Dict[str, Any]) -> ToolR
     question = arguments["question"].strip()
     if target is None or not _is_valid_probe_question(question):
         return _error("INVALID_STUDENT_PROBE")
+    if _is_duplicate_probe_question(question, context.recent_public_questions):
+        # Do not fail the whole turn because a model repeated the teacher's
+        # wording.  Keep the turn single-speaker and replace it with a
+        # bounded, server-generated new angle.
+        question = _fallback_probe_question(target, context.learner_name)
+    state_patch = {"pending_probe": target}
+    if isinstance(getattr(context.memory.state, "student_probe_intent", None), Mapping):
+        state_patch["student_probe_intent"] = None
     return ToolResult(
         ok=True,
-        model_content={"accepted": True},
+        model_content={"accepted": True, "new_angle": question},
         public_content={"message": question},
-        state_patch={"pending_probe": target},
+        state_patch=state_patch,
     )
 
 
@@ -299,6 +363,10 @@ def _assess_teaching_progress(context: ToolContext, arguments: Dict[str, Any]) -
     target = _current_probe_target(context)
     if target is None:
         return _error("INVALID_TEACHING_ASSESSMENT")
+    assessment = _normalize_assessment(arguments["assessment"])
+    if assessment is None:
+        return _error("INVALID_TEACHING_ASSESSMENT")
+    evidence = _latest_user_explanation(context) or arguments["evidence"]
     try:
         decision = apply_coverage_assessment(
             context.memory.state,
@@ -306,12 +374,32 @@ def _assess_teaching_progress(context: ToolContext, arguments: Dict[str, Any]) -
             config=context.coverage_config,
             concept=target["concept"],
             dimension=target["dimension"],
-            assessment=arguments["assessment"],
-            evidence=arguments["evidence"],
+            assessment=assessment,
+            evidence=evidence,
             event_id=context.request_id,
         )
     except ValueError:
         return _error("INVALID_TEACHING_ASSESSMENT")
+    state_patch = dict(decision.state_patch)
+    # The current user message has now been consumed by this probe intent.
+    if isinstance(getattr(context.memory.state, "student_probe_intent", None), Mapping):
+        state_patch["student_probe_intent"] = None
+    if decision.concept_status == "covered":
+        evidence_item = {
+            "concept": target["concept"],
+            "evidence": evidence,
+        }
+        existing_evidence = [
+            item
+            for item in context.memory.state.learning_evidence
+            if isinstance(item, Mapping)
+        ]
+        if not any(
+            item.get("concept") == evidence_item["concept"]
+            and item.get("evidence") == evidence_item["evidence"]
+            for item in existing_evidence
+        ):
+            state_patch["learning_evidence"] = [*existing_evidence, evidence_item]
     return ToolResult(
         ok=True,
         model_content={
@@ -322,25 +410,42 @@ def _assess_teaching_progress(context: ToolContext, arguments: Dict[str, Any]) -
             "ready_for_code": decision.ready_for_code,
             "coverage_score": decision.coverage_score,
         },
-        state_patch=decision.state_patch,
+        state_patch=state_patch,
     )
 
 
 def _generate_buggy_attempt(generator: BuggyCodeGenerator) -> ToolHandler:
     def handler(context: ToolContext, _: Dict[str, Any]) -> ToolResult:
+        recover_with_deterministic_attempt = generator is _default_buggy_code_generator
         try:
             generated = generator(context)
         except Exception:
-            return _error("BUGGY_ATTEMPT_FAILED", retryable=True)
+            if not recover_with_deterministic_attempt:
+                return _error("BUGGY_ATTEMPT_FAILED", retryable=True)
+            generated = _deterministic_buggy_attempt(context)
         if not isinstance(generated, Mapping):
-            return _error("BUGGY_ATTEMPT_FAILED", retryable=True)
+            if not recover_with_deterministic_attempt:
+                return _error("BUGGY_ATTEMPT_FAILED", retryable=True)
+            generated = _deterministic_buggy_attempt(context)
         buggy_code = generated.get("buggy_code")
         message = generated.get("message", "")
         bugs = generated.get("bugs", [])
         if not isinstance(buggy_code, str) or not isinstance(message, str) or not isinstance(bugs, list):
-            return _error("BUGGY_ATTEMPT_FAILED", retryable=True)
+            if not recover_with_deterministic_attempt:
+                return _error("BUGGY_ATTEMPT_FAILED", retryable=True)
+            generated = _deterministic_buggy_attempt(context)
+            buggy_code = generated.get("buggy_code")
+            message = generated.get("message", "")
+            bugs = generated.get("bugs", [])
         if not _generated_code_is_safe(context, buggy_code, bugs):
-            return _error("BUGGY_ATTEMPT_INVALID")
+            if not recover_with_deterministic_attempt:
+                return _error("BUGGY_ATTEMPT_INVALID")
+            generated = _deterministic_buggy_attempt(context)
+            buggy_code = generated.get("buggy_code")
+            message = generated.get("message", "")
+            bugs = generated.get("bugs", [])
+            if not _generated_code_is_safe(context, buggy_code, bugs):
+                return _error("BUGGY_ATTEMPT_INVALID")
         visible = {"buggy_code": buggy_code, "message": _SAFE_CODE_REVIEW_MESSAGE}
         return ToolResult(
             ok=True,
@@ -354,6 +459,13 @@ def _generate_buggy_attempt(generator: BuggyCodeGenerator) -> ToolHandler:
             }],
         )
     return handler
+
+
+def _deterministic_buggy_attempt(context: ToolContext) -> Mapping[str, Any]:
+    """Recover a reviewable mutation when the default model output is unusable."""
+    from utils.thinking_ai import _deterministic_buggy_attempt as mutate_reference_code
+
+    return mutate_reference_code(context.reference_code)
 
 
 def _evaluate_fix(evaluator: FixEvaluator) -> ToolHandler:
@@ -395,12 +507,134 @@ def _allowed_concepts(context: ToolContext) -> frozenset[str]:
     )
 
 
+def _resolve_probe_concept(value: Any, context: ToolContext) -> Optional[str]:
+    """Map a model's semantic label to one server-authorized concept.
+
+    The model sees the exact key-concept list, but it may still return a short
+    label such as ``边界条件处理``.  The returned value must always be one of
+    the server-provided concepts; this helper only bridges that naming gap.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    allowed = [
+        concept.strip()
+        for concept in context.key_concepts
+        if isinstance(concept, str) and concept.strip()
+    ]
+    text = value.strip()
+    if text in allowed:
+        return text
+
+    compact = _compact_probe_label(text)
+    compact_matches = [
+        concept for concept in allowed
+        if compact and compact == _compact_probe_label(concept)
+    ]
+    if len(compact_matches) == 1:
+        return compact_matches[0]
+
+    ranked = []
+    for concept in allowed:
+        candidate = _compact_probe_label(concept)
+        score = 0
+        if compact and (compact in candidate or candidate in compact):
+            score += 8
+        for _, aliases in _PROBE_CONCEPT_SEMANTICS:
+            query_hit = _contains_probe_alias(compact, aliases)
+            candidate_hit = _contains_probe_alias(candidate, aliases)
+            if query_hit and candidate_hit:
+                score += 3
+        if score:
+            ranked.append((score, concept))
+
+    if not ranked:
+        return None
+    best_score = max(score for score, _ in ranked)
+    best = [concept for score, concept in ranked if score == best_score]
+    return best[0] if len(best) == 1 else None
+
+
+def _resolve_probe_dimension(value: Any, context: ToolContext) -> Optional[str]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    allowed = [str(item).strip() for item in context.coverage_config.probe_dimensions]
+    text = value.strip()
+    if text in allowed:
+        return text
+
+    compact = _compact_probe_label(text)
+    compact_matches = [
+        dimension for dimension in allowed
+        if compact and compact == _compact_probe_label(dimension)
+    ]
+    if len(compact_matches) == 1:
+        return compact_matches[0]
+
+    for canonical, aliases in _PROBE_DIMENSION_SEMANTICS.items():
+        if not _contains_probe_alias(compact, aliases):
+            continue
+        canonical_matches = [
+            dimension for dimension in allowed
+            if _compact_probe_label(dimension) == _compact_probe_label(canonical)
+        ]
+        if len(canonical_matches) == 1:
+            return canonical_matches[0]
+
+    ranked = []
+    for dimension in allowed:
+        candidate = _compact_probe_label(dimension)
+        score = 8 if compact and (compact in candidate or candidate in compact) else 0
+        for aliases in _PROBE_DIMENSION_SEMANTICS.values():
+            if _contains_probe_alias(compact, aliases) and _contains_probe_alias(candidate, aliases):
+                score += 3
+        if score:
+            ranked.append((score, dimension))
+    if not ranked:
+        return None
+    best_score = max(score for score, _ in ranked)
+    best = [dimension for score, dimension in ranked if score == best_score]
+    return best[0] if len(best) == 1 else None
+
+
+def _compact_probe_label(value: str) -> str:
+    return re.sub(r"[\W_]+", "", value.strip().casefold())
+
+
+def _contains_probe_alias(value: str, aliases: Any) -> bool:
+    return any(
+        _compact_probe_label(alias) and _compact_probe_label(alias) in value
+        for alias in aliases
+    )
+
+
+def _latest_user_explanation(context: ToolContext) -> Optional[str]:
+    messages = context.memory.visible_messages.get(context.role, [])
+    for message in reversed(messages):
+        if not isinstance(message, Mapping):
+            continue
+        if message.get("role") != "student":
+            continue
+        if message.get("event_type") not in {"agent_user_message", "chat"}:
+            continue
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+    return None
+
+
 def _is_meaningful_evidence(value: str) -> bool:
     text = value.strip()
     if len(text) < 5:
         return False
     normalized = text.casefold()
     return normalized not in {"none", "n/a", "不知道", "无", "没有"}
+
+
+def _normalize_assessment(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().casefold().replace(" ", "_")
+    return _ASSESSMENT_ALIASES.get(normalized)
 
 
 def _generated_code_is_safe(context: ToolContext, buggy_code: str, bugs: List[Any]) -> bool:
@@ -416,7 +650,11 @@ def _generated_code_is_safe(context: ToolContext, buggy_code: str, bugs: List[An
 
 
 def _current_probe_target(context: ToolContext) -> Optional[Dict[str, str]]:
-    for candidate in (context.trigger, getattr(context.memory.state, "pending_probe", None)):
+    for candidate in (
+        context.trigger,
+        getattr(context.memory.state, "pending_probe", None),
+        getattr(context.memory.state, "student_probe_intent", None),
+    ):
         if not isinstance(candidate, Mapping):
             continue
         concept = candidate.get("concept")
@@ -424,6 +662,36 @@ def _current_probe_target(context: ToolContext) -> Optional[Dict[str, str]]:
         if isinstance(concept, str) and concept.strip() and isinstance(dimension, str) and dimension.strip():
             return {"concept": concept.strip(), "dimension": dimension.strip()}
     return None
+
+
+def _is_duplicate_probe_question(question: str, previous_questions: List[str]) -> bool:
+    normalized = _normalize_probe_text(question)
+    if not normalized:
+        return False
+    for previous in previous_questions:
+        previous_normalized = _normalize_probe_text(previous)
+        if not previous_normalized:
+            continue
+        if normalized == previous_normalized:
+            return True
+        if difflib.SequenceMatcher(None, normalized, previous_normalized).ratio() >= 0.78:
+            return True
+    return False
+
+
+def _normalize_probe_text(value: Any) -> str:
+    return re.sub(r"[\s\u3000，。！？、；：,.!?;:‘’“”\"'()（）]", "", str(value or "")).casefold()
+
+
+def _fallback_probe_question(target: Mapping[str, str], learner_name: str) -> str:
+    dimension = str(target.get("dimension") or "").strip()
+    name = str(learner_name or "学习者").strip() or "学习者"
+    questions = {
+        "core": f"{name}，请用自己的话说明这条规则在代码中具体负责什么？",
+        "edge_case": f"{name}，如果输入处在边界值，你认为程序会先执行哪一步？为什么？",
+        "application": f"{name}，你能举一个真实场景说明什么时候会用到这条规则吗？",
+    }
+    return questions.get(dimension, f"{name}，请换一个具体例子说明这条规则如何应用？")
 
 
 def _is_valid_probe_question(question: str) -> bool:
@@ -509,12 +777,18 @@ def _default_fix_evaluator(context: ToolContext, fixed_code: str) -> Dict[str, A
     artifact = _latest_buggy_artifact(context)
     if artifact is None:
         raise ValueError("missing buggy attempt")
-    correct, feedback = evaluate_feynman_code_fix(
+    deterministic_confirmed = _deterministic_fix_confirms(
         artifact["buggy_code"], fixed_code, artifact["bugs"], context.reference_code,
     )
-    if correct and not _deterministic_fix_confirms(
-        artifact["buggy_code"], fixed_code, artifact["bugs"], context.reference_code,
-    ):
+    if deterministic_confirmed:
+        # The server reference and structured bug fixes are authoritative for
+        # the final gate; a model must not be able to reject an exact answer.
+        correct, feedback = True, "修复已通过确定性检查。"
+    else:
+        correct, feedback = evaluate_feynman_code_fix(
+            artifact["buggy_code"], fixed_code, artifact["bugs"], context.reference_code,
+        )
+    if correct and not deterministic_confirmed:
         correct = False
         feedback = "修复尚未通过确定性检查。"
     return {"correct": correct, "feedback": feedback}

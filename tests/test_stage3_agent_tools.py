@@ -164,6 +164,33 @@ def test_generated_code_with_server_or_hidden_values_is_rejected_without_disclos
         assert sentinel not in exposed
 
 
+def test_default_buggy_attempt_recovers_when_model_returns_an_unchanged_code(monkeypatch):
+    from utils import thinking_ai
+
+    monkeypatch.setattr(
+        thinking_ai,
+        "student_agent_write_code",
+        lambda *args: {
+            "buggy_code": "int main() { return 0; }",
+            "bugs": [{"description": "看起来有问题", "correct_version": "return 0;"}],
+            "message": "模型没有真正改动代码。",
+        },
+    )
+    registry = build_feynman_tool_registry()
+    context = fake_tool_context(AgentRole.STUDENT_AGENT)
+    context.reference_code = "int main() { return 0; }"
+
+    result = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("generate", "generate_buggy_attempt", {}),
+        context,
+    )
+
+    assert result.ok is True
+    assert result.public_content["buggy_code"] == "int main() { return 1; }"
+    assert result.public_content["message"] == "我写了一版代码，请帮我检查。"
+
+
 @pytest.mark.parametrize("generated", [
     {
         "buggy_code": "int main() { return 1; }",
@@ -224,6 +251,40 @@ def test_default_fix_evaluator_requires_deterministic_bug_elimination(monkeypatc
 
     assert result.ok is True
     assert result.public_content["correct"] is False
+
+
+def test_default_fix_evaluator_accepts_exact_reference_when_model_misjudges(monkeypatch):
+    from utils import thinking_ai
+
+    monkeypatch.setattr(
+        thinking_ai,
+        "evaluate_feynman_code_fix",
+        lambda *args: (False, "模型误判为错误"),
+    )
+    registry = build_feynman_tool_registry()
+    state = FeynmanState(
+        session_id=12,
+        phase="code_review",
+        code_review_status="pending",
+        learning_evidence=[{"concept": "循环边界", "evidence": "已完成覆盖评估。"}],
+    )
+    context = fake_tool_context(AgentRole.STUDENT_AGENT, state=state)
+    context.reference_code = "int main() { return 0; }"
+    context.memory.code_artifact_index["artifact-1"] = {"artifact": {
+        "buggy_code": "int main() { return 1; }",
+        "bugs": [{"line": 1, "description": "返回值错误", "correct_version": "return 0;"}],
+    }}
+
+    result = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("evaluate-exact-reference", "evaluate_fix", {
+            "fixed_code": "int main() { return 0; }",
+        }),
+        context,
+    )
+
+    assert result.ok is True
+    assert result.public_content["correct"] is True
 
 
 def test_no_key_buggy_code_fallback_is_never_the_reference(monkeypatch):
@@ -448,6 +509,27 @@ def test_teacher_probe_request_only_returns_redacted_internal_signal():
     assert result.model_content == {"accepted": True}
 
 
+def test_teacher_probe_request_normalizes_model_semantic_labels_to_server_values():
+    registry = build_feynman_tool_registry()
+
+    result = registry.execute(
+        AgentRole.TEACHER_AGENT,
+        ToolCall("probe-semantic-labels", "request_student_probe", {
+            "concept": "边界条件处理",
+            "dimension": "特殊情况分析",
+            "goal": "检查用户能否解释边界情况",
+        }),
+        fake_tool_context(AgentRole.TEACHER_AGENT),
+    )
+
+    assert result.ok is True
+    assert result.internal_content == {
+        "concept": "循环边界",
+        "dimension": "edge_case",
+        "goal": "检查用户能否解释边界情况",
+    }
+
+
 @pytest.mark.parametrize("question", [
     "   ",
     "我也懂了。",
@@ -539,3 +621,79 @@ def test_assess_teaching_progress_is_student_only_and_uses_reducer_state_patch()
         "concept": "不变量",
         "dimension": "core",
     }
+
+
+def test_assess_teaching_progress_normalizes_common_model_labels():
+    registry = build_feynman_tool_registry()
+    state = FeynmanState(session_id=12, pending_probe={
+        "concept": "循环边界",
+        "dimension": "core",
+    })
+    context = fake_tool_context(AgentRole.STUDENT_AGENT, state=state)
+
+    result = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("assess-alias", "assess_teaching_progress", {
+            "assessment": "correct",
+            "evidence": "因为 i < n 会在到达非法索引前停止，所以最后一个合法位置是 n - 1。",
+        }),
+        context,
+    )
+
+    assert result.ok is True
+    assert result.state_patch["concept_coverage"][0]["status"] == "covered"
+def test_assess_teaching_progress_uses_the_current_user_explanation_as_evidence():
+    registry = build_feynman_tool_registry()
+    context = fake_tool_context(AgentRole.STUDENT_AGENT)
+    context.trigger = {
+        "concept": "循环边界",
+        "dimension": "core",
+        "goal": "检查用户能否解释边界条件",
+    }
+    context.memory.visible_messages[AgentRole.STUDENT_AGENT] = [{
+        "role": "student",
+        "event_type": "agent_user_message",
+        "content": "我会先读入 N；N=0 没有项，N=1 只有 0，从 i=2 循环到 i<n，用前两项相加得到下一项。",
+    }]
+
+    result = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("assess-user-text", "assess_teaching_progress", {
+            "assessment": "covered",
+            "evidence": "模型判断用户还没有解释清楚。",
+        }),
+        context,
+    )
+
+    assert result.ok is True
+    assert result.state_patch["concept_coverage"][0]["status"] == "covered"
+
+
+def test_partial_assessment_is_promoted_when_user_explanation_covers_the_probe():
+    registry = build_feynman_tool_registry()
+    context = fake_tool_context(AgentRole.STUDENT_AGENT)
+    context.trigger = {
+        "concept": "循环边界",
+        "dimension": "core",
+        "goal": "检查用户能否解释边界条件",
+    }
+    context.memory.visible_messages[AgentRole.STUDENT_AGENT] = [{
+        "role": "student",
+        "event_type": "agent_user_message",
+        "content": (
+            "先读入 N，输出下标 0 到 N-1 的前 N 项；N=0 不输出，N=1 只输出 0。"
+            "循环从 i=2 且 i<n 开始，计算 next=a+b 后更新 a=b、b=next，最后按顺序输出，避免越界。"
+        ),
+    }]
+
+    result = registry.execute(
+        AgentRole.STUDENT_AGENT,
+        ToolCall("assess-partial-but-complete", "assess_teaching_progress", {
+            "assessment": "partial",
+            "evidence": "模型认为用户还需要继续说明。",
+        }),
+        context,
+    )
+
+    assert result.ok is True
+    assert result.state_patch["concept_coverage"][0]["status"] == "covered"

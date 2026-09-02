@@ -237,7 +237,7 @@ OPENAI_API_KEY=
 
 ```
 
-应用启动时会创建数据库表。生产配置要求显式设置 `DATABASE_URL` 和 `SECRET_KEY`；请不要把 `.env`、API 密钥或本地数据库文件提交到 Git。
+开发/测试配置会在启动时创建数据库表。生产配置要求显式设置 `DATABASE_URL` 和 `SECRET_KEY`；生产 WSGI 默认跳过启动期建表和迁移，请先运行一次 `python database_maintenance.py`，再启动 Web worker。请不要把 `.env`、API 密钥或本地数据库文件提交到 Git。
 
 ### 3. 安装 C++ 编译器
 
@@ -268,17 +268,43 @@ python -m pytest tests -q
 
 生产环境需要重新检查数据库、密钥、会话、日志、反向代理和代码执行隔离配置。仓库中的 WSGI 对象名为 `wsgi:application`，可按服务器环境使用 Gunicorn 或其他 WSGI 服务启动。
 
+```bash
+# 首次部署或数据库结构发生变化时执行一次
+python database_maintenance.py
+
+# 2 vCPU / 2 GiB 的保守默认值：2 个 gthread worker，每个 4 个线程
+gunicorn -c gunicorn_config.py wsgi:application
+```
+
+生产配置默认不会让每个 Web worker 重复执行建表、历史列迁移和预设扫描；
+需要临时自动维护时才设置 `AUTO_INIT_DB=1`。连接池、AI 并发、后台任务和
+静态响应压缩等参数均可通过环境变量调整，具体容量边界见
+[性能与容量评估报告](PERFORMANCE_CAPACITY.md)。
+
 ## 配置说明
 
 | 变量 | 用途 |
 | --- | --- |
-| `FLASK_CONFIG` | `development`、`testing` 或 `production`。默认使用开发配置。 |
+| `FLASK_CONFIG` | `development`、`testing` 或 `production`。直接运行 `app.py` 默认开发配置；`wsgi.py` 默认生产配置。 |
 | `DATABASE_URL` | 生产环境数据库连接；开发环境也可以用它覆盖默认 SQLite。 |
 | `DEV_DATABASE_URL` | 开发环境数据库连接，不设置时使用 SQLite。 |
 | `TEST_DATABASE_URL` | 测试环境数据库连接，不设置时使用独立 SQLite。 |
 | `SECRET_KEY` | Flask 会话和签名密钥；生产环境必须设置，且至少 32 个字符。 |
 | `ZHIPU_API_KEY` / `OPENAI_API_KEY` | AI 服务密钥，至少配置一个才能使用对应的 AI 功能。 |
+| `AI_PROVIDER_ORDER` | 多 provider 的优先顺序，例如 `zhipu,openai`；请求失败时自动切换。 |
+| `ZHIPU_MODEL` / `OPENAI_MODEL` | 各 provider 的默认对话模型。 |
+| `AI_RETRY_ATTEMPTS` | 瞬时网络错误、限流和 5xx 的最大尝试次数，默认 3。 |
+| `AI_MAX_CONCURRENT_REQUESTS` | 进程内同时进行的 AI 请求上限，默认 3。 |
+| `AI_CIRCUIT_FAILURE_THRESHOLD` / `AI_CIRCUIT_COOLDOWN_SECONDS` | provider 连续失败多少次后进入冷却，以及冷却时长。 |
+| `AI_SINGLEFLIGHT_WAIT_SECONDS` | 相同 AI 请求在进程内合并时，跟随请求等待共享结果的最长时间。 |
 | `REDIS_URL` | 可选 Redis 地址；用于会话或缓存相关能力。 |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | 每个 Web worker 的数据库连接池基线和溢出上限；总连接数会随 worker 数相乘。 |
+| `DB_POOL_TIMEOUT` / `DB_POOL_RECYCLE` | 获取连接最长等待时间和连接回收周期，减少断线连接占用。 |
+| `AUTO_INIT_DB` / `DB_ENSURE_INDEXES` | 是否在应用启动时建表/维护索引；生产建议使用 `database_maintenance.py` 一次性执行。 |
+| `ASYNC_TASKS_ENABLED` / `ASYNC_WORKER_COUNT` | 进程内后台任务队列开关和线程数；多 worker 大规模部署应迁移到独立队列。 |
+| `PRESET_SCAN_ENABLED` / `PRESET_SCAN_BATCH_SIZE` | 是否启动预设补全扫描及单次扫描上限；生产默认关闭重复扫描。 |
+| `ACCESS_LOG_ENABLED` / `SLOW_REQUEST_MS` | 应用访问日志开关和慢请求阈值；生产建议交给 Gunicorn/Nginx 记录普通访问。 |
+| `STATIC_CACHE_SECONDS` / `ENABLE_RESPONSE_COMPRESSION` | 静态资源缓存时长及 HTML/JSON 压缩开关，用于降低 3 Mbps 带宽压力。 |
 
 ## API 入口
 

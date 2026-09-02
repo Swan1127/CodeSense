@@ -3,7 +3,7 @@
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response, current_app, jsonify
 from flask_login import current_user
-from models import db, User, Assignment, Submission, SystemLog
+from models import db, User, Assignment, Submission, SystemLog, AssignmentThinkingPreset
 from forms import AssignmentForm, SubmissionForm
 from utils.auth import login_required, admin_required, teacher_required, admin_or_teacher_required
 from utils.code_evaluator import evaluate_cpp_code
@@ -11,11 +11,12 @@ from tasks.submission_tasks import evaluate_submission_async
 from services.demo_database import current_demo_run_id
 from services.demo_experience import ensure_demo_guided_preset, is_demo_guided_assignment
 from io import BytesIO
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 import traceback  # 添加traceback模块
 import os
 import json
 from datetime import datetime
+from utils.sse import sse_event, sse_response, wants_sse
 
 assignments = Blueprint('assignments', __name__)
 
@@ -64,25 +65,11 @@ def generate_assignment():
         return jsonify({'error': '提示词不能为空'}), 400
         
     try:
-        from openai import OpenAI
-        # 首选智谱AI
-        zhipu_key = current_app.config.get('ZHIPU_API_KEY')
-        openai_key = current_app.config.get('OPENAI_API_KEY')
-
-        if zhipu_key:
-            client = OpenAI(
-                api_key=zhipu_key,
-                base_url="https://open.bigmodel.cn/api/paas/v4/"
-            )
-            model_name = current_app.config.get('ZHIPU_MODEL', "glm-4.5-flash")
-        # 降级使用 OpenAI
-        elif openai_key:
-            client = OpenAI(
-                api_key=openai_key,
-                base_url=current_app.config.get('OPENAI_BASE_URL', "https://api.openai.com/v1")
-            )
-            model_name = current_app.config.get('OPENAI_MODEL', "gpt-3.5-turbo")
-        else:
+        # 作业生成也必须走共享客户端，才能复用 provider failover、重试、
+        # 并发上限和熔断；此前这里自行 new OpenAI，网络一抖就直接 500。
+        from services.llm_client import SharedLLMClient
+        client = SharedLLMClient()
+        if not client.is_available():
             return jsonify({'error': '系统未配置AI大模型接口，无法使用智能生成功能'}), 501
 
         system_prompt = '''你是一个资深的计算机科学教授。你需要根据用户的简短提示，扩充并生成一道相对完整的编程或算法作业题。
@@ -90,81 +77,92 @@ def generate_assignment():
 1. "title": 题目名称（字符串）
 2. "description": 题目的详细描述（支持Markdown，包含题目背景、输入限制、输出格式要求，以及示例输入和输出）。千万不要在JSON外附加任何解释文本。'''
 
-        import time
-        max_retries = 5
-        base_delay = 2
-        current_model = model_name
-        response = None
+        def call_model(stream=False):
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"请针对这个主题生成一道编程题：{prompt}"}
+            ]
+            if stream:
+                return client.chat_stream(messages, temperature=0.7, max_tokens=1200)
+            return client.chat(messages, temperature=0.7, max_tokens=1200)
 
-        for attempt in range(max_retries):
-            try:
-                try:
-                    from services.llm_client import SharedLLMClient
-                    import time
-                    SharedLLMClient.last_user_request_time = time.time()
-                except Exception:
-                    pass
-                response = client.chat.completions.create(
-                    model=current_model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"请针对这个主题生成一道编程题：{prompt}"}
-                    ],
-                    temperature=0.7,
-                    timeout=30
-                )
-                break
-            except Exception as e:
-                err_str = str(e)
-                is_rate_limit = (
-                    "429" in err_str or
-                    "1305" in err_str or
-                    "rate limit" in err_str.lower() or
-                    "访问量过大" in err_str or
-                    "频率" in err_str or
-                    "Too Many Requests" in err_str or
-                    "APIReachLimitError" in type(e).__name__ or
-                    "rate_limit" in type(e).__name__.lower()
-                )
-                
-                if is_rate_limit and attempt < max_retries - 1:
-                    if zhipu_key and current_model == "glm-4.5-flash":
-                        print(f"智能生成作业触发限流，将模型从 {current_model} 降级为 glm-4.5-flash")
-                        current_model = "glm-4.5-flash"
-                        # 触发全局 SharedLLMClient 的同步更新
-                        try:
-                            from services.llm_client import llm_client
-                            llm_client._model_name = "glm-4.5-flash"
-                        except Exception:
-                            pass
-                        time.sleep(0.5)
-                    else:
-                        delay = base_delay * (2 ** attempt)
-                        print(f"智能生成作业触发限流，将在 {delay} 秒后重试 {current_model} (尝试 {attempt+1}/{max_retries})...")
-                        time.sleep(delay)
-                    continue
-                else:
-                    raise e
-        
-        result_content = response.choices[0].message.content
-        
-        # 尝试从内容中提取JSON数据
-        try:
-            # 处理可能的Markdown代码块
+        def parse_result(result_content):
             if "```json" in result_content:
-                json_str = result_content.split("```json")[1].split("```")[0].strip()
+                json_str = result_content.split("```json", 1)[1].split("```", 1)[0].strip()
             elif "```" in result_content:
-                json_str = result_content.split("```")[1].split("```")[0].strip()
+                json_str = result_content.split("```", 1)[1].split("```", 1)[0].strip()
             else:
                 json_str = result_content.strip()
-            
-            result_json = json.loads(json_str)
+            return json.loads(json_str)
+
+        def chunk_content(chunk):
+            if isinstance(chunk, str):
+                return chunk
+            choices = getattr(chunk, 'choices', None)
+            if choices is None and isinstance(chunk, dict):
+                choices = chunk.get('choices')
+            if not choices:
+                return ''
+            first = choices[0]
+            delta = getattr(first, 'delta', None)
+            if delta is None and isinstance(first, dict):
+                delta = first.get('delta') or {}
+            content = getattr(delta, 'content', None)
+            if content is None and isinstance(delta, dict):
+                content = delta.get('content')
+            return str(content or '')
+
+        if wants_sse():
+            def stream_assignment():
+                yield sse_event({'type': 'start', 'message': '正在生成作业题目...'})
+                parts = []
+                try:
+                    response = call_model(stream=True)
+                    for chunk in response:
+                        content = chunk_content(chunk)
+                        if content:
+                            parts.append(content)
+                            yield sse_event({'type': 'delta', 'content': content})
+                    raw_content = ''.join(parts).strip()
+                    if not raw_content:
+                        yield sse_event({
+                            'type': 'error',
+                            'error': 'AI_EMPTY_RESPONSE',
+                            'message': 'AI服务暂时不可用，请稍后重试',
+                        })
+                        return
+                    result_json = parse_result(raw_content)
+                    result = {
+                        'success': True,
+                        'title': result_json.get('title', ''),
+                        'description': result_json.get('description', ''),
+                    }
+                    yield sse_event({
+                        'type': 'done',
+                        'done': True,
+                        **result,
+                        'result': result,
+                    })
+                except Exception as stream_error:
+                    current_app.logger.exception('流式生成作业失败')
+                    yield sse_event({
+                        'type': 'error',
+                        'error': str(stream_error),
+                        'message': '生成失败，请重试',
+                    })
+
+            return sse_response(stream_assignment())
+
+        response = call_model(stream=False)
+        result_content = response or ''
+        if not result_content.strip():
+            return jsonify({'error': 'AI服务暂时不可用，请稍后重试'}), 503
+        try:
+            result_json = parse_result(result_content)
         except Exception as json_err:
             current_app.logger.error(f"解析AI产生的JSON失败: {str(json_err)}, 原内容: {result_content}")
-            # 备选方案：如果不是合法JSON，尝试提取关键字段（简单正则表达式或字符串查找）
-            # 这里简单返回 500 让用户重试或查看日志
             return jsonify({'error': "AI返回格式有误，请重试"}), 500
-        
+
         return jsonify({
             'success': True,
             'title': result_json.get('title', ''),
@@ -685,14 +683,36 @@ def student_assignments():
         # 获取当前学生对所有作业的最高分与提交状态，同时自动触发缺失/旧版预设的后台生成
         assignment_max_scores = {}
         assignment_statuses = {}
-        from models import AssignmentThinkingPreset
         from utils.async_tasks import add_generate_preset_task
         demo_run_id = current_demo_run_id()
         is_demo_session = bool(demo_run_id and getattr(current_user, 'is_demo', False))
+
+        assignment_ids = [assignment.id for assignment in all_assignments]
+        presets_by_assignment = {}
+        if assignment_ids:
+            presets_by_assignment = {
+                preset.assignment_id: preset
+                for preset in AssignmentThinkingPreset.query.filter(
+                    AssignmentThinkingPreset.assignment_id.in_(assignment_ids)
+                ).all()
+            }
+        max_scores_by_assignment = {}
+        if assignment_ids:
+            max_score_rows = db.session.query(
+                Submission.assignment_id,
+                func.max(Submission.score),
+            ).filter(
+                Submission.student_id == student_id,
+                Submission.assignment_id.in_(assignment_ids),
+            ).group_by(Submission.assignment_id).all()
+            max_scores_by_assignment = {
+                assignment_id: score for assignment_id, score in max_score_rows
+            }
+
         for a in all_assignments:
             # 公开体验的预设只能在当前临时库中修复，绝不能把列表加载
             # 变成写入正式任务队列的入口。普通账号保留原有异步生成逻辑。
-            preset = AssignmentThinkingPreset.query.filter_by(assignment_id=a.id).first()
+            preset = presets_by_assignment.get(a.id)
             a.is_guided_available = not is_demo_session or is_demo_guided_assignment(a)
             if is_demo_session:
                 if is_demo_guided_assignment(a):
@@ -736,14 +756,11 @@ def student_assignments():
                     db.session.rollback()
                     current_app.logger.error(f"列表加载重置作业 {a.id} 预设状态失败: {ex}")
 
-            sub = Submission.query.filter_by(
-                assignment_id=a.id,
-                student_id=student_id
-            ).order_by(Submission.score.desc()).first()
-            if sub:
-                assignment_max_scores[a.id] = sub.score
-                a.max_student_score = sub.score
-                if sub.score >= 3:
+            max_score = max_scores_by_assignment.get(a.id)
+            if max_score is not None:
+                assignment_max_scores[a.id] = max_score
+                a.max_student_score = max_score
+                if max_score >= 3:
                     assignment_statuses[a.id] = '已通过'
                 else:
                     assignment_statuses[a.id] = '不及格'

@@ -6,6 +6,7 @@ import json
 import ipaddress
 import traceback
 import uuid
+import re
 from datetime import datetime as dt
 import math
 
@@ -17,10 +18,14 @@ from models import (db, Assignment, AssignmentThinkingPreset,
 from utils.auth import login_required
 from utils.thinking_ai import (
     generate_preset, evaluate_description, generate_stage1_hint,
-    generate_stage2_hint, companion_agent_chat, sanitize_response
+    generate_stage1_hint_stream, generate_stage2_hint, generate_stage2_hint_stream,
+    companion_agent_chat, companion_agent_chat_stream, sanitize_response
 )
+from utils.sse import sse_event, sse_response, sse_blocking_events, wants_sse
 from utils.agents.contracts import AgentRole, Stage3MessageKind, Stage3Target
+from utils.agents.coverage import load_coverage_config
 from utils.agents.feynman import build_feynman_runtime
+from utils.agents.goal import build_stage3_user_goal
 from utils.agents.memory import MemoryStore, SqlAlchemyEventStore
 from utils.agents.orchestrator import Stage3Orchestrator
 from services.demo_experience import (
@@ -47,6 +52,53 @@ def _extract_stage3_message(data: dict) -> str:
 def _request_id(data: dict) -> str:
     value = str(data.get('request_id') or '').strip()
     return value[:80] if value else uuid.uuid4().hex
+
+
+def _stage3_stream_response(work, start_message='正在处理阶段3对话...'):
+    """Return a common SSE envelope for structured Stage3 operations."""
+    def generate():
+        yield sse_event({'type': 'start', 'message': start_message})
+        try:
+            result = work()
+            if isinstance(result, dict):
+                payload = {'type': 'done', 'done': True, 'result': result}
+                payload.update(result)
+            else:
+                payload = {'type': 'done', 'done': True, 'result': result}
+            yield sse_event(payload)
+        except Exception as error:
+            db.session.rollback()
+            current_app.logger.exception('阶段3流式处理失败')
+            yield sse_event({
+                'type': 'error',
+                'error': str(error),
+                'message': '阶段3处理失败，请稍后重试',
+            })
+
+    return sse_response(generate())
+
+
+def _unwrap_stage3_error(value):
+    """Turn a legacy Flask error tuple into an exception for SSE callers."""
+    if not isinstance(value, tuple):
+        return value
+    response = value[0]
+    body = response.get_json(silent=True) if hasattr(response, 'get_json') else None
+    message = (body or {}).get('error') or (body or {}).get('message') or '阶段3请求失败'
+    raise RuntimeError(message)
+
+
+def _apply_generated_preset(preset, result):
+    """Persist the structured preset returned by the model."""
+    preset.reference_code = result.get('reference_code', '')
+    preset.key_steps = json.dumps(result.get('key_steps', []), ensure_ascii=False)
+    preset.code_blocks = json.dumps(result.get('code_blocks', []), ensure_ascii=False)
+    preset.noise_blocks = json.dumps(result.get('noise_blocks', []), ensure_ascii=False)
+    preset.quiz_steps = json.dumps(result.get('quiz_steps', []), ensure_ascii=False)
+    preset.difficulty_config = json.dumps(result.get('difficulty_config', {}), ensure_ascii=False)
+    preset.algorithm_summary = result.get('algorithm_summary', '')
+    preset.status = 'ready'
+    preset.error_message = None
 
 
 def _stage3_forum_history(session_id: int):
@@ -148,6 +200,8 @@ def _stage3_target_role(data: dict, *, default_role: AgentRole | None = None, re
         if required or default_role is None:
             return None, 'TARGET_ROLE_REQUIRED'
         return default_role, None
+    if value == Stage3Target.AUTO.value:
+        return Stage3Target.AUTO, None
     try:
         return AgentRole(value), None
     except ValueError:
@@ -227,7 +281,13 @@ def _stage3_request_result(session_id: int, request_id: str):
     return MemoryStore(SqlAlchemyEventStore()).find_request_result(session_id, request_id)
 
 
-def _stage3_student_message_guard(session_id: int, message: str, request_id: str):
+def _stage3_student_message_guard(
+    session_id: int,
+    message: str,
+    request_id: str,
+    *,
+    reply_to_event_id: str | None = None,
+):
     completed = _stage3_request_result(session_id, request_id)
     if completed is not None:
         return completed
@@ -238,6 +298,11 @@ def _stage3_student_message_guard(session_id: int, message: str, request_id: str
             'response': '呃，你说的这也太简短了（需要5字以上），我感觉完全听不明白。能稍微详细一点解释吗？',
             'ready_for_code': False,
         }
+    if reply_to_event_id:
+        # A forum reply is already scoped to one concrete agent event. The
+        # legacy global fuzzy comparison would mistake a new, related answer
+        # for a duplicate simply because both mention the same concept.
+        return None
     import difflib
 
     history_logs = ThinkingStageLog.query.filter_by(session_id=session_id, stage=3).all()
@@ -264,11 +329,22 @@ def _stage3_student_message_guard(session_id: int, message: str, request_id: str
     return None
 
 
-def _stage3_forum_payload(primary_payload: dict, interventions: list | None = None):
-    return {
+def _stage3_forum_payload(
+    primary_payload: dict,
+    interventions: list | None = None,
+    *,
+    user_goal: dict | None = None,
+    forum_state: dict | None = None,
+):
+    payload = {
         'primary': dict(primary_payload),
         'interventions': list(interventions or []),
     }
+    if user_goal is not None:
+        payload['user_goal'] = dict(user_goal)
+    if forum_state is not None:
+        payload['forum_state'] = dict(forum_state)
+    return payload
 
 
 def _stage3_legacy_event_metadata(target_role: AgentRole):
@@ -290,7 +366,11 @@ def _run_stage3_legacy_turn(data: dict, target_role: AgentRole):
 
     request_id = _request_id(data)
     if target_role is AgentRole.STUDENT_AGENT:
-        guarded = _stage3_student_message_guard(ts.id, message, request_id)
+        guarded = _stage3_student_message_guard(
+            ts.id,
+            message,
+            request_id,
+        )
         if guarded is not None:
             return guarded.to_public_dict() if hasattr(guarded, 'to_public_dict') else guarded
 
@@ -329,12 +409,6 @@ def _run_stage3_forum_turn(
     if reply_to_event_id and not _stage3_reply_event_exists(ts.id, reply_to_event_id):
         return None, None, _stage3_forum_validation_error_response('REPLY_EVENT_NOT_FOUND')
 
-    if target_role is AgentRole.STUDENT_AGENT:
-        guarded = _stage3_student_message_guard(ts.id, message, request_id)
-        if guarded is not None:
-            guarded_payload = guarded.to_public_dict() if hasattr(guarded, 'to_public_dict') else dict(guarded)
-            return ts, target_role, _stage3_forum_payload(guarded_payload)
-
     orchestrator = Stage3Orchestrator(runtime)
     try:
         result = orchestrator.handle_user_message(
@@ -345,7 +419,10 @@ def _run_stage3_forum_turn(
         )
     except ValueError:
         return None, None, _stage3_forum_validation_error_response('REPLY_EVENT_NOT_FOUND')
-    return ts, target_role, result.to_public_dict()
+    payload = result.to_public_dict()
+    payload['user_goal'] = _stage3_user_goal(ts.id)
+    payload['forum_state'] = _stage3_forum_state(ts.id)
+    return ts, target_role, payload
 
 
 def _stable_event_order(logs):
@@ -437,18 +514,32 @@ def _stage3_safe_coverage_summary(session_id: int):
         for value in raw_unresolved
         if isinstance(value, str) and value.strip()
     ]
-    return {
+    summary = {
         'coverage_score': coverage_score,
         'ready_for_code': bool(snapshot.state.ready_for_code),
         'unresolved_concepts': unresolved,
         'concept_coverage': concept_coverage,
-    }, snapshot.state.pending_probe
+    }
+    intent = _safe_stage3_probe_target(snapshot.state.student_probe_intent)
+    if intent is not None:
+        summary['student_probe_intent'] = intent
+    return summary, snapshot.state.pending_probe
+
+
+def _safe_stage3_probe_target(value):
+    if not isinstance(value, dict):
+        return None
+    concept = str(value.get('concept') or '').strip()
+    dimension = str(value.get('dimension') or '').strip()
+    if not concept or not dimension:
+        return None
+    return {'concept': concept, 'dimension': dimension}
 
 
 def _stage3_forum_state(session_id: int):
     coverage_summary, pending_probe = _stage3_safe_coverage_summary(session_id)
     reply_to_event_id = None
-    target_role = AgentRole.TEACHER_AGENT.value
+    target_role = Stage3Target.AUTO.value
     if isinstance(pending_probe, dict) and pending_probe:
         target_role = AgentRole.STUDENT_AGENT.value
         for event in reversed(_stage3_forum_history(session_id)):
@@ -464,6 +555,59 @@ def _stage3_forum_state(session_id: int):
         'reply_to_event_id': reply_to_event_id,
         'coverage_summary': coverage_summary,
     }
+
+
+def _stage3_user_goal(session_id: int, preset=None):
+    """Return a safe, finite learning goal for the Stage 3 UI."""
+    thinking_session = ThinkingSession.query.get(session_id)
+    if not thinking_session:
+        return build_stage3_user_goal(
+            key_concepts=[],
+            coverage_summary=_stage3_default_coverage_summary(),
+        )
+    active_preset = preset or AssignmentThinkingPreset.query.filter_by(
+        assignment_id=thinking_session.assignment_id,
+    ).first()
+    getter = getattr(active_preset, 'get_key_steps', None)
+    key_concepts = getter() if callable(getter) else getattr(active_preset, 'key_steps', [])
+    if not isinstance(key_concepts, list):
+        key_concepts = []
+    difficulty_getter = getattr(active_preset, 'get_difficulty_config', None)
+    difficulty = difficulty_getter() if callable(difficulty_getter) else getattr(
+        active_preset, 'difficulty_config', {}
+    )
+    try:
+        coverage_config = load_coverage_config(difficulty, key_concepts)
+        min_coverage = coverage_config.min_coverage
+    except ValueError:
+        min_coverage = 0.8
+
+    snapshot = MemoryStore(SqlAlchemyEventStore()).load(session_id)
+    coverage_summary, pending_probe = _stage3_safe_coverage_summary(session_id)
+    if isinstance(pending_probe, dict):
+        concept = str(pending_probe.get('concept') or '').strip()
+        dimension = str(pending_probe.get('dimension') or '').strip()
+        if concept and dimension:
+            coverage_summary['pending_probe'] = {
+                'concept': concept,
+                'dimension': dimension,
+            }
+    return build_stage3_user_goal(
+        key_concepts=key_concepts,
+        coverage_summary=coverage_summary,
+        phase=snapshot.state.phase,
+        state_status=snapshot.state.status,
+        session_status=getattr(thinking_session, 'status', 'in_progress'),
+        code_review_status=snapshot.state.code_review_status,
+        min_coverage=min_coverage,
+    )
+
+
+def _stage3_payload_with_goal(payload, thinking_session, runtime=None):
+    result = dict(payload or {})
+    getter = getattr(runtime, 'public_user_goal', None)
+    result['user_goal'] = getter() if callable(getter) else _stage3_user_goal(thinking_session.id)
+    return result
 
 
 def _request_is_local() -> bool:
@@ -941,6 +1085,7 @@ def start_session():
                 'companion_history': companion_history,
                 'forum_history': forum_history,
                 'forum_state': forum_state,
+                'user_goal': _stage3_user_goal(existing.id, preset=preset),
                 'teacher_history': teacher_history,
                 'student_history': student_history,
                 'buggy_code_info': buggy_code_info,
@@ -966,10 +1111,11 @@ def start_session():
             'resumed': False,
             'forum_history': [],
             'forum_state': {
-                'target_role': AgentRole.TEACHER_AGENT.value,
+                'target_role': Stage3Target.AUTO.value,
                 'reply_to_event_id': None,
                 'coverage_summary': _stage3_default_coverage_summary(),
             },
+            'user_goal': _stage3_user_goal(new_session.id, preset=preset),
             'teacher_history': [],
             'student_history': [],
             'buggy_code_info': None,
@@ -989,7 +1135,7 @@ def start_session():
 @thinking.route('/api/stage1/submit', methods=['POST'])
 @login_required
 def stage1_submit():
-    """提交自然语言描述并获取AI评判"""
+    """提交自然语言描述并获取评判（结构化回答优先走本地快速检查）。"""
     try:
         data = request.get_json()
         session_id = data.get('session_id')
@@ -1010,30 +1156,37 @@ def stage1_submit():
         key_steps = preset.get_key_steps()
         assignment = Assignment.query.get(ts.assignment_id)
 
-        # AI评判
-        score, feedback = evaluate_description(description, key_steps, assignment.title)
+        def evaluate_submission():
+            # AI评判
+            score, feedback = evaluate_description(description, key_steps, assignment.title)
 
-        # 更新会话
-        ts.stage1_description = description
-        ts.stage1_score = score
+            # 更新会话
+            ts.stage1_description = description
+            ts.stage1_score = score
 
-        # 记录日志
-        _log_event(session_id, 1, 'description_submit', 'student', description,
-                   metadata={'score': score, 'feedback': feedback})
+            # 记录日志
+            _log_event(session_id, 1, 'description_submit', 'student', description,
+                       metadata={'score': score, 'feedback': feedback})
 
-        passed = score >= 50
-        if passed:
-            ts.current_stage = 2
-            _log_event(session_id, 1, 'stage_pass', 'system', f'阶段1通过，匹配度: {score}%')
+            passed = score >= 50
+            if passed:
+                ts.current_stage = 2
+                _log_event(session_id, 1, 'stage_pass', 'system', f'阶段1通过，匹配度: {score}%')
 
-        db.session.commit()
+            db.session.commit()
+            return {
+                'success': True,
+                'score': score,
+                'feedback': feedback,
+                'passed': passed,
+            }
 
-        return jsonify({
-            'success': True,
-            'score': score,
-            'feedback': feedback,
-            'passed': passed
-        })
+        if wants_sse():
+            return sse_response(sse_blocking_events(
+                evaluate_submission,
+                start_message='正在检查关键点（先快速分析，必要时再请求 AI）...'
+            ))
+        return jsonify(evaluate_submission())
 
     except Exception as e:
         db.session.rollback()
@@ -1058,6 +1211,52 @@ def stage1_hint():
         preset = AssignmentThinkingPreset.query.filter_by(assignment_id=ts.assignment_id).first()
         assignment = Assignment.query.get(ts.assignment_id)
         key_steps = preset.get_key_steps() if preset else []
+
+        if wants_sse():
+            def stream_hint():
+                yield sse_event({
+                    'type': 'start',
+                    'message': '正在根据你的思路生成提示...'
+                })
+                chunks = []
+                try:
+                    for chunk in generate_stage1_hint_stream(
+                        description,
+                        key_steps,
+                        assignment.title,
+                        ts.stage1_hint_count,
+                    ):
+                        if not chunk:
+                            continue
+                        text = str(chunk)
+                        chunks.append(text)
+                        yield sse_event({'type': 'delta', 'content': text})
+                    hint = sanitize_response(''.join(chunks)) or (
+                        '建议分三步描述：1. 定义所需变量并读取输入；2. 遍历数据进行核心逻辑判断；3. 打印最终结果。'
+                    )
+                    ts.stage1_hint_count += 1
+                    _log_event(
+                        session_id, 1, 'hint_request', 'student', description,
+                        metadata={'hint': hint, 'hint_count': ts.stage1_hint_count},
+                    )
+                    db.session.commit()
+                    yield sse_event({
+                        'type': 'done',
+                        'done': True,
+                        'content': hint,
+                        'hint': hint,
+                        'hint_count': ts.stage1_hint_count,
+                    })
+                except Exception as stream_error:
+                    db.session.rollback()
+                    current_app.logger.exception('阶段1流式提示失败')
+                    yield sse_event({
+                        'type': 'error',
+                        'error': str(stream_error),
+                        'message': '生成阶段1提示失败，请稍后重试',
+                    })
+
+            return sse_response(stream_hint())
 
         hint = generate_stage1_hint(description, key_steps, assignment.title, ts.stage1_hint_count)
 
@@ -1101,72 +1300,77 @@ def stage2_verify():
         quiz_steps = preset.get_quiz_steps() if preset else []
         assignment = Assignment.query.get(ts.assignment_id)
 
-        passed = True
-        wrong_steps = []
-        
-        import re
-        def normalize(code):
-            if not code:
-                return ''
-            s = ' '.join(str(code).split()).strip()
-            regex = r'\s*([+*/%=<>!&|^~?:,;\(\)\[\]\{\}-])\s*'
-            s = re.sub(regex, r'\1', s)
-            return s
+        def verify_submission():
+            passed = True
+            wrong_steps = []
 
-        from utils.thinking_ai import check_quiz_equivalence
+            def normalize(code):
+                if not code:
+                    return ''
+                value = ' '.join(str(code).split()).strip()
+                regex = r'\s*([+*/%=<>!&|^~?:,;\(\)\[\]\{\}-])\s*'
+                return re.sub(regex, r'\1', value)
 
-        wrong_step_explanations = {}
+            from utils.thinking_ai import check_quiz_equivalence
+            wrong_step_explanations = {}
 
-        for step in quiz_steps:
-            step_id = str(step.get('step_id', ''))
-            correct_raw = step.get('correct_answer', '')
-            student_raw = quiz_answers.get(step_id, '')
+            for step in quiz_steps:
+                step_id = str(step.get('step_id', ''))
+                correct_raw = step.get('correct_answer', '')
+                student_raw = quiz_answers.get(step_id, '')
 
-            # 1. 快速空格归一化字符比对
-            if normalize(student_raw) == normalize(correct_raw):
-                continue
+                if normalize(student_raw) == normalize(correct_raw):
+                    continue
 
-            # 2. 如果不匹配，使用大模型进行语义/逻辑等价性检查
-            equiv_check = check_quiz_equivalence(
-                student_answer=student_raw,
-                correct_answer=correct_raw,
-                question=step.get('question', ''),
-                reference_code=preset.reference_code or ''
-            )
+                equiv_check = check_quiz_equivalence(
+                    student_answer=student_raw,
+                    correct_answer=correct_raw,
+                    question=step.get('question', ''),
+                    reference_code=preset.reference_code or ''
+                )
 
-            if equiv_check.get('equivalent'):
-                # 语义等价，视为正确！
-                continue
-            else:
+                if equiv_check.get('equivalent'):
+                    continue
                 passed = False
                 wrong_steps.append(step_id)
-                wrong_step_explanations[step_id] = equiv_check.get('reason') or step.get('explanation', '请再想想')
+                wrong_step_explanations[step_id] = (
+                    equiv_check.get('reason') or step.get('explanation', '请再想想')
+                )
 
-        # 更新会话答题进度
-        ts.stage2_block_order = json.dumps(quiz_answers, ensure_ascii=False)
+            ts.stage2_block_order = json.dumps(quiz_answers, ensure_ascii=False)
+            if passed:
+                ts.stage2_completed = True
+                ts.current_stage = 3
+                _log_event(session_id, 2, 'stage_pass', 'system', '逐步构建程序验证通过')
+                _ensure_stage3_initial_prompt(ts, assignment, preset)
+            else:
+                _log_event(
+                    session_id, 2, 'verify_fail', 'system', '验证未通过',
+                    metadata={
+                        'wrong_steps': wrong_steps,
+                        'wrong_step_explanations': wrong_step_explanations,
+                    },
+                )
 
-        if passed:
-            ts.stage2_completed = True
-            ts.current_stage = 3
-            _log_event(session_id, 2, 'stage_pass', 'system', '逐步构建程序验证通过')
-            _ensure_stage3_initial_prompt(ts, assignment, preset)
-        else:
-            _log_event(session_id, 2, 'verify_fail', 'system', '验证未通过',
-                       metadata={'wrong_steps': wrong_steps, 'wrong_step_explanations': wrong_step_explanations})
+            db.session.commit()
+            feedback = (
+                f'还有 {len(wrong_steps)} 道步骤的答案不正确，请根据提示进行调整。'
+                if not passed else ''
+            )
+            return {
+                'success': True,
+                'passed': passed,
+                'wrong_steps': wrong_steps,
+                'feedback_details': wrong_step_explanations,
+                'feedback': feedback,
+            }
 
-        db.session.commit()
-
-        feedback = ''
-        if not passed:
-            feedback = f'还有 {len(wrong_steps)} 道步骤的答案不正确，请根据提示进行调整。'
-
-        return jsonify({
-            'success': True,
-            'passed': passed,
-            'wrong_steps': wrong_steps,
-            'feedback_details': wrong_step_explanations,
-            'feedback': feedback
-        })
+        if wants_sse():
+            return sse_response(sse_blocking_events(
+                verify_submission,
+                start_message='正在检查积木顺序和答案...'
+            ))
+        return jsonify(verify_submission())
 
     except Exception as e:
         print(f"阶段2验证失败: {e}")
@@ -1189,6 +1393,53 @@ def stage2_hint():
 
         preset = AssignmentThinkingPreset.query.filter_by(assignment_id=ts.assignment_id).first()
         assignment = Assignment.query.get(ts.assignment_id)
+
+        if wants_sse():
+            def stream_hint():
+                yield sse_event({
+                    'type': 'start',
+                    'message': '正在根据当前积木状态生成提示...'
+                })
+                chunks = []
+                try:
+                    for chunk in generate_stage2_hint_stream(
+                        ts.stage1_description or '',
+                        current_block_ids,
+                        preset.get_code_blocks() if preset else [],
+                        assignment.title,
+                        ts.stage2_hint_count,
+                    ):
+                        if not chunk:
+                            continue
+                        text = str(chunk)
+                        chunks.append(text)
+                        yield sse_event({'type': 'delta', 'content': text})
+                    hint = sanitize_response(''.join(chunks)) or (
+                        '回想你在第一阶段描述的思路，下一步该做什么？'
+                    )
+                    ts.stage2_hint_count += 1
+                    _log_event(
+                        session_id, 2, 'hint_request', 'student', json.dumps(current_block_ids),
+                        metadata={'hint': hint},
+                    )
+                    db.session.commit()
+                    yield sse_event({
+                        'type': 'done',
+                        'done': True,
+                        'content': hint,
+                        'hint': hint,
+                        'hint_count': ts.stage2_hint_count,
+                    })
+                except Exception as stream_error:
+                    db.session.rollback()
+                    current_app.logger.exception('阶段2流式提示失败')
+                    yield sse_event({
+                        'type': 'error',
+                        'error': str(stream_error),
+                        'message': '生成阶段2提示失败，请稍后重试',
+                    })
+
+            return sse_response(stream_hint())
 
         hint = generate_stage2_hint(
             ts.stage1_description or '',
@@ -1238,6 +1489,56 @@ def companion_chat():
         if not stage2_state and 'stage2' in student_state:
             stage2_state = student_state.get('stage2', {})
 
+        if wants_sse():
+            def stream_companion():
+                yield sse_event({
+                    'type': 'start',
+                    'message': '伴学助手正在思考...'
+                })
+                chunks = []
+                try:
+                    for chunk in companion_agent_chat_stream(
+                        messages,
+                        assignment.title,
+                        preset.get_key_steps() if preset else [],
+                        ts.stage1_description or '',
+                        current_stage=current_stage,
+                        stage2_state=stage2_state,
+                        assignment_description=assignment.description or '',
+                        student_state=student_state,
+                    ):
+                        if not chunk:
+                            continue
+                        text = str(chunk)
+                        chunks.append(text)
+                        yield sse_event({'type': 'delta', 'content': text})
+
+                    response_text = re.sub(
+                        r'\[GENERATE_IMAGE:\s*(.*?)\]', '', ''.join(chunks)
+                    )
+                    response_text = sanitize_response(response_text)
+                    if messages:
+                        last_user_msg = messages[-1].get('content', '')
+                        _log_event(session_id, ts.current_stage, 'companion_chat', 'student', last_user_msg)
+                    _log_event(session_id, ts.current_stage, 'companion_chat', 'companion_agent', response_text)
+                    db.session.commit()
+                    yield sse_event({
+                        'type': 'done',
+                        'done': True,
+                        'content': response_text,
+                        'response': response_text,
+                    })
+                except Exception as stream_error:
+                    db.session.rollback()
+                    current_app.logger.exception('伴学流式对话失败')
+                    yield sse_event({
+                        'type': 'error',
+                        'error': str(stream_error),
+                        'message': '伴学助手暂时不可用，请稍后重试',
+                    })
+
+            return sse_response(stream_companion())
+
         response_text = companion_agent_chat(
             messages,
             assignment.title,
@@ -1281,6 +1582,15 @@ def stt_optimize():
         from services.llm_client import SharedLLMClient
         client = SharedLLMClient()
         if not client.is_available():
+            if wants_sse():
+                return sse_response(sse_blocking_events(
+                    lambda: {
+                        'success': True,
+                        'optimized_text': text,
+                        'content': text,
+                    },
+                    start_message='正在整理语音文本...'
+                ))
             return jsonify({'success': True, 'optimized_text': text})
             
         system_prompt = """你是一个语音转文字（STT）优化助手。
@@ -1296,6 +1606,40 @@ def stt_optimize():
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"请优化以下语音识别文本：\n{text}"}
         ]
+
+        if wants_sse():
+            def stream_optimized_text():
+                yield sse_event({
+                    'type': 'start',
+                    'message': '正在整理语音文本...'
+                })
+                chunks = []
+                try:
+                    for chunk in client.chat_stream(messages, temperature=0.2, max_tokens=300):
+                        if not chunk:
+                            continue
+                        value = str(chunk)
+                        chunks.append(value)
+                        yield sse_event({'type': 'delta', 'content': value})
+
+                    optimized_text = ''.join(chunks).strip() or text
+                    if ((optimized_text.startswith('"') and optimized_text.endswith('"')) or
+                            (optimized_text.startswith('“') and optimized_text.endswith('”'))):
+                        optimized_text = optimized_text[1:-1]
+                    yield sse_event({
+                        'type': 'done',
+                        'done': True,
+                        'content': optimized_text,
+                        'optimized_text': optimized_text,
+                    })
+                except Exception as stream_error:
+                    yield sse_event({
+                        'type': 'error',
+                        'error': str(stream_error),
+                        'message': '语音文本整理失败',
+                    })
+
+            return sse_response(stream_optimized_text())
         
         optimized_text = client.chat(messages, temperature=0.2, max_tokens=300)
         if optimized_text:
@@ -1415,6 +1759,13 @@ def stage3_teacher_chat():
     """费曼阶段 — 老师Agent对话"""
     try:
         data = request.get_json() or {}
+        if wants_sse():
+            return _stage3_stream_response(
+                lambda: _unwrap_stage3_error(
+                    _run_stage3_legacy_turn(data, AgentRole.TEACHER_AGENT)
+                ),
+                '老师Agent正在整理回复...',
+            )
         payload = _run_stage3_legacy_turn(data, AgentRole.TEACHER_AGENT)
         if isinstance(payload, tuple):
             return payload
@@ -1431,6 +1782,15 @@ def stage3_forum_message():
     """费曼阶段 — 论坛式显式目标对话"""
     try:
         data = request.get_json() or {}
+        if wants_sse():
+            def run_forum_turn():
+                _, _, payload = _run_stage3_forum_turn(
+                    data,
+                    require_target_role=True,
+                )
+                return _unwrap_stage3_error(payload)
+
+            return _stage3_stream_response(run_forum_turn, '论坛Agent正在协同分析...')
         _, _, payload = _run_stage3_forum_turn(
             data,
             require_target_role=True,
@@ -1473,6 +1833,13 @@ def stage3_student_teach():
     """费曼阶段 — 教坏学生对话"""
     try:
         data = request.get_json() or {}
+        if wants_sse():
+            return _stage3_stream_response(
+                lambda: _unwrap_stage3_error(
+                    _run_stage3_legacy_turn(data, AgentRole.STUDENT_AGENT)
+                ),
+                '小明Agent正在思考追问...',
+            )
         payload = _run_stage3_legacy_turn(data, AgentRole.STUDENT_AGENT)
         if isinstance(payload, tuple):
             return payload
@@ -1489,13 +1856,33 @@ def stage3_write_code():
     """费曼阶段 — 坏学生尝试写代码（带陷阱）"""
     try:
         data = request.get_json() or {}
+        if wants_sse():
+            def run_write_code():
+                ts, runtime, error_code = _stage3_runtime(data)
+                if error_code:
+                    return _unwrap_stage3_error(_stage3_runtime_error_response(error_code))
+                request_id = _request_id(data)
+                completed = _stage3_request_result(ts.id, request_id)
+                if completed is not None:
+                    return _stage3_payload_with_goal(completed.to_public_dict(), ts, runtime)
+                result = runtime.generate_buggy_attempt(
+                    request_id=request_id,
+                    enforce_ready=True,
+                )
+                if result.success:
+                    completed = _stage3_request_result(ts.id, request_id)
+                    if completed is not None:
+                        return _stage3_payload_with_goal(completed.to_public_dict(), ts, runtime)
+                return _stage3_payload_with_goal(result.to_public_dict(), ts, runtime)
+
+            return _stage3_stream_response(run_write_code, '小明Agent正在准备一份待检查代码...')
         ts, runtime, error_code = _stage3_runtime(data)
         if error_code:
             return _stage3_runtime_error_response(error_code)
         request_id = _request_id(data)
         completed = _stage3_request_result(ts.id, request_id)
         if completed is not None:
-            return jsonify(completed.to_public_dict())
+            return jsonify(_stage3_payload_with_goal(completed.to_public_dict(), ts, runtime))
         result = runtime.generate_buggy_attempt(
             request_id=request_id,
             enforce_ready=True,
@@ -1503,8 +1890,8 @@ def stage3_write_code():
         if result.success:
             completed = _stage3_request_result(ts.id, request_id)
             if completed is not None:
-                return jsonify(completed.to_public_dict())
-        return jsonify(result.to_public_dict())
+                return jsonify(_stage3_payload_with_goal(completed.to_public_dict(), ts, runtime))
+        return jsonify(_stage3_payload_with_goal(result.to_public_dict(), ts, runtime))
     except Exception:
         db.session.rollback()
         current_app.logger.exception('阶段3代码生成失败')
@@ -1517,12 +1904,24 @@ def stage3_fix_code():
     """费曼阶段 — 学生帮坏学生修复代码"""
     try:
         data = request.get_json() or {}
+        if wants_sse():
+            def run_fix_code():
+                fixed_code = data.get('fixed_code', '')
+                ts, runtime, error_code = _stage3_runtime(data)
+                if error_code:
+                    return _unwrap_stage3_error(_stage3_runtime_error_response(error_code))
+                result = runtime.evaluate_fix(
+                    str(fixed_code or ''), request_id=_request_id(data)
+                )
+                return _stage3_payload_with_goal(result.to_public_dict(), ts, runtime)
+
+            return _stage3_stream_response(run_fix_code, '老师Agent正在验证你的修复...')
         fixed_code = data.get('fixed_code', '')  # 修改后的代码或自然语言描述
         ts, runtime, error_code = _stage3_runtime(data)
         if error_code:
             return _stage3_runtime_error_response(error_code)
         result = runtime.evaluate_fix(str(fixed_code or ''), request_id=_request_id(data))
-        return jsonify(result.to_public_dict())
+        return jsonify(_stage3_payload_with_goal(result.to_public_dict(), ts, runtime))
     except Exception:
         db.session.rollback()
         current_app.logger.exception('阶段3代码修复评估失败')
@@ -1586,21 +1985,51 @@ def api_generate_preset():
         preset.status = 'generating'
         db.session.commit()
 
+        if wants_sse():
+            def stream_preset():
+                active_preset = preset
+                yield sse_event({
+                    'type': 'start',
+                    'message': '正在生成学习预设，请稍候...'
+                })
+                try:
+                    yield sse_event({
+                        'type': 'status',
+                        'message': '正在生成参考代码、关键步骤和练习题...'
+                    })
+                    result = generate_preset(
+                        assignment.title,
+                        assignment.description or ''
+                    )
+                    _apply_generated_preset(active_preset, result)
+                    preset_status_error = None
+                except Exception as gen_err:
+                    print(f"预设生成失败: {gen_err}")
+                    traceback.print_exc()
+                    if demo_assignment:
+                        active_preset = ensure_demo_guided_preset(demo_assignment)
+                        preset_status_error = None
+                    else:
+                        active_preset.status = 'failed'
+                        active_preset.error_message = str(gen_err)
+                        preset_status_error = active_preset.error_message
+                db.session.commit()
+                yield sse_event({
+                    'type': 'done',
+                    'done': True,
+                    'success': active_preset.status == 'ready',
+                    'status': active_preset.status,
+                    'error': preset_status_error,
+                })
+
+            return sse_response(stream_preset())
+
         try:
             result = generate_preset(
                 assignment.title,
                 assignment.description or ''
             )
-
-            preset.reference_code = result.get('reference_code', '')
-            preset.key_steps = json.dumps(result.get('key_steps', []), ensure_ascii=False)
-            preset.code_blocks = json.dumps(result.get('code_blocks', []), ensure_ascii=False)
-            preset.noise_blocks = json.dumps(result.get('noise_blocks', []), ensure_ascii=False)
-            preset.quiz_steps = json.dumps(result.get('quiz_steps', []), ensure_ascii=False)
-            preset.difficulty_config = json.dumps(result.get('difficulty_config', {}), ensure_ascii=False)
-            preset.algorithm_summary = result.get('algorithm_summary', '')
-            preset.status = 'ready'
-            preset.error_message = None
+            _apply_generated_preset(preset, result)
 
         except Exception as gen_err:
             print(f"预设生成失败: {gen_err}")

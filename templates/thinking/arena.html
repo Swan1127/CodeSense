@@ -106,9 +106,9 @@
                 <div class="panel-body">
                     <!-- 算法思路参考面板 -->
                     <div class="algorithm-summary-panel no-select" id="algo-summary-wrapper" style="display: none;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
-                        <div class="algorithm-summary-header" id="algo-summary-header">
+                        <div class="algorithm-summary-header" id="algo-summary-header" role="button" tabindex="0" aria-expanded="false" aria-controls="algo-summary-content">
                             <span><i class="bi bi-book-half"></i> 算法思路参考</span>
-                            <i class="bi bi-chevron-up" id="algo-summary-icon"></i>
+                            <i class="bi bi-chevron-down" id="algo-summary-icon"></i>
                         </div>
                         <div class="algorithm-summary-body" id="algo-summary-content">
                             <!-- 由 JS 动态填充 -->
@@ -122,16 +122,25 @@
                     </div>
 
                     <!-- 思考引导问题面板 -->
-                    <div class="guided-questions-panel no-select" id="guided-questions-wrapper" style="display: none; background: #eff6ff; border-left: 4px solid #3b82f6; padding: 14px; border-radius: 8px; margin-bottom: 16px;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
-                        <div style="font-weight: bold; color: #1e3a8a; font-size: 13.5px; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; user-select: none;">
-                            <i class="bi bi-patch-question-fill" style="color: #3b82f6; font-size: 16px;"></i>
-                            <span>思路梳理提示：思考并尝试回答以下问题（请在下方对应的文本框中逐一作答）：</span>
+                    <div class="guided-questions-panel no-select stage1-collapsible-panel" id="guided-questions-wrapper" style="display: none;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                        <button type="button" class="stage1-collapse-header" id="guided-questions-header" aria-expanded="false" aria-controls="guided-questions-content">
+                            <span><i class="bi bi-patch-question-fill"></i> 思路梳理提示 <small>（点击查看引导问题）</small></span>
+                            <i class="bi bi-chevron-down" id="guided-questions-icon" aria-hidden="true"></i>
+                        </button>
+                        <div class="stage1-collapsible-body" id="guided-questions-content" hidden>
+                            <ul id="guided-questions-list">
+                                <!-- 由 JS 动态填充 -->
+                            </ul>
                         </div>
-                        <ul id="guided-questions-list" style="margin: 0; padding-left: 20px; color: #1e40af; font-size: 13px; line-height: 1.6;">
-                            <!-- 由 JS 动态填充 -->
-                        </ul>
                     </div>
 
+                    <div class="stage1-answer-toolbar">
+                        <div>
+                            <strong>逐题作答</strong>
+                            <span>用自己的话写出思考过程，提交后会立即检查关键点。</span>
+                        </div>
+                        <span class="stage1-answer-progress" id="stage1-answer-progress">0/0 已填写</span>
+                    </div>
                     <div id="stage-qa-inputs-wrapper" style="margin-bottom: 16px;"></div>
 
                     <textarea class="description-textarea" id="description-input" style="display: none;"
@@ -157,7 +166,10 @@
             <div class="stage-section" id="stage-2">
                 <div class="panel-header">
                     <h3><i class="bi bi-puzzle"></i> 阶段二：程序构建</h3>
-                    <span style="font-size: 12px; color: var(--arena-text-dim);">逐步回答问题，构建完整程序</span>
+                    <div class="stage2-header-meta">
+                        <span>逐步回答问题，构建完整程序</span>
+                        <span class="stage2-answer-progress" id="stage2-answer-progress">0/0 已回答</span>
+                    </div>
                 </div>
                 <div class="panel-body">
                     <div id="stage2-quiz-container" class="quiz-steps-panel">
@@ -187,22 +199,29 @@
                 </div>
                 <div class="panel-body">
                     <div class="stage3-forum" id="stage3-forum">
-                        <div class="forum-toolbar">
-                            <div class="forum-targets" role="group" aria-label="选择下一条消息的接收对象">
-                                <button type="button" class="forum-target-btn is-selected" id="forum-target-teacher"
-                                        data-target-role="teacher_agent" aria-pressed="true">
-                                    <span class="forum-target-label">发给老师</span>
-                                    <span class="forum-target-hint">默认讲解与答疑</span>
-                                </button>
-                                <button type="button" class="forum-target-btn" id="forum-target-student"
+                        <div class="forum-sticky-head" id="forum-sticky-head">
+                            <div class="forum-toolbar">
+                                <div class="forum-targets" role="group" aria-label="选择下一条消息的接收对象">
+                                    <button type="button" class="forum-target-btn" id="forum-target-teacher"
+                                            data-target-role="teacher_agent" aria-pressed="false">
+                                        <span class="forum-target-label">发给老师</span>
+                                        <span class="forum-target-hint">直接指定老师答疑</span>
+                                    </button>
+                                    <button type="button" class="forum-target-btn" id="forum-target-student"
                                         data-target-role="student_agent" aria-pressed="false">
-                                    <span class="forum-target-label">发给小明</span>
-                                    <span class="forum-target-hint">用于教学解释与追问</span>
-                                </button>
-                            </div>
-                            <div class="forum-reply-context" id="forum-reply-context" hidden aria-live="polite">
-                                <span class="forum-reply-context-label">未选择回复对象</span>
-                                <button type="button" class="forum-reply-clear" id="forum-reply-clear">取消回复</button>
+                                        <span class="forum-target-label">发给小明</span>
+                                        <span class="forum-target-hint">直接回答小明的问题</span>
+                                    </button>
+                                    <button type="button" class="forum-target-btn is-selected" id="forum-target-auto"
+                                            data-target-role="auto" aria-pressed="true">
+                                        <span class="forum-target-label">自动安排</span>
+                                        <span class="forum-target-hint">按当前内容决定谁先回应</span>
+                                    </button>
+                                </div>
+                                <div class="forum-reply-context" id="forum-reply-context" hidden aria-live="polite">
+                                    <span class="forum-reply-context-label">未选择回复对象</span>
+                                    <button type="button" class="forum-reply-clear" id="forum-reply-clear">取消回复</button>
+                                </div>
                             </div>
                         </div>
                         <div class="forum-feed" id="forum-feed" role="log" aria-live="polite" aria-relevant="additions text">
@@ -228,20 +247,30 @@
         <div id="stage2-preview-panel" class="arena-panel stage-section">
             <div class="panel-header">
                 <h3><i class="bi bi-eye"></i> 代码预览</h3>
+                <button type="button" class="panel-collapse-toggle stage2-preview-toggle" id="toggle-stage2-preview"
+                        aria-expanded="true" aria-controls="stage2-preview-content" title="收起代码预览" hidden>
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                    <span>收起</span>
+                </button>
             </div>
-            <div class="panel-body" style="background: var(--arena-bg); padding: 12px; font-family: var(--arena-mono); font-size: 13px; color: var(--arena-text);">
+            <div class="panel-body" id="stage2-preview-content" style="background: var(--arena-bg); padding: 12px; font-family: var(--arena-mono); font-size: 13px; color: var(--arena-text);">
                 <pre style="margin: 0; background: transparent; padding: 0; font-family: inherit; font-size: inherit; color: inherit; white-space: pre-wrap; word-break: break-all;"><code id="code-preview">// 正在准备预览代码...</code></pre>
             </div>
         </div>
 
-        <!-- ===== Right Panel: AI Hints / Feynman Student Chat ===== -->
+        <!-- ===== Right Panel: AI Companion / Stage 3 Dynamic Goal ===== -->
         <div class="arena-panel" id="right-panel">
             <!-- Default: AI Companion (Stages 1-2) -->
             <div id="ai-companion-panel" class="stage-section active">
                 <div class="panel-header">
                     <h3><i class="bi bi-robot"></i> AI 伴学助手</h3>
+                    <button type="button" class="panel-collapse-toggle" id="toggle-companion-panel"
+                            aria-expanded="true" aria-controls="companion-panel-content" title="收起 AI 伴学助手" hidden>
+                        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                        <span>收起</span>
+                    </button>
                 </div>
-                <div class="chat-container">
+                <div class="chat-container" id="companion-panel-content">
                     <div class="chat-messages no-select" id="companion-messages" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
                         <div class="chat-message">
                             <div class="chat-avatar teacher">🤖</div>
@@ -262,30 +291,70 @@
                 </div>
             </div>
 
-            <!-- Stage 3: Guide Panel -->
-            <div id="student-agent-panel" class="stage-section">
+            <!-- Stage 3: Dynamic Learning Goal -->
+            <div id="stage3-goal-panel" class="stage-section">
                 <div class="panel-header">
-                    <h3><i class="bi bi-info-circle"></i> 阶段说明</h3>
-                    <span style="font-size: 12px; color: var(--arena-text-dim);">公开讨论与代码修复规则</span>
+                    <h3><i class="bi bi-bullseye"></i> 当前学习任务</h3>
+                    <span style="font-size: 12px; color: var(--arena-text-dim);">实时目标</span>
                 </div>
-                <div class="panel-body stage3-guide-panel">
-                    <div class="stage3-guide-card">
-                        <h4>发言规则</h4>
-                        <p>先选择收件人，再发送公开消息。老师负责讲解，小明负责追问和代码检查。</p>
-                    </div>
-                    <div class="stage3-guide-card">
-                        <h4>回复关系</h4>
-                        <p>每条公开消息都可以点击“回复”继续同一条线索，讨论区会显示来源角色和回复对象。</p>
-                    </div>
-                    <div class="stage3-guide-card">
-                        <h4>代码修复</h4>
-                        <p>当小明发起追问并给出错误代码后，下方会展开现有修复区；标准答案、内部工具参数和隐藏决策不会出现在浏览器里。</p>
-                    </div>
+                <div class="panel-body stage3-goal-panel-body">
+                    <details class="forum-goal-card" id="forum-goal-card" aria-labelledby="forum-goal-title">
+                        <summary class="forum-goal-summary">
+                            <div class="forum-goal-head">
+                                <div>
+                                    <div class="forum-goal-kicker"><i class="bi bi-flag"></i> 本阶段学习目标</div>
+                                    <h4 id="forum-goal-title">掌握关键思路并完成一次代码修复</h4>
+                                </div>
+                                <span class="forum-goal-status" id="forum-goal-status">学习中</span>
+                            </div>
+                            <div class="forum-goal-summary-progress">
+                                <div class="forum-goal-progress-track" role="progressbar" aria-label="阶段三学习进度"
+                                     aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                                    <div class="forum-goal-progress-bar" id="forum-goal-progress-bar" style="width: 0%"></div>
+                                </div>
+                                <div class="forum-goal-progress-meta">
+                                    <span id="forum-goal-progress-label">0%</span>
+                                    <span id="forum-goal-coverage-label">等待关键点检查</span>
+                                </div>
+                            </div>
+                        </summary>
+                        <div class="forum-goal-details">
+                            <p class="forum-goal-description" id="forum-goal-description">
+                                先用自己的话解释关键点，再由小明从不同角度检查，达标后自动生成一份错误代码供你修复。
+                            </p>
+                            <div class="forum-goal-next" id="forum-goal-next" aria-live="polite">
+                                先用自己的话说明一个关键知识点，系统会按检查点推进。
+                            </div>
+                            <ol class="forum-goal-steps" id="forum-goal-steps" aria-label="学习目标里程碑"></ol>
+                        </div>
+                    </details>
                 </div>
             </div>
         </div>
 
     </div><!-- .arena-body -->
+
+    <!-- Stage 3: Static Guide, kept out of the right rail -->
+    <details id="student-agent-panel" class="stage-section stage3-guide-drawer">
+        <summary class="stage3-guide-summary">
+            <span><i class="bi bi-info-circle"></i> 阶段说明</span>
+            <span class="stage3-guide-summary-hint">公开讨论与代码修复规则 <i class="bi bi-chevron-down"></i></span>
+        </summary>
+        <div class="stage3-guide-panel">
+            <div class="stage3-guide-card">
+                <h4>发言规则</h4>
+                <p>先选择收件人，再发送公开消息。老师负责讲解，小明负责追问和代码检查。</p>
+            </div>
+            <div class="stage3-guide-card">
+                <h4>回复关系</h4>
+                <p>每条公开消息都可以点击“回复”继续同一条线索，讨论区会显示来源角色和回复对象。</p>
+            </div>
+            <div class="stage3-guide-card">
+                <h4>代码修复</h4>
+                <p>当小明发起追问并给出错误代码后，下方会展开现有修复区；标准答案、内部工具参数和隐藏决策不会出现在浏览器里。</p>
+            </div>
+        </div>
+    </details>
 
     <!-- 阶段三代码修复面板放置在两个对话框下方，呈通栏布局 -->
     <div id="code-review-section" style="display: none; margin-top: 16px;">
@@ -309,7 +378,8 @@
             const stage2 = document.getElementById('stage-2');
             const stage3 = document.getElementById('stage-3');
             const companionPanel = document.getElementById('ai-companion-panel');
-            const studentPanel = document.getElementById('student-agent-panel');
+            const goalPanel = document.getElementById('stage3-goal-panel');
+            const guidePanel = document.getElementById('student-agent-panel');
             const previewPanel = document.getElementById('stage2-preview-panel');
             
             const body = document.querySelector('.arena-body');
@@ -319,7 +389,8 @@
             if (stage3 && stage3.classList.contains('active')) {
                 currentStage = 3;
                 if (companionPanel) companionPanel.classList.remove('active');
-                if (studentPanel) studentPanel.classList.add('active');
+                if (goalPanel) goalPanel.classList.add('active');
+                if (guidePanel) guidePanel.classList.add('active');
                 if (previewPanel) previewPanel.classList.remove('active');
                 if (body) {
                     body.classList.remove('stage-2-layout');
@@ -327,7 +398,8 @@
                 }
             } else {
                 if (companionPanel) companionPanel.classList.add('active');
-                if (studentPanel) studentPanel.classList.remove('active');
+                if (goalPanel) goalPanel.classList.remove('active');
+                if (guidePanel) guidePanel.classList.remove('active');
                 
                 if (stage2 && stage2.classList.contains('active')) {
                     currentStage = 2;
@@ -358,7 +430,7 @@
                 } else if (currentStage === 3) {
                     tabLeftBtn.textContent = '公开论坛';
                     tabPreviewBtn.style.display = 'none';
-                    tabRightBtn.textContent = '阶段说明';
+                    tabRightBtn.textContent = '学习任务';
                 }
             }
 

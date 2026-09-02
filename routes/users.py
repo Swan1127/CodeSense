@@ -7,7 +7,7 @@ from models import db, User, Submission, SystemLog, Class, AbilityTrend, Knowled
 from utils.auth import login_required, admin_required, admin_or_teacher_required
 from tasks.ability_analysis import trigger_analysis_if_needed
 from services.demo_database import current_demo_run_id
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from forms import ChangePasswordForm, EditProfileForm
 from werkzeug.utils import secure_filename
 import pandas as pd
@@ -68,26 +68,18 @@ def manage_users():
     
     # 计算统计数据
     total_users = User.query.count()
-    total_submissions = sum(user.submit_count for user in User.query.all())
+    total_submissions = db.session.query(
+        func.coalesce(func.sum(User.submit_count), 0)
+    ).scalar() or 0
     student_count = User.query.filter_by(usertype='学生').count()
     admin_count = User.query.filter_by(usertype='管理员').count()
     teacher_count = User.query.filter_by(usertype='教师').count()
-    
-    print("\n=== 用户统计数据 ===")
-    print(f"总用户数: {total_users}")
-    print(f"学生数量: {student_count}")
-    print(f"教师数量: {teacher_count}")
-    print(f"管理员数量: {admin_count}")
-    print(f"总提交数: {total_submissions}")
     
     # 准备图表数据
     user_type_chart_data = {
         'labels': ['学生', '教师', '管理员'],
         'data': [student_count, teacher_count, admin_count]
     }
-    
-    print("\n=== 用户类型图表数据 ===")
-    print(user_type_chart_data)
     
     # 准备提交数量分布数据
     submission_counts = db.session.query(
@@ -100,9 +92,6 @@ def manage_users():
             (db.true(), '20次以上')
         ).label('range')
     ).group_by('range').all()
-    
-    print("\n=== 原始提交数量分布数据 ===")
-    print(submission_counts)
     
     submission_chart_data = [0] * 5  # 初始化5个区间
     for count, range_name in submission_counts:
@@ -122,9 +111,6 @@ def manage_users():
         'labels': ['0-5次', '6-10次', '11-15次', '16-20次', '20次以上'],
         'data': submission_chart_data
     }
-    
-    print("\n=== 处理后的提交数量图表数据 ===")
-    print(submission_chart_data)
     
     return render_template('users.html',
                          users=users,
