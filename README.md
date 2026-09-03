@@ -1,29 +1,73 @@
-# CodeSense 酷森思
+<p align="center">
+  <img src="docs/assets/codesense-mark.svg" alt="CodeSense logo" width="112">
+</p>
 
-> 面向高校编程教学的 AI 辅助评测与学习平台。
+<h1 align="center">CodeSense 酷森思</h1>
 
-[English](README.en.md) · [提交 Issue](https://github.com/XiaoCow666/CodeSense/issues)
+<p align="center">
+  <strong>让 Coding 焕发智能</strong><br>
+  面向高校编程教学的 AI 辅助评测与学习平台。<br>
+  让每一次提交都通向更深的理解。
+</p>
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Flask](https://img.shields.io/badge/Flask-2.2.3-000000?style=flat-square&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
-[![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
+<p align="center">
+  <a href="https://saucodesense.com">在线体验</a> ·
+  <a href="#公开体验入口">学生 / 教师 Demo</a> ·
+  <a href="#快速开始">本地运行</a> ·
+  <a href="DEPLOYMENT.md">部署指南</a> ·
+  <a href="https://github.com/XiaoCow666/CodeSense/issues">提交 Issue</a> ·
+  <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/XiaoCow666/CodeSense/stargazers"><img src="https://img.shields.io/github/stars/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub stars"></a>
+  <a href="https://github.com/XiaoCow666/CodeSense/network/members"><img src="https://img.shields.io/github/forks/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub forks"></a>
+  <a href="https://github.com/XiaoCow666/CodeSense/blob/main/LICENSE"><img src="https://img.shields.io/github/license/XiaoCow666/CodeSense?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/version-v1.0.0-2563eb?style=flat-square" alt="v1.0.0">
+  <img src="https://img.shields.io/badge/Python-3.8%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
+  <img src="https://img.shields.io/badge/Flask-2.2.3-000000?style=flat-square&logo=flask&logoColor=white" alt="Flask 2.2.3">
+</p>
 
 > **发布状态：正式版** · **当前版本：`v1.0.0`**
 >
-> `v1.0.0` 是 CodeSense 标准版的首个正式版本。版本号不写入项目标题；后续发布使用 `vMAJOR.MINOR.PATCH` 格式，并以 GitHub Release/Tag 和 [CHANGELOG.md](CHANGELOG.md) 为准。
+> `v1.0.0` 是 CodeSense 标准版的首个正式版本。后续发布使用 `vMAJOR.MINOR.PATCH` 格式，并以 GitHub Release/Tag 和 [CHANGELOG.md](CHANGELOG.md) 为准。
 
 ## 目录
 
+- [产品一览](#产品一览)
 - [项目背景](#项目背景)
 - [项目定位](#项目定位)
 - [核心功能](#核心功能)
 - [系统架构](#系统架构)
 - [快速开始](#快速开始)
+- [部署指南](DEPLOYMENT.md)
 - [配置说明](#配置说明)
 - [API 入口](#api-入口)
 - [安全边界与已知限制](#安全边界与已知限制)
 - [发布与版本](#发布与版本)
+- [Star History](#star-history)
 - [参与贡献](#参与贡献)
+
+## 产品一览
+
+这些截图来自仓库当前可运行的真实页面，不是概念稿：
+
+<p align="center">
+  <img src="docs/assets/codesense-login.png" alt="CodeSense 登录页与体验入口" width="100%">
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <p align="center"><strong>学生：三阶段引导式学习</strong></p>
+      <img src="docs/assets/codesense-student-demo.png" alt="CodeSense 学生体验：思路描述阶段" width="100%">
+    </td>
+    <td width="50%" valign="top">
+      <p align="center"><strong>教师：班级与学情视图</strong></p>
+      <img src="docs/assets/codesense-teacher-dashboard.png" alt="CodeSense 教师仪表盘" width="100%">
+    </td>
+  </tr>
+</table>
 
 ## 项目背景
 
@@ -116,7 +160,7 @@ flowchart LR
 
 ## 公开体验入口
 
-启动服务后打开 `/login`，登录页会提供两个无需注册的体验入口：
+可以直接访问 [在线体验站点](https://saucodesense.com)，也可以启动本地服务后打开 `/login`；登录页会提供两个无需注册的体验入口：
 
 * **学生体验**：直接进入“演示作业一：循环与斐波那契数列”，可以查看思路描述、积木编程和费曼教学三个阶段；竞技场内的“体验进度快捷入口”可以按需跳到任意阶段或查看完成效果。
 * **教师体验**：进入教师首页，查看演示班级、学生学习状态、作业完成矩阵和 AI 学情建议，再进入班级详情查看具体记录。
@@ -369,9 +413,21 @@ CodeSense 采用语义化版本号：
 
 当前版本为 **`v1.0.0`**，代表标准版首个正式版本。后续版本应同时更新 [CHANGELOG.md](CHANGELOG.md)，并使用同名的 Git tag 和 GitHub Release；已发布版本的记录不应被静默改写。
 
+## Star History
+
+徽章显示当前仓库状态，下面的图表展示 CodeSense 随时间变化的关注度趋势：
+
+<p align="center">
+  <a href="https://star-history.com/#XiaoCow666/CodeSense&Date">
+    <img src="https://api.star-history.com/svg?repos=XiaoCow666%2FCodeSense&type=Date" alt="CodeSense Star History Chart" width="720">
+  </a>
+</p>
+
 ## 参与贡献
 
 欢迎通过 Issue 反馈问题或提交 Pull Request。改动应放在独立分支中，并在 PR 中写明改动内容、测试结果和注意事项。`main` 的合并由项目负责人审核后进行。
+
+部署到 Linux、Gunicorn、Systemd、Nginx、HTTPS、MySQL、Redis 和发布检查见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。
 
 ## 许可证
 
