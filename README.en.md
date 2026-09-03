@@ -348,13 +348,10 @@ The current version is **`v1.0.0`**, the first formal release of the CodeSense S
 
 ## Star History
 
-The badge shows the current repository state; this chart shows how CodeSense attention changes over time:
+The badge above shows the repository's current star count. We are not embedding a historical chart for now: GitHub has restricted the public stargazers timeline API, and Star History notes that hosted charts may return an error page as a result. To keep this README reliable, we do not present that error page as a chart; a future trend view should be generated and stored by this repository's own Actions workflow.
 
-<p align="center">
-  <a href="https://star-history.com/#XiaoCow666/CodeSense&Date">
-    <img src="https://api.star-history.com/svg?repos=XiaoCow666%2FCodeSense&type=Date" alt="CodeSense Star History Chart" width="720">
-  </a>
-</p>
+- [View the CodeSense repository](https://github.com/XiaoCow666/CodeSense)
+- [Star History's explanation](https://www.star-history.com/blog/github-stargazer-api-restriction/)
 
 ## Contributing
 

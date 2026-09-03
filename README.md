@@ -415,13 +415,10 @@ CodeSense 采用语义化版本号：
 
 ## Star History
 
-徽章显示当前仓库状态，下面的图表展示 CodeSense 随时间变化的关注度趋势：
+顶部徽章显示仓库当前的 star 数。历史趋势图暂不以内嵌图片形式展示：GitHub 已收紧公开 stargazers 时间线接口，Star History 官方说明托管图表可能因此返回错误页。为了让 README 保持可靠，这里不把错误页当成趋势图素材；后续如需趋势图，将改为仓库自有的 Actions 产物。
 
-<p align="center">
-  <a href="https://star-history.com/#XiaoCow666/CodeSense&Date">
-    <img src="https://api.star-history.com/svg?repos=XiaoCow666%2FCodeSense&type=Date" alt="CodeSense Star History Chart" width="720">
-  </a>
-</p>
+- [查看 CodeSense 当前仓库](https://github.com/XiaoCow666/CodeSense)
+- [Star History 官方说明](https://www.star-history.com/blog/github-stargazer-api-restriction/)
 
 ## 参与贡献
 
