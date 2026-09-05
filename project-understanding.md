@@ -95,7 +95,7 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 
 ### 测试（tests/）
 
-覆盖面较广，突出三类特色域：沙箱评测（`test_sandbox_features`）、演示会话隔离（`test_demo_*`）、阶段三 Agent/论坛（`test_stage3_*`），另有 SSE、成绩、班级花名册、HTTPS 代理与性能基线等测试。
+覆盖面较广，突出三类特色域：沙箱演示特性（`test_sandbox_features`，实为演示数据装载/免密登录/生产禁用三项用例，见附录 B，不直接覆盖 C++ 编译执行）、演示会话隔离（`test_demo_*`）、阶段三 Agent/论坛（`test_stage3_*`），另有 SSE、成绩、班级花名册、HTTPS 代理与性能基线等测试。
 
 ## 三、核心运行流程与调用链
 
@@ -204,7 +204,7 @@ CodeSense 是一个 Flask 单体 Web 应用（Python），核心是「C 语言/C
 
 ## 附录 B：个人安装、运行与测试记录（个人环境备忘）
 
-- 记录时间：2026-09-03；环境：Windows，Python 3.11（项目虚拟环境 .venv），g++ 16.1.0（MSYS2，路径位于 MSYS2 的 mingw64/bin 下，与 `utils/sandbox_runner.py` 的编译器候选路径一致）；项目：CodeSense（v1.0.0）。
+- 记录时间：2026-09-03（2026-09-05 按 PR 评审意见补充真实 C++ 编译运行验证与范围说明）；环境：Windows，Python 3.11（项目虚拟环境 .venv），g++ 16.1.0（MSYS2，路径位于 MSYS2 的 mingw64/bin 下，与 `utils/sandbox_runner.py` 的编译器候选路径一致）；项目：CodeSense（v1.0.0）。
 
 ### 安装
 
@@ -238,15 +238,46 @@ python run.py
 
 ### 测试
 
+**1. 沙箱演示特性自动化测试（pytest）**
+
 ```powershell
-python -m pytest tests/test_sandbox_features.py -q
+.\.venv\Scripts\python.exe -m pytest tests/test_sandbox_features.py -q
 ```
 
-结果：3 passed, 26 warnings in 14.86s。三项用例全部通过；26 条警告均为框架弃用提示（Flask 2.3 session_cookie_name、SQLAlchemy Query.get() 等），不影响功能。全量测试集（tests）中的部分用例依赖真实 AI 服务密钥与 Redis，未配置时会失败，属预期行为，未纳入本次验证范围。
+结果：3 passed, 26 warnings（2026-09-05 本机复测约 60s）。三项用例分别为 `test_seed_demo_data_creation`（演示数据装载）、`test_sandbox_login_flows`（免密登录）、`test_security_prevents_sandbox_in_production`（生产环境禁用沙箱），属于"沙箱（演示）登录与安全特性"测试，**并未调用 g++ 编译运行代码**。另经核对，`tests/test_demo_submission_isolation.py` 中同样对 `run_test_cases` 做了 mock，即 tests/ 目录当前不存在覆盖真实 C++ 编译运行链路的端到端用例。因此此前"通过沙箱评测相关测试即可说明代码评测链路可用"的表述不准确，见下方补充验证。
+
+**2. 真实 C++ 编译运行链路验证（2026-09-05 补充，回应评审意见）**
+
+直接调用 `utils/sandbox_runner.py::run_test_cases`，对一段 C++17 加法程序（`cin` 读入、`cout` 输出）用本机 g++ 编译后运行 3 个用例（含公开与隐藏用例），结果：
+
+```text
+compiler = C:\msys64\mingw64\bin\g++.exe   # g++ (MSYS2) 16.1.0，与沙箱候选路径一致
+compiler_available = true, compile_success = true, compile_error = ""
+passed 3 / total 3, status = passed
+# 各用例 actual_output 与 expected_output 经 _normalize_output 比对一致，单例运行 33–510ms
+```
+
+验证方式为临时脚本（用后即删）：
+
+```python
+from utils.sandbox_runner import run_test_cases
+
+source = '''#include <iostream>
+using namespace std;
+int main() { int a, b; cin >> a >> b; cout << a + b << endl; return 0; }'''
+
+run_test_cases(source, [
+    {'input_data': '3 5\n',   'expected_output': '8',   'id': 1, 'is_public': True},
+    {'input_data': '-1 1\n',  'expected_output': '0',   'id': 2, 'is_public': False},
+    {'input_data': '100 200\n', 'expected_output': '300', 'id': 3, 'is_public': False},
+])
+```
+
+由此可确认：在具备 g++ 的本机环境下，C++17 源码可经沙箱完成编译→运行→输出标准化比对→判定。该验证覆盖引擎层单次编译与运行，**未覆盖完整 Web 提交→后台任务→SSE/轮询→落库链路**（该链路中的 AI 叠加评分依赖真实 AI 密钥）。
 
 ### 结论
 
-本项目已在本地 Windows 环境完成安装、成功启动并通过沙箱评测相关测试，代码评测（C++ 编译执行）链路可正常使用；AI 辅助功能需在 `.env` 配置智谱或 OpenAI 密钥后启用。
+本项目已在本地 Windows 环境完成安装、成功启动；沙箱（演示）登录与安全特性 3 项自动化测试通过；并额外经真实 g++ 16.1.0 编译运行验证了 `utils/sandbox_runner` 的 C++17 编译/运行/输出比对链路可用。AI 辅助功能需在 `.env` 配置智谱或 OpenAI 密钥后启用；Web 端完整提交评测链路（含 LLM 叠加评分）与依赖真实 AI 密钥的部分测试不在本次验证范围内，属未验证事项。
 
 ### 个人工具与参考资料
 
