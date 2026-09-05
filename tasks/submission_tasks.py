@@ -95,6 +95,30 @@ def evaluate_submission_async(
     先切换到对应的临时数据库，并在会话失效时直接停止。
     """
 
+    if (
+        not run_inline
+        and not demo_run_id
+        and app.config.get("SUBMISSION_EVALUATION_QUEUE_BACKEND", "thread")
+        == "rq"
+    ):
+        from tasks.submission_queue import (
+            SubmissionQueueUnavailable,
+            enqueue_submission_evaluation,
+        )
+
+        try:
+            return enqueue_submission_evaluation(app, submission_id)
+        except SubmissionQueueUnavailable:
+            with app.app_context():
+                try:
+                    _mark_submission_failed(
+                        submission_id,
+                        "提交评测队列暂时不可用，请稍后重试",
+                    )
+                except Exception:
+                    db.session.rollback()
+            raise
+
     def _evaluate():
         with app.app_context():
             if demo_run_id and not activate_demo_run(demo_run_id):

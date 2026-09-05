@@ -20,6 +20,12 @@ from utils.sse import sse_event, sse_response, wants_sse
 from services.ai_evaluator import AIEvaluator
 from services.api_keys import api_keys  # 导入 API 密钥管理器
 from services.demo_database import current_demo_run_id
+from tasks.submission_tasks import evaluate_submission_async
+from tasks.submission_queue import (
+    SubmissionQueueUnavailable,
+    get_submission_job_status,
+    submission_operation_id,
+)
 import json
 import traceback
 import os
@@ -297,6 +303,36 @@ def submit_code():
         # 先保存到数据库获取ID
         db.session.add(submission)
         db.session.commit()
+
+        demo_run_id = current_demo_run_id()
+        if (
+            not demo_run_id
+            and current_app.config.get(
+                'SUBMISSION_EVALUATION_QUEUE_BACKEND', 'thread'
+            ) == 'rq'
+        ):
+            try:
+                job = evaluate_submission_async(
+                    current_app._get_current_object(),
+                    submission.id,
+                    assignment.title,
+                    demo_run_id=None,
+                )
+            except SubmissionQueueUnavailable:
+                return error_response(
+                    "提交评测队列暂时不可用，请稍后重试",
+                    503,
+                )
+            return api_response(
+                success=True,
+                message="代码已提交，后台评测中",
+                data={
+                    'submission_id': submission.id,
+                    'status': 'queued',
+                    'operation_id': job.operation_id,
+                },
+                code=202,
+            )
         
         # 评估代码
         try:
@@ -1515,11 +1551,41 @@ def get_submission_status(submission_id):
     if current_user.usertype == '学生' and submission.student_id != current_user.student_id:
         return jsonify({'error': '无权访问此提交状态'}), 403
         
-    return jsonify({
+    response = {
         'status': submission.status,
         'score': submission.score,
         'id': submission.id
-    })
+    }
+
+    if (
+        not current_demo_run_id()
+        and current_app.config.get(
+            'SUBMISSION_EVALUATION_QUEUE_BACKEND', 'thread'
+        ) == 'rq'
+    ):
+        response['operation_id'] = submission_operation_id(submission.id)
+        try:
+            queue_status = get_submission_job_status(
+                current_app._get_current_object(), submission.id
+            )
+        except SubmissionQueueUnavailable:
+            queue_status = 'unavailable'
+        response['queue_status'] = queue_status
+
+        if (
+            queue_status in {'failed', 'expired'}
+            and submission.status not in {'evaluated', 'failed'}
+        ):
+            submission.status = 'failed'
+            submission.feedback = (
+                '评测任务已过期，请重新提交。'
+                if queue_status == 'expired'
+                else '评测任务失败，请重新提交。'
+            )
+            db.session.commit()
+            response['status'] = 'failed'
+
+    return jsonify(response)
 
 
 @api.route('/assignments/create_batch_item', methods=['POST'])

@@ -73,6 +73,12 @@ def _operation_id(submission_id: int) -> str:
     return f"submission-evaluation-{int(submission_id)}"
 
 
+def submission_operation_id(submission_id: int) -> str:
+    """Return the stable public operation id for one submission."""
+
+    return _operation_id(submission_id)
+
+
 def _status_value(job) -> str:
     status = job.get_status(refresh=True)
     return getattr(status, "value", status)
