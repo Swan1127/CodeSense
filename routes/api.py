@@ -328,9 +328,9 @@ def submit_code():
                                 ai_feedback = feedback_data['feedback']
                                 submission.ai_feedback = ai_feedback
                         except Exception as e:
-                            print(f"解析JSON反馈失败: {e}")
+                            print(f"解析JSON反馈失败: {type(e).__name__}")
                 except Exception as e:
-                    print(f"处理AI反馈时出错: {e}")
+                    print(f"处理AI反馈时出错: {type(e).__name__}")
             
             # 更新作业统计信息
             assignment.total_score += score
@@ -351,7 +351,8 @@ def submit_code():
                 )
             except Exception as analysis_error:
                 current_app.logger.warning(
-                    "提交后的能力分析刷新未启动: %s", analysis_error
+                    "提交后的能力分析刷新未启动: %s",
+                    type(analysis_error).__name__,
                 )
             
             return api_response(
@@ -365,18 +366,16 @@ def submit_code():
             )
             
         except Exception as e:
-            print(f"评估代码时出错: {e}")
-            print(traceback.format_exc())
+            print(f"评估代码时出错: {type(e).__name__}")
             
             submission.status = 'failed'
             db.session.commit()
             
-            return error_response(f"代码评估失败: {str(e)}", 500)
+            return error_response("代码评估失败，请稍后重试", 500)
             
     except Exception as e:
-        print(f"处理提交失败: {e}")
-        print(traceback.format_exc())
-        return error_response(f"处理提交失败: {str(e)}", 500)
+        print(f"处理提交失败: {type(e).__name__}")
+        return error_response("处理提交失败，请稍后重试", 500)
 
 
 @api.route('/submission/<int:submission_id>', methods=['GET'])

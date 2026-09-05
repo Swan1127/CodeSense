@@ -220,6 +220,8 @@
 <script>
     const submissionId = {{ submission.id }};
     const pollInterval = 2000;
+    const maxPollAttempts = 60;
+    let pollAttempts = 0;
     let secondsElapsed = 0;
     const finalResultUrl = "{{ url_for('assignments.view_submission', submission_id=submission.id) }}";
 
@@ -246,7 +248,21 @@
         }
     }
 
+    function showPollingError(message) {
+        document.getElementById('status-heading').innerText = '任务状态暂时不可用';
+        document.getElementById('error-message').innerText = message;
+        document.getElementById('error-container').style.display = 'block';
+        document.querySelector('.loader-wrapper').style.display = 'none';
+        document.querySelector('.progress-steps').style.opacity = '0.3';
+    }
+
     async function checkSubmissionStatus() {
+        if (pollAttempts >= maxPollAttempts) {
+            showPollingError('暂时无法确认评测结果，请稍后刷新或重新提交。');
+            return;
+        }
+        pollAttempts += 1;
+
         try {
             const response = await fetch(`/api/submissions/${submissionId}/status`);
             if (!response.ok) throw new Error('API Error');
@@ -259,17 +275,20 @@
                     window.location.href = finalResultUrl;
                 }, 800);
             } else if (data.status === 'failed') {
-                document.getElementById('status-heading').innerText = '任务处理失败';
-                document.getElementById('error-container').style.display = 'block';
-                document.querySelector('.loader-wrapper').style.display = 'none';
-                document.querySelector('.progress-steps').style.opacity = '0.3';
+                showPollingError('评测任务失败，请重新提交。');
+            } else if (data.queue_status === 'unavailable') {
+                showPollingError('评测队列暂时不可用，请稍后刷新或重新提交。');
             } else {
                 updateProgressBar();
                 setTimeout(checkSubmissionStatus, pollInterval);
             }
         } catch (error) {
-            console.error('Polling failed:', error);
-            setTimeout(checkSubmissionStatus, pollInterval);
+            console.warn('评测状态暂时无法获取');
+            if (pollAttempts >= maxPollAttempts) {
+                showPollingError('暂时无法确认评测结果，请稍后刷新或重新提交。');
+            } else {
+                setTimeout(checkSubmissionStatus, pollInterval);
+            }
         }
     }
 

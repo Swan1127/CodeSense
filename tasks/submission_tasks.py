@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import threading
-import traceback
 
 from models import Assignment, Submission, SystemLog, TestCase as TC, User, db
 from services.demo_database import activate_demo_run, is_active_demo_run
@@ -97,7 +96,7 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
     def _evaluate():
         with app.app_context():
             if demo_run_id and not activate_demo_run(demo_run_id):
-                print(f"公开体验会话已失效，跳过提交评测: {demo_run_id}")
+                print("公开体验会话已失效，跳过提交评测")
                 return
 
             try:
@@ -116,7 +115,7 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                 code = submission.code
                 student_id = submission.student_id
 
-                print(f"开始后台评估提交 {submission_id}，题目: {assignment_title}")
+                print(f"开始后台评估提交 {submission_id}")
 
                 # 1. AI 基础评估。公开体验不接受默认分数，AI 失败必须
                 # 让提交进入 failed，方便前端提示用户重新提交。
@@ -140,13 +139,13 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                     submission.score = score
                     submission.feedback = feedback
                 except Exception as ai_error:
-                    print(f"AI 评估过程出错: {ai_error}")
+                    print(f"AI 评估过程出错: {type(ai_error).__name__}")
                     if demo_run_id:
                         raise RuntimeError("AI 评测失败，请稍后重试") from ai_error
                     # 正式账户保留历史兼容行为；公开体验永远不会走到这条
                     # 默认分支，避免把失败伪装成成功分数。
                     submission.score = 1
-                    submission.feedback = f"AI 评估过程中出错: {ai_error}"
+                    submission.feedback = "AI 评估过程中出错，请稍后重试。"
 
                 # 2. 沙箱测试用例评判。
                 try:
@@ -182,7 +181,7 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                                 f"最终得分: {submission.score}"
                             )
                 except Exception as sandbox_error:
-                    print(f"沙箱评判过程出错: {sandbox_error}")
+                    print(f"沙箱评判过程出错: {type(sandbox_error).__name__}")
                     if demo_run_id:
                         raise RuntimeError("沙箱评测失败，请稍后重试") from sandbox_error
 
@@ -237,7 +236,7 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                                     weight=kp_data.get("weight", 1.0),
                                 )
                 except Exception as kp_error:
-                    print(f"更新知识点评分失败: {kp_error}")
+                    print(f"更新知识点评分失败: {type(kp_error).__name__}")
                     if demo_run_id:
                         raise RuntimeError("知识点画像更新失败，请稍后重试") from kp_error
 
@@ -252,9 +251,9 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                     trigger_analysis_if_needed(
                         student_id, demo_run_id=demo_run_id
                     )
-                    print(f"已触发学生 {student_id} 的能力分析刷新")
+                    print("已触发能力分析刷新")
                 except Exception as ability_error:
-                    print(f"触发能力分析失败: {ability_error}")
+                    print(f"触发能力分析失败: {type(ability_error).__name__}")
                     if demo_run_id:
                         raise RuntimeError("能力分析任务启动失败") from ability_error
 
@@ -277,19 +276,17 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                 print(f"提交 {submission_id} 评测全部完成")
 
             except Exception as error:
-                print(f"评测线程崩溃: {error}")
-                traceback.print_exc()
+                print(f"评测线程崩溃: {type(error).__name__}")
                 if not _demo_database_is_available(demo_run_id):
                     return
                 try:
                     db.session.rollback()
                     _mark_submission_failed(
                         submission_id,
-                        "AI 评测失败，请稍后重试。" if demo_run_id else f"后台评测发生严重错误: {error}",
+                        "AI 评测失败，请稍后重试。" if demo_run_id else "后台评测发生严重错误，请稍后重试。",
                     )
                 except Exception:
                     db.session.rollback()
-                    traceback.print_exc()
 
     thread = threading.Thread(target=_evaluate)
     thread.daemon = True
