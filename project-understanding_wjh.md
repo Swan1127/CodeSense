@@ -115,8 +115,8 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 
 后台线程按序执行：
 
-1. AI 基础评估：`utils/code_evaluator.py::evaluate_cpp_code`，内部为启发式评分 `calculate_heuristic_score` + 可选 LLM 反馈，产出 score/feedback（统一归一到 0–5 由后续 `tasks/submission_tasks.py` 中的 `_normalise_score` 完成）。（LLM 叠加经 `utils/llm_evaluator.py::LLMEvaluator`，其网络请求再委托 `services/llm_client.py::SharedLLMClient`。）
-2. 沙箱用例评判：`utils/sandbox_runner.py::run_test_cases` → `compile_cpp` 用 g++ 按 C++17 编译（15s 超时、编译器的 stdout/stderr 输出同样受限）→ `run_single_test` 逐用例运行（5s 超时；内部经有界管道线程 `_BoundedPipeReader` 以 stdout/stderr 各 4096 字节为上限边跑边读，超限立即终止进程并记 `termination_reason`，超时/运行错误同样有明确终止原因，超限结果一律不判通过）→ 写回 `sandbox_passed/total/detail`；存在测试用例时以沙箱通过率重算最终 0–5 分。
+1. AI 基础评估：`utils/code_evaluator.py::evaluate_cpp_code`，内部为启发式评分（`calculate_heuristic_score` 用局部变量 `normalized_score` 归一到 0–5）+ 可选 LLM 反馈，产出 score/feedback；回到任务层 `tasks/submission_tasks.py` 后再经 `_normalise_score` 兜底归一到 0–5（该函数定义于 submission_tasks.py，能按 0–5 / 0–10 / 0–100 三种量纲归一后取整）。（LLM 叠加经 `utils/llm_evaluator.py::LLMEvaluator`，其网络请求再委托 `services/llm_client.py::SharedLLMClient`。）
+2. 沙箱用例评判：`utils/sandbox_runner.py::run_test_cases` → `compile_cpp` 用 g++ 按 C++17 编译（15s 超时、编译器的 stdout/stderr 输出同样受限）→ `run_single_test` 逐用例运行（5s 超时；内部经有界管道线程 `_BoundedPipeReader` 以 stdout/stderr 各 4096 字节为上限边跑边读，超限立即终止进程并记 `termination_reason`，超时/运行错误同样有明确终止原因，超限结果一律不判通过）→ 写回 `sandbox_passed/total/detail`；存在测试用例时以沙箱通过率重算最终 0–5 分（沙箱重算结果同样再走一次 `_normalise_score` 后才落库）。
 3. 状态置为 evaluated，并 `_refresh_assignment_stats` / `_refresh_user_stats` 基于全量历史重算，避免种子数据重复累加。
 4. 知识点画像：用作业绑定或 AI 探测出的知识点调 `KnowledgePointScore.update_score`。
 5. 触发能力分析：`AbilityTrend.mark_as_outdated` + `trigger_analysis_if_needed()`（内部按键去重防并发）。
@@ -160,7 +160,7 @@ CodeSense 是一个 Flask 单体 Web 应用（Python），核心是「C 语言/C
 - **services/**：业务服务层，偏纯逻辑、易单测（LLM 客户端抽象、AI 评估、密钥管理、成绩册、教师分析、演示数据隔离）。
 - **utils/**：引擎/工具层（代码评测、沙箱执行、提示词、能力画像、SSE、权限装饰器，以及三阶段 Agent 引擎 `utils/agents/`）。
 - **tasks/**：后台任务（异步评测、能力分析）。
-- **models.py**：单一 ORM 文件（约 1470 行；含 18 个 ORM 模型与 `CodeSenseSession` 会话存储类，共 19 个类）；**templates/**、**static/**：Jinja2 模板与前端资源；**tests/**：pytest 测试。
+- **models.py**：单一 ORM 文件（约 1500 行，含 18 个 `db.Model` 数据表模型 + 1 个 `CodeSenseSession` 会话存储类——后者继承 FlaskSQLAlchemySession，非 ORM 表，合计 19 个 class）；**templates/**、**static/**：Jinja2 模板与前端资源；**tests/**：pytest 测试。
 
 ### 启动链路与关键机制
 
@@ -183,7 +183,7 @@ CodeSense 是一个 Flask 单体 Web 应用（Python），核心是「C 语言/C
 - 单点登录：`before_request` 比对 session 与库内 `current_session_id`，发现并发登录强制登出。
 - Session 优先 Redis，失败自动降级文件系统；生产强制 `SECRET_KEY` ≥32、`DB_AUTO_INIT=False`（需先跑 `database_maintenance.py` 建表/索引）。
 - 提供 `/healthz`、`/readyz` 探针、ProxyFix 反代协议还原、gzip 压缩与慢请求日志。
-- 提交评测错误处理已加固（上游提交 `fix: harden submission error handling`）：后端与日志不再回显完整异常及堆栈（只记异常类型名），用户侧统一返回通用提示；评测页前端轮询设 60 次上限（`maxPollAttempts=60`，间隔 2s），超限或队列不可用即停止轮询并提示——超限显示"暂时无法确认评测结果，请稍后刷新或重新提交"，队列不可用显示"评测队列暂时不可用，请稍后刷新或重新提交"，页面标题均显示"任务状态暂时不可用"。
+- 提交评测错误处理已加固（上游提交 `fix: harden submission error handling`）：后端与日志不再回显完整异常及堆栈（只记异常类型名），用户侧统一返回通用提示（如"请稍后重试"）；评测页前端轮询设 60 次上限（`maxPollAttempts = 60`，间隔 2s），轮询超限时提示"暂时无法确认评测结果，请稍后刷新或重新提交"，评测队列不可用时提示"评测队列暂时不可用，请稍后刷新或重新提交"。
 
 ---
 
