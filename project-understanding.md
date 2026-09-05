@@ -15,7 +15,7 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 传统 OJ 的两个痛点正是这个项目要解决的核心问题：
 
 1. 对学生：只看到"对/错"，不知道问题出在哪。传统评测只给二元结果，学生无法定位问题究竟在思路、实现、边界条件还是调试过程。CodeSense 引入受限评测（Causal Sandbox）+ AI 辅导，并把一次练习拆成三阶段，强制学生先讲思路、再组装步骤、最后用自己的话解释（费曼教学），让"理解"过程可见、可评估。
-2. 对教师：反馈零散、共性问题难发现。教师要在大量提交记录里人工找共性问题，再把零散反馈整理成教学安排，成本高。CodeSense 用能力画像（算法、代码风格、功能完整性、执行效率、可读性等维度）和知识点趋势，把学生表现沉淀为可统计、可下钻的学情数据，辅助教师定位需要补练的内容。
+2. 对教师：反馈零散、共性问题难发现。教师要在大量提交记录里人工找共性问题，再把零散反馈整理成教学安排，成本高。CodeSense 用两层画像体系沉淀学情：AI 反馈与能力分析文本按算法、代码风格、功能完整性、执行效率、可读性等维度组织（综述存于 `AbilityTrend` 的能力分析内容），可量化的画像则以 C 知识点为单位、经贝叶斯权重更新为 0–100 的 `KnowledgePointScore`。教师端据此把学生表现沉淀为可统计、可下钻的学情数据，辅助教师定位需要补练的内容。
 
 ## 二、总体结构与目录分层
 
@@ -66,6 +66,7 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 - `thinking_ai.py`：三阶段引导 AI 交互。
 - `markdown_formatter.py`：格式化输出。
 - `prompts.py`：提示词模板。
+- `auth.py` / `api.py` / `validate_testcases.py`：权限装饰器、通用 API 辅助与测试用例校验。
 
 ### utils/agents/ — 阶段三费曼/论坛 Agent 子系统
 
@@ -110,17 +111,16 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 
 **A. 网页表单路径（异步，主流）**
 
-`POST /assignments/<assignment_id>/submit`（`routes/assignments.py::submit_code`）→ 创建 `Submission(status=pending)` → 把任务投进后台线程 `tasks/submission_tasks.py::evaluate_submission_async` → 页面跳转到"评测中"，前端经 `get_submission_status`（`routes/api.py`）/ SSE 轮询进度。
+`POST /submit/<assignment_id>`（`routes/assignments.py::submit_code`，蓝图无 url_prefix）→ 创建 `Submission(status=pending)` → 把任务投进后台线程 `tasks/submission_tasks.py::evaluate_submission_async` → 页面跳转到"评测中"，前端经 `get_submission_status`（`routes/api.py`）/ SSE 轮询进度。
 
 后台线程按序执行：
 
-1. AI 基础评估：`utils/code_evaluator.py::evaluate_cpp_code`，内部为启发式评分 `calculate_heuristic_score` + 可选 LLM 反馈，产出 score/feedback。（LLM 叠加经 `utils/llm_evaluator.py::LLMEvaluator`，其网络请求再委托 `services/llm_client.py::SharedLLMClient`。）
-2. 沙箱用例评判：`utils/sandbox_runner.py::run_test_cases` → `compile_cpp` 用 g++ 按 C++17 编译（15s 超时）→ `run_single_test` 逐用例运行（5s 超时、输出长度限制）→ 写回 `sandbox_passed/total/detail`。
-3. 分数归一：`_normalise_score` 把各评测器（0–100/0–10/0–5）统一压到 0–5。
-4. 统计刷新：`_refresh_assignment_stats` / `_refresh_user_stats` 基于全量历史重算，避免种子数据重复累加。
-5. 知识点画像：用作业绑定或 AI 探测出的知识点调 `KnowledgePointScore.update_score`。
-6. 触发能力分析：`AbilityTrend.mark_as_outdated` + `trigger_analysis_if_needed()`。
-7. 状态置为 evaluated，写 `SystemLog`。
+1. AI 基础评估：`utils/code_evaluator.py::evaluate_cpp_code`，内部为启发式评分 `calculate_heuristic_score` + 可选 LLM 反馈，产出 score/feedback 并经 `_normalise_score` 统一归一到 0–5。（LLM 叠加经 `utils/llm_evaluator.py::LLMEvaluator`，其网络请求再委托 `services/llm_client.py::SharedLLMClient`。）
+2. 沙箱用例评判：`utils/sandbox_runner.py::run_test_cases` → `compile_cpp` 用 g++ 按 C++17 编译（15s 超时）→ `run_single_test` 逐用例运行（5s 超时、输出长度限制）→ 写回 `sandbox_passed/total/detail`；存在测试用例时以沙箱通过率重算最终 0–5 分。
+3. 状态置为 evaluated，并 `_refresh_assignment_stats` / `_refresh_user_stats` 基于全量历史重算，避免种子数据重复累加。
+4. 知识点画像：用作业绑定或 AI 探测出的知识点调 `KnowledgePointScore.update_score`。
+5. 触发能力分析：`AbilityTrend.mark_as_outdated` + `trigger_analysis_if_needed()`（内部按键去重防并发）。
+6. 写 `SystemLog`（公开体验会话不写正式库审计日志）。
 
 **B. API 路径（同步）**
 
@@ -132,10 +132,10 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 
 入口 `GET /thinking/<assignment_id>`（`routes/thinking.py`）加载 `templates/thinking/arena.html`：
 
-1. 会话初始化：`POST /api/start_session` 创建 `ThinkingSession`，装载 `AssignmentThinkingPreset`（目标、关键步骤、提示语）；无预设时走 AI 生成并 lazy 回填。
-2. 阶段一（思路）：`POST /api/stage1/submit` → `utils/thinking_ai.py::evaluate_description` 先做本地快速检查、必要时请求 AI，按 key_steps 匹配打分；≥50 分放行至阶段二，逐条写 `ThinkingStageLog`。
-3. 阶段二（组装）：`POST /api/stage2/verify` 验证步骤顺序并把组装结果规整成可编译代码、生成预览；AI 回应统一经 `utils/thinking_ai.py::sanitize_response` 做物理级代码过滤——这是提示词约束之外的第二层防泄漏。
-4. 阶段三（费曼/论坛）：`POST /api/stage3/forum/message` → `utils/agents/orchestrator.py::Stage3Orchestrator.handle_user_message` → intent 意图识别、目标角色仲裁（学生/教师双 Agent）、loop 多轮、tools 追问/探测、coverage 判定掌握度，SSE 流式返回；`POST /api/stage3/forum/trace` 提供轨迹复盘，`POST /api/complete_session` 收尾归档。
+1. 会话初始化：`POST /thinking/api/start_session`（thinking 蓝图 `url_prefix='/thinking'`）创建 `ThinkingSession`，装载 `AssignmentThinkingPreset`（目标、关键步骤、提示语）；无预设时走 AI 生成并 lazy 回填。
+2. 阶段一（思路）：`POST /thinking/api/stage1/submit` → `utils/thinking_ai.py::evaluate_description` 先做本地快速检查、必要时请求 AI，按 key_steps 匹配打分；≥50 分放行至阶段二，逐条写 `ThinkingStageLog`。
+3. 阶段二（组装）：`POST /thinking/api/stage2/verify` 验证步骤顺序并把组装结果规整成可编译代码、生成预览；AI 回应统一经 `utils/thinking_ai.py::sanitize_response` 做物理级代码过滤——这是提示词约束之外的第二层防泄漏。
+4. 阶段三（费曼/论坛）：`POST /thinking/api/stage3/forum/message` → `utils/agents/orchestrator.py::Stage3Orchestrator.handle_user_message` → intent 意图识别、目标角色仲裁（学生/教师双 Agent）、loop 多轮、tools 追问/探测、coverage 判定掌握度，SSE 流式返回；`POST /thinking/api/stage3/forum/trace` 提供轨迹复盘，`POST /thinking/api/complete_session` 收尾归档。
 
 **AI 调用现状（重点）**：仓库当前处于新老两层并存的迁移状态。
 
@@ -144,7 +144,7 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 
 ### 4. 能力画像与教师端学情链路
 
-每次提交都会触发：`AbilityTrend.mark_as_outdated` → `trigger_analysis_if_needed()`（防并发 key 去重）→ 后台线程 `tasks/ability_analysis.py::generate_ability_analysis_async` → 拉最近 20 条提交 → `services/ai_evaluator.py::AIEvaluator.analyze_ability_trend_stream` → 前端经 `/api/stream/ability-analysis`（SSE，`routes/api.py::stream_ability_analysis`）流式渲染 Markdown → 结果落回 `AbilityTrend`。教师端 `teacher_analytics` / `teacher_ai_advisor` 再从班级、知识点维度做聚合视图与建议。
+提交评测成功后（异步/同步两通路一致）即触发能力分析刷新：`AbilityTrend.mark_as_outdated` → `trigger_analysis_if_needed()`（防并发 key 去重）→ 后台线程 `tasks/ability_analysis.py::generate_ability_analysis_async` → 拉最近 20 条提交 → `services/ai_evaluator.py::AIEvaluator.analyze_ability_trend_stream` → 前端经 `/api/stream/ability-analysis`（SSE，`routes/api.py::stream_ability_analysis`）流式渲染 Markdown → 结果落回 `AbilityTrend`。教师端 `teacher_analytics` / `teacher_ai_advisor` 再从班级、知识点维度做聚合视图与建议。
 
 **公开体验隔离**：`services/demo_database.py` 为每次体验建临时 SQLite，demo_run_id 沿提交、沙箱、能力分析各后台线程传递；线程执行前二次校验会话存活，退出即清理，绝不写正式库。
 
@@ -160,7 +160,7 @@ CodeSense 是一个 Flask 单体 Web 应用（Python），核心是「C 语言/C
 - **services/**：业务服务层，偏纯逻辑、易单测（LLM 客户端抽象、AI 评估、密钥管理、成绩册、教师分析、演示数据隔离）。
 - **utils/**：引擎/工具层（代码评测、沙箱执行、提示词、能力画像、SSE、权限装饰器，以及三阶段 Agent 引擎 `utils/agents/`）。
 - **tasks/**：后台任务（异步评测、能力分析）。
-- **models.py**：单一 ORM 文件（约 1500 行，20+ 模型）；**templates/**、**static/**：Jinja2 模板与前端资源；**tests/**：pytest 测试。
+- **models.py**：单一 ORM 文件（约 1500 行、19 个模型）；**templates/**、**static/**：Jinja2 模板与前端资源；**tests/**：pytest 测试。
 
 ### 启动链路与关键机制
 
