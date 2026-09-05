@@ -55,7 +55,7 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 
 ### utils/ — 底层工具与核心引擎
 
-- `sandbox_runner.py`：Causal Sandbox：g++ C++17 受限编译/运行、超时与输出限制。
+- `sandbox_runner.py`：Causal Sandbox：g++ C++17 受限编译/运行，15s 编译 / 5s 运行超时，stdout/stderr 各有界读取（各 4096 字节上限、超限即终止进程），用例结果带 `termination_reason`（`stdout_limit`/`stderr_limit`/`timeout`/`runtime_error` 等）。
 - `code_evaluator.py`：启发式评分 + 可选 LLM 评估叠加。
   （早期版本曾使用 CodeBERT + TextCNN 本地模型评分，当前 main 已移除，相关描述仅见于历史文档/提交。）
 - `llm_evaluator.py`：旧版 LLM 评估器 `LLMEvaluator`。注意：它仍自行初始化 provider 客户端并选择 api_type（`zhipu`/`openai`），仅在发请求时委托给 `services/llm_client.py::SharedLLMClient`。
@@ -95,7 +95,7 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 
 ### 测试（tests/）
 
-覆盖面较广，突出三类特色域：沙箱演示特性（`test_sandbox_features`，实为演示数据装载/免密登录/生产禁用三项用例，见附录 B，不直接覆盖 C++ 编译执行）、演示会话隔离（`test_demo_*`）、阶段三 Agent/论坛（`test_stage3_*`），另有 SSE、成绩、班级花名册、HTTPS 代理与性能基线等测试。
+覆盖面较广，突出三类特色域：沙箱演示特性（`test_sandbox_features`，实为演示数据装载/免密登录/生产禁用三项用例，见附录 B，不直接覆盖 C++ 编译执行）、演示会话隔离（`test_demo_*`）、阶段三 Agent/论坛（`test_stage3_*`），另有 SSE、成绩、班级花名册、HTTPS 代理、性能基线，以及沙箱输出限制的有界进程测试（`test_sandbox_output_limits.py`，mock 编译器、不触发真实 g++，见附录 B）等测试。
 
 ## 三、核心运行流程与调用链
 
@@ -116,7 +116,7 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 后台线程按序执行：
 
 1. AI 基础评估：`utils/code_evaluator.py::evaluate_cpp_code`，内部为启发式评分 `calculate_heuristic_score` + 可选 LLM 反馈，产出 score/feedback 并经 `_normalise_score` 统一归一到 0–5。（LLM 叠加经 `utils/llm_evaluator.py::LLMEvaluator`，其网络请求再委托 `services/llm_client.py::SharedLLMClient`。）
-2. 沙箱用例评判：`utils/sandbox_runner.py::run_test_cases` → `compile_cpp` 用 g++ 按 C++17 编译（15s 超时）→ `run_single_test` 逐用例运行（5s 超时、输出长度限制）→ 写回 `sandbox_passed/total/detail`；存在测试用例时以沙箱通过率重算最终 0–5 分。
+2. 沙箱用例评判：`utils/sandbox_runner.py::run_test_cases` → `compile_cpp` 用 g++ 按 C++17 编译（15s 超时、编译器的 stdout/stderr 输出同样受限）→ `run_single_test` 逐用例运行（5s 超时；内部经有界管道线程 `_BoundedPipeReader` 以 stdout/stderr 各 4096 字节为上限边跑边读，超限立即终止进程并记 `termination_reason`，超时/运行错误同样有明确终止原因，超限结果一律不判通过）→ 写回 `sandbox_passed/total/detail`；存在测试用例时以沙箱通过率重算最终 0–5 分。
 3. 状态置为 evaluated，并 `_refresh_assignment_stats` / `_refresh_user_stats` 基于全量历史重算，避免种子数据重复累加。
 4. 知识点画像：用作业绑定或 AI 探测出的知识点调 `KnowledgePointScore.update_score`。
 5. 触发能力分析：`AbilityTrend.mark_as_outdated` + `trigger_analysis_if_needed()`（内部按键去重防并发）。
@@ -168,9 +168,9 @@ CodeSense 是一个 Flask 单体 Web 应用（Python），核心是「C 语言/C
 
 ### 核心子系统
 
-1. **代码评测执行链（Causal Sandbox）**：以 g++ C++17 编译，15s 编译 / 5s 运行超时、临时工作目录、限输出长度、标准化输出比对。调用链：
+1. **代码评测执行链（Causal Sandbox）**：以 g++ C++17 编译，15s 编译 / 5s 运行超时、临时工作目录、stdout/stderr 各有界读取（各 4096 字节上限，超限即终止进程，不视为正常结束）、标准化输出比对，用例结果带 `termination_reason`（`stdout_limit`/`stderr_limit`/`timeout`/`runtime_error`）。调用链：
    `routes (submit) → tasks/submission_tasks.evaluate_submission_async → utils/code_evaluator（启发式评分 + 可选 LLM 叠加）→ utils/sandbox_runner.run_test_cases（受限编译运行）`。
-   注意：当前 main 的 `code_evaluator.py` 模块说明为"启发式评分和大模型评估"，不再依赖本地 CodeBERT/TextCNN 模型（后者为早期版本实现，仅见于 AGENTS.md 等历史描述）。
+   注意：当前 main 的 `code_evaluator.py` 模块说明为"启发式评分和大模型评估"，不再依赖本地 CodeBERT/TextCNN 模型（后者为早期版本实现，仅见于 AGENTS.md 等历史描述）。沙箱输出有界化来自上游提交 `fix: bound C++ sandbox stdout and stderr`，配套测试 `tests/test_sandbox_output_limits.py`（mock 编译器、用 Python 解释器进程验证有界进程行为，见附录 B）。
 2. **AI 服务抽象**：`services/llm_client.py::SharedLLMClient` 统一封装智谱/OpenAI，含 provider 健康状态、故障切换、退避重试；`services/api_keys.py` 统一管理密钥。新链路只依赖这一层；旧评估器 `utils/llm_evaluator.py::LLMEvaluator` 的初始化/选型逻辑仍在旧模块内（见三.3"AI 调用现状"）。
 3. **异步 + SSE**：提交后不阻塞请求，任务由线程池执行，前端通过 `utils/sse.py` 的 SSE 流（如 `/api/stream/ability-analysis`）拿进度。
 4. **三阶段引导式学习（thinking）**：一次练习 = 思路描述 → 步骤组装 → 费曼教学（stage3）。费曼部分是一套较重的多角色 Agent 系统，全在 `utils/agents/`；入口路由在 `routes/thinking.py`，页面在 `templates/thinking/arena.html`。
@@ -183,6 +183,7 @@ CodeSense 是一个 Flask 单体 Web 应用（Python），核心是「C 语言/C
 - 单点登录：`before_request` 比对 session 与库内 `current_session_id`，发现并发登录强制登出。
 - Session 优先 Redis，失败自动降级文件系统；生产强制 `SECRET_KEY` ≥32、`DB_AUTO_INIT=False`（需先跑 `database_maintenance.py` 建表/索引）。
 - 提供 `/healthz`、`/readyz` 探针、ProxyFix 反代协议还原、gzip 压缩与慢请求日志。
+- 提交评测错误处理已加固（上游提交 `fix: harden submission error handling`）：后端与日志不再回显完整异常及堆栈（只记异常类型名），用户侧统一返回通用提示（如"请稍后重试"）；评测页前端轮询设 60 次上限，超限或队列不可用时明确提示"任务状态暂不可用"。
 
 ---
 
@@ -204,7 +205,7 @@ CodeSense 是一个 Flask 单体 Web 应用（Python），核心是「C 语言/C
 
 ## 附录 B：个人安装、运行与测试记录（个人环境备忘）
 
-- 记录时间：2026-09-03（2026-09-05 按 PR 评审意见补充真实 C++ 编译运行验证与范围说明）；环境：Windows，Python 3.11（项目虚拟环境 .venv），g++ 16.1.0（MSYS2，路径位于 MSYS2 的 mingw64/bin 下，与 `utils/sandbox_runner.py` 的编译器候选路径一致）；项目：CodeSense（v1.0.0）。
+- 记录时间：2026-09-03（2026-09-05 按 PR 评审意见补充真实 C++ 编译运行验证与范围说明，并随分支 rebase 至上游 main 后复核新版沙箱引擎）；环境：Windows，Python 3.11（项目虚拟环境 .venv），g++ 16.1.0（MSYS2，路径位于 MSYS2 的 mingw64/bin 下，与 `utils/sandbox_runner.py` 的编译器候选路径一致）；项目：CodeSense（v1.0.0）。
 
 ### 安装
 
@@ -244,17 +245,17 @@ python run.py
 .\.venv\Scripts\python.exe -m pytest tests/test_sandbox_features.py -q
 ```
 
-结果：3 passed, 26 warnings（2026-09-05 本机复测约 60s）。三项用例分别为 `test_seed_demo_data_creation`（演示数据装载）、`test_sandbox_login_flows`（免密登录）、`test_security_prevents_sandbox_in_production`（生产环境禁用沙箱），属于"沙箱（演示）登录与安全特性"测试，**并未调用 g++ 编译运行代码**。另经核对，`tests/test_demo_submission_isolation.py` 中同样对 `run_test_cases` 做了 mock，即 tests/ 目录当前不存在覆盖真实 C++ 编译运行链路的端到端用例。因此此前"通过沙箱评测相关测试即可说明代码评测链路可用"的表述不准确，见下方补充验证。
+结果：3 passed, 26 warnings（2026-09-05 本机复测约 60s）。三项用例分别为 `test_seed_demo_data_creation`（演示数据装载）、`test_sandbox_login_flows`（免密登录）、`test_security_prevents_sandbox_in_production`（生产环境禁用沙箱），属于"沙箱（演示）登录与安全特性"测试，**并未调用 g++ 编译运行代码**。另经核对，`tests/test_demo_submission_isolation.py` 中同样对 `run_test_cases` 做了 mock；上游 main 新增的 `tests/test_sandbox_output_limits.py`（2026-09-05 本机复测 5 passed in 1.01s）同样把编译器 patch 掉、改用 Python 解释器子进程验证 stdout/stderr 有界截断、超时与退出码等有界进程行为。因此 tests/ 目录当前不存在覆盖真实 C++ 编译运行链路的端到端用例，此前"通过沙箱评测相关测试即可说明代码评测链路可用"的表述不准确，见下方补充验证。
 
 **2. 真实 C++ 编译运行链路验证（2026-09-05 补充，回应评审意见）**
 
-直接调用 `utils/sandbox_runner.py::run_test_cases`，对一段 C++17 加法程序（`cin` 读入、`cout` 输出）用本机 g++ 编译后运行 3 个用例（含公开与隐藏用例），结果：
+直接调用 `utils/sandbox_runner.py::run_test_cases`，对一段 C++17 加法程序（`cin` 读入、`cout` 输出）用本机 g++ 编译后运行 3 个用例（含公开与隐藏用例）。该验证在合并上游新版沙箱引擎（有界管道读取，提交 `fix: bound C++ sandbox stdout and stderr`）后于 2026-09-05 复测一致，结果：
 
 ```text
 compiler = C:\msys64\mingw64\bin\g++.exe   # g++ (MSYS2) 16.1.0，与沙箱候选路径一致
 compiler_available = true, compile_success = true, compile_error = ""
 passed 3 / total 3, status = passed
-# 各用例 actual_output 与 expected_output 经 _normalize_output 比对一致，单例运行 33–510ms
+# 各用例 termination_reason = null（正常完成），输出经 _normalize_output 比对一致，单例运行 31–186ms
 ```
 
 验证方式为临时脚本（用后即删）：
@@ -277,7 +278,7 @@ run_test_cases(source, [
 
 ### 结论
 
-本项目已在本地 Windows 环境完成安装、成功启动；沙箱（演示）登录与安全特性 3 项自动化测试通过；并额外经真实 g++ 16.1.0 编译运行验证了 `utils/sandbox_runner` 的 C++17 编译/运行/输出比对链路可用。AI 辅助功能需在 `.env` 配置智谱或 OpenAI 密钥后启用；Web 端完整提交评测链路（含 LLM 叠加评分）与依赖真实 AI 密钥的部分测试不在本次验证范围内，属未验证事项。
+本项目已在本地 Windows 环境完成安装、成功启动；沙箱（演示）登录与安全特性 3 项自动化测试通过；上游 main 新增的沙箱输出限制有界进程测试 5 项通过（mock 编译器）；并额外经真实 g++ 16.1.0 编译运行验证了 `utils/sandbox_runner` 的 C++17 编译/运行/输出比对链路可用（合并上游新版沙箱引擎后复测一致）。AI 辅助功能需在 `.env` 配置智谱或 OpenAI 密钥后启用；Web 端完整提交评测链路（含 LLM 叠加评分）与依赖真实 AI 密钥的部分测试不在本次验证范围内，属未验证事项。
 
 ### 个人工具与参考资料
 
