@@ -86,7 +86,9 @@ def _mark_submission_failed(submission_id: int, message: str) -> None:
     db.session.commit()
 
 
-def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=None):
+def evaluate_submission_async(
+    app, submission_id, assignment_title, demo_run_id=None, *, run_inline=False
+):
     """异步评测学生提交的代码。
 
     ``demo_run_id`` 为空时使用正式数据库；公开体验传入该值后，线程会
@@ -274,6 +276,7 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                         icon="bi bi-check-circle-fill",
                     )
                 print(f"提交 {submission_id} 评测全部完成")
+                return "evaluated"
 
             except Exception as error:
                 print(f"评测线程崩溃: {type(error).__name__}")
@@ -288,8 +291,48 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                 except Exception:
                     db.session.rollback()
 
+            return "failed"
+
+    if run_inline:
+        return _evaluate()
+
     thread = threading.Thread(target=_evaluate)
     thread.daemon = True
     thread.start()
     print(f"已启动后台评测线程 - 提交 ID: {submission_id}")
     return thread
+
+
+def run_submission_evaluation(app, submission_id, assignment_title=None, demo_run_id=None):
+    """Run one submission evaluation inline inside a worker or app context."""
+
+    result = evaluate_submission_async(
+        app,
+        submission_id,
+        assignment_title,
+        demo_run_id=demo_run_id,
+        run_inline=True,
+    )
+    if result == "failed":
+        raise RuntimeError("submission evaluation failed")
+    return result or "evaluated"
+
+
+def run_formal_submission_evaluation(submission_id):
+    """RQ entry point; resolve all business data inside the worker context."""
+
+    from flask import current_app
+
+    submission_id = int(submission_id)
+    submission = db.session.get(Submission, submission_id)
+    if submission is None:
+        raise RuntimeError("提交记录不存在")
+    assignment = db.session.get(Assignment, submission.assignment_id)
+    if assignment is None:
+        raise RuntimeError("提交对应的作业不存在")
+    return run_submission_evaluation(
+        current_app._get_current_object(),
+        submission_id,
+        assignment.title,
+        None,
+    )
