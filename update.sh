@@ -45,6 +45,8 @@ if ! id codesense >/dev/null 2>&1; then
     echo "✗ 缺少 codesense 服务用户；请先完成运行时初始化"
     exit 1
 fi
+sudo chgrp codesense /var/www/codesense/.env
+sudo chmod 0640 /var/www/codesense/.env
 for writable_path in logs uploads static/uploads flask_session instance; do
     sudo install -d -o codesense -g codesense -m 0750 "/var/www/codesense/$writable_path"
     sudo chown -R codesense:codesense "/var/www/codesense/$writable_path"
