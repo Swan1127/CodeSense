@@ -5,16 +5,20 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=codesense
+Group=codesense
 WorkingDirectory=/var/www/codesense
 EnvironmentFile=-/var/www/codesense/.env
+Environment="PATH=/opt/codesense/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
 Environment=CODESENSE_CONFIG=production
-ExecStart=/root/miniconda/envs/codesense/bin/python -m tasks.ability_worker
+ExecStart=/opt/codesense/venv/bin/python -m tasks.ability_worker
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
 KillSignal=SIGTERM
 UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target
