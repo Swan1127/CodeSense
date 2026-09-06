@@ -172,7 +172,7 @@ CodeSense 是一个 Flask 单体 Web 应用（Python），核心是「C 语言/C
    `routes (submit) → tasks/submission_tasks.evaluate_submission_async → utils/code_evaluator（启发式评分 + 可选 LLM 叠加）→ utils/sandbox_runner.run_test_cases（受限编译运行）`。
    注意：当前 main 的 `code_evaluator.py` 模块说明为"启发式评分和大模型评估"，不再依赖本地 CodeBERT/TextCNN 模型（后者为早期版本实现，仅见于 AGENTS.md 等历史描述）。沙箱输出有界化来自上游提交 `fix: bound C++ sandbox stdout and stderr`，配套测试 `tests/test_sandbox_output_limits.py`（mock 编译器、用 Python 解释器进程验证有界进程行为，见附录 B）。
 2. **AI 服务抽象**：`services/llm_client.py::SharedLLMClient` 统一封装智谱/OpenAI，含 provider 健康状态、故障切换、退避重试；`services/api_keys.py` 统一管理密钥。新链路只依赖这一层；旧评估器 `utils/llm_evaluator.py::LLMEvaluator` 的初始化/选型逻辑仍在旧模块内（见三.3"AI 调用现状"）。
-3. **异步 + SSE**：提交后不阻塞请求，任务由线程池执行，前端通过 `utils/sse.py` 的 SSE 流（如 `/api/stream/ability-analysis`）拿进度。
+3. **异步评测 + SSE**：异步不阻塞仅适用于网页表单提交路径——`POST /submit/<assignment_id>`（`routes/assignments.py::submit_code`）提交后即返回，评测任务由后台线程池执行（`tasks/submission_tasks.py::evaluate_submission_async`），前端经 `get_submission_status`/SSE 轮询进度；而 API 路径 `POST /api/submit`（`routes/api.py::submit_code`）为同步评测、直接 JSON 返回结果（两通路详见三.2 的 A/B）。能力分析等流式进度经 `utils/sse.py` 提供（如 `/api/stream/ability-analysis`）。
 4. **三阶段引导式学习（thinking）**：一次练习 = 思路描述 → 步骤组装 → 费曼教学（stage3）。费曼部分是一套较重的多角色 Agent 系统，全在 `utils/agents/`；入口路由在 `routes/thinking.py`，页面在 `templates/thinking/arena.html`。
 5. **公开演示体验隔离（重点设计）**：不注册真实账号也能体验。每次进入 `/login` 的体验入口会生成一个带随机 run_id 的独立临时 SQLite（`services/demo_database.py`），由 `before_request` 按会话激活该库；演示账号（`demo:*`）走 Flask-Login 的独立 user_loader。`services/demo_experience.py` 负责向临时库播种演示学生/作业/提交等数据，退出或超时（空闲 1h / 最长 2h）即删除，与 AGENTS.md 的 PR worktree 数据隔离约定一致。
 6. **成绩与画像**：作业提交分 0–5 分；知识点/能力 0–100 分（贝叶斯权重，`ability_scorer` + `AbilityTrend`/`KnowledgePointScore`）。`routes/grades.py` + `services/course_grading.py` 汇总成绩册并导出 Excel；教师 AI 建议在 `services/teacher_ai_advisor.py`。
@@ -221,7 +221,7 @@ python -m pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/sim
 
 过程中遇到的问题与解决：
 
-1. Python 3.14 兼容性问题：系统 Python 为 3.14，Flask 依赖的 Werkzeug 2.2.3 使用已被 3.12+ 移除的 `ast.Str`，启动即报 `AttributeError: module 'ast' has no attribute 'Str'`。改用 Python 3.11 创建虚拟环境后解决。
+1. Python 3.14 兼容性问题：本机系统 Python 为 3.14，在其上运行即报 `AttributeError: module 'ast' has no attribute 'Str'`。原因：`ast.Str`（连同 `ast.Num`/`ast.Bytes`/`ast.NameConstant`/`ast.Ellipsis`）自 Python 3.8 起弃用、到 **Python 3.14 才真正移除**（3.12、3.13 仍保留该兼容类）；而项目依赖的 Werkzeug 2.2.3 在 `werkzeug/routing/rules.py::_compile_builder` 中仍使用 `ast.Str` 生成 URL 构建函数——该归因已在本机 Python 3.14 下复现验证，报错堆栈即指向上述文件。改用 Python 3.11 创建虚拟环境后恢复。
 2. `.env` 残留 MySQL 配置：`.env` 中的 `DATABASE_URL` 实际仍指向本地 MySQL（user:password@127.0.0.1:3306），启动时 `db.create_all()` 连接 MySQL 被拒（WinError 10061）。注释该行后回退到本地 SQLite 数据库。
 
 ### 运行
