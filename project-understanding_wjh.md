@@ -1,6 +1,6 @@
 # CodeSense 项目理解与学习记录
 
-> 结论标注约定：本文正文的机制性结论统一按证据强度标注——**【源码确认】**＝依据所注源码位置（路径/函数）与提交 SHA（默认本仓库 main HEAD `22f93d4`，即 PR #14 当前 head）静态核对得出；**【源码推断】**＝仅由调用关系或注释推断、未逐行核实；**【运行验证】**＝对应附录 B 中本人实际运行/测试的记录。未附“运行验证”字样的机制性断言均属源码静态分析结论，其运行级验证范围与边界见附录 B「范围澄清」。
+> 结论标注约定：本文正文的机制性结论统一按证据强度标注——**【源码确认】**＝依据固定的「源码核对基线」提交（`22f93d4`，本仓库 main 上的固定提交，可在仓库按 SHA 定位；其源码文件与本次修订相比无代码改动，仅本文档自身有修订）静态核对得出，标注中另给出对应源码位置；**【源码推断】**＝仅由调用关系或注释推断、未逐行核实；**【运行验证】**＝对应附录 B 中本人实际运行/测试的记录。重要：**「源码核对基线」是固定历史快照，不代表 PR 当前 head**——PR head 会随文档修订继续移动，基线不随之变更，也不会因替换 SHA 而声称重新核对；后文所有“源码核对基线（见文首）”均指向此同一提交，正文与附录 B 不再重复给出 SHA 或“main HEAD/当前 head”等易过期表述。未附“运行验证”字样的机制性断言均属源码静态分析结论，其运行级验证范围与边界见附录 B「范围澄清」。
 
 ## 一、项目定位
 
@@ -142,13 +142,13 @@ CodeSense 是一个面向高校编程教学的 AI 辅助评测与学习平台。
 **AI 调用现状（重点）**：仓库当前处于新老两层并存的迁移状态。
 
 - 新链路（三阶段对话、能力分析、教师建议等）直接使用 `services/llm_client.py::SharedLLMClient`（多 provider 重试、限流、熔断集中在此）。
-- 旧链路（提交评测中的 LLM 叠加）仍先经 `utils/llm_evaluator.py::LLMEvaluator`：该对象在 `_init_client` 里自行初始化 ZhipuAI/OpenAI 客户端并选择 api_type，仅真正发请求的 `_chat_completions_create` 委托给 `SharedLLMClient`。因此"所有 AI 请求统一出口为 SharedLLMClient"的表述不完整，准确说法是：**实际网络请求统一委托 SharedLLMClient，但旧评估器的对象初始化/选型逻辑仍保留在 LLMEvaluator**。（结论标注：**源码确认**，未经真实 AI 请求运行验证。依据：`utils/llm_evaluator.py::LLMEvaluator._chat_completions_create` 将实际网络请求委托给 `services/llm_client.py::SharedLLMClient`，而 `_init_client` 仍在本模块完成客户端初始化与 api_type 选型；源码基线本仓库 main HEAD `22f93d4`，运行级验证见附录 B「范围澄清」。）
+- 旧链路（提交评测中的 LLM 叠加）仍先经 `utils/llm_evaluator.py::LLMEvaluator`：该对象在 `_init_client` 里自行初始化 ZhipuAI/OpenAI 客户端并选择 api_type，仅真正发请求的 `_chat_completions_create` 委托给 `SharedLLMClient`。因此"所有 AI 请求统一出口为 SharedLLMClient"的表述不完整，准确说法是：**实际网络请求统一委托 SharedLLMClient，但旧评估器的对象初始化/选型逻辑仍保留在 LLMEvaluator**。（结论标注：**源码确认**，未经真实 AI 请求运行验证。依据：`utils/llm_evaluator.py::LLMEvaluator._chat_completions_create` 将实际网络请求委托给 `services/llm_client.py::SharedLLMClient`，而 `_init_client` 仍在本模块完成客户端初始化与 api_type 选型；源码核对基线见文首；运行级验证见附录 B「范围澄清」。）
 
 ### 4. 能力画像与教师端学情链路
 
 提交评测成功后（异步/同步两通路一致）即触发能力分析刷新：`AbilityTrend.mark_as_outdated` → `trigger_analysis_if_needed()`（防并发 key 去重）→ 后台线程 `tasks/ability_analysis.py::generate_ability_analysis_async` → 拉最近 20 条提交 → `services/ai_evaluator.py::AIEvaluator.analyze_ability_trend_stream` → 前端经 `/api/stream/ability-analysis`（SSE，`routes/api.py::stream_ability_analysis`）流式渲染 Markdown → 结果落回 `AbilityTrend`。教师端 `teacher_analytics` / `teacher_ai_advisor` 再从班级、知识点维度做聚合视图与建议。
 
-**公开体验隔离**：`services/demo_database.py` 为每次体验建临时 SQLite，demo_run_id 沿提交、沙箱、能力分析各后台线程传递；线程执行前二次校验会话存活，退出即清理，绝不写正式库。（结论标注：**源码确认**，未做运行验证。依据：`services/demo_database.py::activate_demo_run`/`activate_demo_request_database` 的临时库切换，`tasks/submission_tasks.py::evaluate_submission_async` 的 docstring 注明“demo_run_id 为空时才使用正式数据库”且线程内二次校验会话存活，配套用例为 `tests/test_demo_submission_isolation.py` 等 `tests/test_demo_*`；源码基线本仓库 main HEAD `22f93d4`。附录 B 未复跑 demo 用例，此隔离保证的运行级验证待补。）
+**公开体验隔离**：`services/demo_database.py` 为每次体验建临时 SQLite，demo_run_id 沿提交、沙箱、能力分析各后台线程传递；线程执行前二次校验会话存活，退出即清理，绝不写正式库。（结论标注：**源码确认**，未做运行验证。依据：`services/demo_database.py::activate_demo_run`/`activate_demo_request_database` 的临时库切换，`tasks/submission_tasks.py::evaluate_submission_async` 的 docstring 注明“demo_run_id 为空时才使用正式数据库”且线程内二次校验会话存活，配套用例为 `tests/test_demo_submission_isolation.py` 等 `tests/test_demo_*`；源码核对基线见文首。附录 B 未复跑 demo 用例，此隔离保证的运行级验证待补。）
 
 **失败可见性**：AI/沙箱失败在体验中一律置 failed，前端显示"失败/重试"，不允许用默认分数伪装成功。
 
@@ -282,7 +282,7 @@ run_test_cases(source, [
 
 本项目已在本地 Windows 环境完成安装、成功启动；沙箱（演示）登录与安全特性 3 项自动化测试通过；上游 main 新增的沙箱输出限制有界进程测试 5 项通过（mock 编译器）；并额外经真实 g++ 16.1.0 编译运行验证了 `utils/sandbox_runner` 的 C++17 编译/运行/输出比对链路可用（合并上游新版沙箱引擎后复测一致）。AI 辅助功能需在 `.env` 配置智谱或 OpenAI 密钥后启用；Web 端完整提交评测链路（含 LLM 叠加评分）与依赖真实 AI 密钥的部分测试不在本次验证范围内，属未验证事项。
 
-范围澄清（回应复审 P3 意见）：附录 B 的**运行验证**仅覆盖上文所列事项——沙箱（演示）特性测试 3 项、沙箱输出限制有界进程测试 5 项、真实 g++ 16.1.0 编译运行 3 例、`python run.py` 启动。正文中“AI 实际网络请求统一委托 SharedLLMClient”“公开体验绝不写正式库”等**源码确认**结论，均仅依据本仓库 main HEAD `22f93d4` 的源码静态核对得出：前者未使用真实 AI 密钥触发过 LLM 调用，后者对应的 `tests/test_demo_*` 隔离用例未在附录 B 复跑。这两类机制结论的运行级验证待后续补充，读到时请勿视为已被实跑确认。
+范围澄清（回应复审 P3 意见）：附录 B 的**运行验证**仅覆盖上文所列事项——沙箱（演示）特性测试 3 项、沙箱输出限制有界进程测试 5 项、真实 g++ 16.1.0 编译运行 3 例、`python run.py` 启动。正文中“AI 实际网络请求统一委托 SharedLLMClient”“公开体验绝不写正式库”等**源码确认**结论，均仅依据文首「源码核对基线」提交的源码静态核对得出（基线定义与固定 SHA 见文首结论标注约定，该基线不代表 PR 当前 head）：前者未使用真实 AI 密钥触发过 LLM 调用，后者对应的 `tests/test_demo_*` 隔离用例未在附录 B 复跑。这两类机制结论的运行级验证待后续补充，读到时请勿视为已被实跑确认。
 
 ### 个人工具与参考资料
 
