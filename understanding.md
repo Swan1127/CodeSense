@@ -123,7 +123,7 @@ CodeSense（酷森思）是面向高校编程教学的 AI 辅助评测与学习�
 
 ### 安装与启动
 - `py -3.11 -m venv .venv` + 阿里云镜像安装依赖（60 个包，Flask 2.2.3 / SQLAlchemy 2.0.52）；安装 MSYS2 g++ 16.1.0。
-- **Python 3.14 不兼容**：`ast.Str` 自 3.8 弃用、3.14 移除，而 Werkzeug 2.2.3 `werkzeug/routing/rules.py` 仍使用它，启动即报 `AttributeError: module 'ast' has no attribute 'Str'`（已在本机 3.14 复现）。有效版本范围约 3.8–3.13。
+- **Python 版本（只陈述已验证事实，不做范围推断）**：运行记录仅验证 **Python 3.11 启动成功**与 **Python 3.14 启动失败**——3.14 失败原因：`ast.Str` 自 3.8 弃用、3.14 移除，而 Werkzeug 2.2.3 `werkzeug/routing/rules.py` 仍在使用，启动即报 `AttributeError: module 'ast' has no attribute 'Str'`（本机 3.14 复现）。**3.8–3.13 区间未逐一验证**：单一依赖中 `ast.Str` 的存在与否不足以证明该区间内全部依赖与项目代码均兼容，故本文不给出整体兼容区间结论，选解释器版本请以实际安装/启动验证为准。
 - `.env` 残留 MySQL 配置会令启动连接被拒（WinError 10061），注释后回退本地 SQLite。
 - `python run.py` 启动成功；本机无 Redis，会话自动降级文件系统；登录页提供学生/教师体验入口。
 
@@ -143,17 +143,22 @@ CodeSense（酷森思）是面向高校编程教学的 AI 辅助评测与学习�
 ## 五、风险与疑问（Bug 清单与未决问题）
 
 ### A. 代码级风险（静态阅读发现，按严重度）
-1. **未认证端点（高危）**：`/api/assignments/<id>/testcases/batch`（[routes/assignments.py](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/assignments.py)）无任何鉴权。
-2. **会话信息泄露（高危）**：`/debug_session`（[routes/main.py](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/main.py)）未认证即可 dump 整个 session。
-3. **错误的会话键（高危）**：`/api/submission/<submission_id>` 读取 `user_type`（正确键为 `usertype`），鉴权可能被绕过/误判。
-4. **越权访问**：教师可跨班级查看学生提交详情而不校验班级归属（[routes/users.py](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/users.py)，对比 grades 的 `_accessible_classes`）；`/api/stats` 对所有教师公开全局班级数据（类级数据泄漏）。
-5. **硬编码兜底密码**：`utils/auth.py` 内 `ADMIN_PASSWORD='admin123'` 兜底（生产风险）。
-6. **GET 执行写操作**：`delete_user`、logout、`invite-teacher` 等多以 GET 触发删除/副作用。
-7. **CSRF 大面积缺失**：多数自定义表单无 CSRF；seed 机制每次请求重新生成 token，造成连续提交不一致。
+
+> **全局防护核对结论（基线 `22f93d4`，源码确认）**：全仓**无“全局登录/角色强制”钩子**。唯一的全局 `@app.before_request`（[app.py `check_single_session`](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/app.py#L277-L299)）只做两件事：演示临时库激活 + 对**已登录**用户的单点会话校验（并发踢出）；对匿名请求**不强制登录、不做角色判断**。登录/角色检查完全依赖**各路由装饰器**（`@login_required` / `@admin_required` / `@admin_or_teacher_required`，在 8 个路由文件中分别出现 16/17/17/3/14/22/11 次等，grades 仅 3 次）。**CSRF**：全仓无全局 `CSRFProtect`；Flask-WTF 表单自带 token 只在渲染 `form.csrf_token` 的表单上生效（模板中仅 [change_password.html](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/templates/change_password.html#L13) 与 [edit_profile.html](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/templates/edit_profile.html#L96) 显式渲染），[class_list.html](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/templates/classes/class_list.html#L306-L307) 注释自认“很多自定义 form 没有 csrf 字段”；`SESSION_COOKIE_SAMESITE='Lax'`（[config.py](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/config.py#L155)）为缓解项而非校验。以下条目均按此口径核对。
+
+1. **未认证批量改测试用例（高危，源码确认）**：`POST /api/assignments/<assignment_id>/testcases/batch`（[routes/api.py `batch_save_testcases`](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/api.py#L1465-L1490)）**无任何装饰器**，函数注释自承“鉴权可以在这里添加，目前简单实现”。访问条件：任意未登录 HTTP 客户端对**任意作业号**先删后写全部测试用例（可注入隐藏用例影响后续评分、破坏既有用例）；全局钩子不构成防护。
+2. **调试接口未设防（中危，源码确认）**：`GET /debug_session`（[routes/main.py `debug_session`](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/main.py#L952-L968)）无装饰器，匿名可调用。语义澄清：它只返回**当前请求自身** session 的内容（未登录时返回全部键值；已登录仅返回 `student_id/username/usertype/login` 子集），**并非**可读取他人会话的通道；属调试接口未下线 + 返回口径随会话键演进漂移，生产建议移除或加鉴权。
+3. **会话键不一致导致角色授权失效（中危，源码确认，非越权通道）**：`GET /api/submission/<submission_id>`（[routes/api.py `get_submission`](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/api.py#L381-L393)）用 `session.get('user_type')` 判权限，但登录体系写入的是 `session['usertype']`（[routes/auth.py](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/auth.py#L37-L40) 等 3 处写入），全仓**不存在** `session['user_type']` 写入点（users.py 中的同名仅是查询参数）。故该键恒为 `None`、`user_type != '管理员'` 恒真：教师/管理员经此接口查看他人提交一律 403（**误拒**），学生查看本人提交不受影响。这是授权判断失效/误拒与双会话键根因（同见二.2），不是可绕过的越权入口。
+4. **跨范围/越权读取（中危，源码确认）**：`GET /users/view_student_details/<student_id>`（[routes/users.py `view_student_details`](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/users.py#L407-L410)）仅 `@login_required + @admin_or_teacher_required`，函数体（L410 起）未做**班级归属**校验（对照 grades 的 [routes/grades.py `_accessible_classes`](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/grades.py#L17)）；访问条件：任意教师/管理员角色可查看**任意学生**的全量提交与统计。另 `GET /classes/api/stats`（[routes/classes.py `api_class_stats`](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/classes.py#L467-L472)）虽有 `@admin_or_teacher_required`，但函数体 `Class.query.all()` 对**所有教师**返回全局班级聚合（跨班信息暴露），属类级越权读取。
+5. **默认兜底口令（中危，条件触发，源码确认）**：[utils/auth.py `validate_admin_password`](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/utils/auth.py#L72-L77) 在**未设置环境变量 `ADMIN_PASSWORD`** 时回退固定口令 `admin123`（用于管理员注册/管理入口验证）。访问条件：生产漏配该环境变量即启用兜底口令。
+6. **GET 触发写/删副作用（中低危，源码确认）**：`delete_user`（[routes/users.py](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/users.py#L128-L146)，`methods=['GET','POST']`）、`invite-teacher`（[routes/users.py](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/users.py#L505-L520)，GET 即作废旧 token 并生成新 token）、`logout`（[routes/auth.py](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/routes/auth.py#L310-L335)，GET 登出并销毁演示临时库）均以 GET 触发副作用；delete/invite 已有 `@admin_required`，logout 无登录要求（属刻意，需允许登出）。叠加 `SameSite=Lax` 下顶层 GET 导航仍会携带 Cookie，此类 GET 副作用存在 CSRF 风险面（见 A.7）。
+7. **CSRF 覆盖不完整（中危，源码确认）**：无全局 `CSRFProtect`（grep 全仓仅在 [config.py](https://github.com/XiaoCow666/CodeSense/blob/22f93d4/config.py#L130-L131) 的 testing 分支出现 `WTF_CSRF_ENABLED=False`）；Flask-WTF 校验只对渲染并提交 `csrf_token` 的表单生效（见小节首核对结论），大量自定义表单与全部 fetch/JSON POST（如 A.1 的 batch 端点）不校验 CSRF。缓解：`SESSION_COOKIE_SAMESITE='Lax'` 挡跨站 POST 携带 Cookie，但对同站子域、顶层 GET 导航不设防。
 8. **注入/兼容面**：`markdown_formatter.render_html` 未转义；`utils/api.py` ASCII 回退会破坏中文。
 9. **Agent 子系统卫生问题**：`_SESSION_LOCKS` 无界增长；跨模块私有导入（feynman ↔ coverage）；`AgentLoopConfig.max_model_steps` 被收紧为 4（防失控但可能截断对话）；残留死字段（`misconceptions`/`feynman_rounds`）。
 10. **前端/模板技术债**：多个占位空 JS（`editor-manager.js` 等）；`styles1.css` 含乱码与嵌套 `<script>`；个别过期模板（`class_comparison` 损坏 tag、profile 硬编码假图表）。
 11. **代码重复与死代码**：改密逻辑重复、存在死代码 helper。
+
+> 注：条目 8–11 属代码卫生/技术债类结论，来自静态阅读、**未逐条锚定行号**，一律按 **源码推断** 对待；如需据以安排修复，请先按固定基线（`22f93d4`）复核相关文件。
 
 ### B. wjh 使用中发现的问题（整合自原附录 A.5）
 - 阶段二给出题目含无关内容，中间完整代码展示不完整（左侧拼凑代码完整、中间展示有缺失但可正常运行出正确结果）。
