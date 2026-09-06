@@ -34,7 +34,8 @@ echo "⚙️ 安装后台 RQ worker 服务..."
 sudo install -m 0644 codesense-ability-worker.service /etc/systemd/system/codesense-ability-worker.service
 sudo install -m 0644 codesense-submission-worker.service /etc/systemd/system/codesense-submission-worker.service
 sudo systemctl daemon-reload
-if grep -Eq '^(ABILITY_ANALYSIS_QUEUE_BACKEND|SUBMISSION_EVALUATION_QUEUE_BACKEND)=rq' /var/www/codesense/.env 2>/dev/null; then
+if grep -q '^ABILITY_ANALYSIS_QUEUE_BACKEND=rq$' /var/www/codesense/.env 2>/dev/null \
+    && grep -q '^SUBMISSION_EVALUATION_QUEUE_BACKEND=rq$' /var/www/codesense/.env 2>/dev/null; then
     sudo systemctl enable --now codesense-ability-worker codesense-submission-worker
 else
     sudo systemctl disable --now codesense-ability-worker codesense-submission-worker 2>/dev/null || true
@@ -55,7 +56,8 @@ fi
 echo ""
 echo "📊 检查服务状态..."
 systemctl status codesense --no-pager
-if grep -Eq '^(ABILITY_ANALYSIS_QUEUE_BACKEND|SUBMISSION_EVALUATION_QUEUE_BACKEND)=rq' /var/www/codesense/.env 2>/dev/null; then
+if grep -q '^ABILITY_ANALYSIS_QUEUE_BACKEND=rq$' /var/www/codesense/.env 2>/dev/null \
+    && grep -q '^SUBMISSION_EVALUATION_QUEUE_BACKEND=rq$' /var/www/codesense/.env 2>/dev/null; then
     systemctl status codesense-ability-worker codesense-submission-worker --no-pager
 fi
 
