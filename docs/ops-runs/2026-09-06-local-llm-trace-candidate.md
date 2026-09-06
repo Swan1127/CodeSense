@@ -2,7 +2,7 @@
 
 ## Run metadata
 
-- 运行时间：2026-09-06 10:12:48–10:13:56（Asia/Shanghai）
+- 运行时间：2026-09-06 10:12:48–10:17:36（Asia/Shanghai）
 - 运行类型：local optimization / isolated worktree
 - 隔离 worktree：`E:\CodeSense\local-optimization-20260906`
 - 分支：`codex/local-opt-20260906`
@@ -53,7 +53,7 @@
 | `tests/test_llm_client.py` | 7 passed / 0.48s | 11 passed / 0.65s | pass |
 | 相关回归（LLM/SSE/Stage1/demo） | 未改动前通过 | 20 passed / 16.05s | pass |
 | 完整 pytest 首次执行 | — | collection error：缺少 `fakeredis` | blocked by environment |
-| 完整 pytest（排除 `tests/test_ability_analysis_queue.py`） | — | 364 passed / 127.71s | pass with scoped exclusion |
+| 完整 pytest（排除 `tests/test_ability_analysis_queue.py`） | — | 364 passed / 125.41s | pass with scoped exclusion |
 | `py_compile` / `compileall -q .` | — | exit 0 | pass |
 | `git diff --check` | — | exit 0 | pass |
 
