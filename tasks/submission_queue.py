@@ -100,7 +100,7 @@ def _enqueue_submission_evaluation(app, submission_id: int, *, force=False):
     lock = queue.connection.lock(
         f"codesense:submission-evaluation:enqueue:{submission_id}",
         timeout=5,
-        blocking_timeout=1,
+        blocking_timeout=5,
     )
     if not lock.acquire():
         raise SubmissionQueueUnavailable("submission evaluation enqueue is busy")
