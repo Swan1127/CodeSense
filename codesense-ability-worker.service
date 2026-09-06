@@ -1,0 +1,20 @@
+[Unit]
+Description=CodeSense ability analysis RQ worker
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/codesense
+EnvironmentFile=-/var/www/codesense/.env
+Environment=CODESENSE_CONFIG=production
+ExecStart=/root/miniconda/envs/codesense/bin/python -m tasks.ability_worker
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
