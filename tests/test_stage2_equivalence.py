@@ -49,6 +49,9 @@ def test_quiz_equivalence_accepts_fenced_json_boolean(monkeypatch):
         '{"equivalent": "false", "reason": ""}',
         '{"equivalent": 1, "reason": ""}',
         '{"equivalent": true, "reason": 123}',
+        '[]',
+        '{"reason": ""}',
+        '{"equivalent": null, "reason": ""}',
     ],
 )
 def test_quiz_equivalence_rejects_values_with_wrong_schema_types(
@@ -57,6 +60,12 @@ def test_quiz_equivalence_rejects_values_with_wrong_schema_types(
     result = _run_check(monkeypatch, response)
 
     assert result == {"equivalent": False, "reason": "检查失败"}
+
+
+def test_quiz_equivalence_defaults_missing_reason_to_empty_string(monkeypatch):
+    result = _run_check(monkeypatch, '{"equivalent": true}')
+
+    assert result == {"equivalent": True, "reason": ""}
 
 
 def test_quiz_equivalence_reports_unavailable_service(monkeypatch):
