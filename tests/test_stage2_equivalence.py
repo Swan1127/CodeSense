@@ -52,9 +52,11 @@ def test_quiz_equivalence_accepts_fenced_json_boolean(monkeypatch):
         '[]',
         '{"reason": ""}',
         '{"equivalent": null, "reason": ""}',
+        '{"equivalent": true, "reason": null}',
+        'not-json',
     ],
 )
-def test_quiz_equivalence_rejects_values_with_wrong_schema_types(
+def test_quiz_equivalence_rejects_invalid_response_schema(
     monkeypatch, response
 ):
     result = _run_check(monkeypatch, response)
