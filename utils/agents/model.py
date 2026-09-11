@@ -178,7 +178,8 @@ class StructuredDecisionModel:
             # compatibility failure; do not hide a provider TypeError.
             if "request_kind" not in str(error):
                 raise
-            return self.client.chat(
+            legacy_chat = self.client.chat
+            return legacy_chat(
                 messages,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,

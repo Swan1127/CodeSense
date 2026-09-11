@@ -2,11 +2,14 @@
 用户管理相关路由
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app, jsonify
+from flask_login import current_user
 from itsdangerous import URLSafeTimedSerializer
 from models import db, User, Submission, SystemLog, Class, AbilityTrend, KnowledgePointScore
 from utils.auth import login_required, admin_required, admin_or_teacher_required
 from tasks.ability_analysis import trigger_analysis_if_needed
 from services.demo_database import current_demo_run_id
+from services.profile import get_profile_settings, save_profile_settings
+from services.submission_reviews import get_review_summaries
 from sqlalchemy import desc, func
 from forms import ChangePasswordForm, EditProfileForm
 from werkzeug.utils import secure_filename
@@ -220,6 +223,11 @@ def view_submissions():
             item.setdefault('accuracy', 0)
             item.setdefault('average_difficulty', 0)
             knowledge_profile_rows.append({'key': key, 'name': name, **item})
+
+        review_summaries = get_review_summaries(
+            [submission.id for submission in submissions.items],
+            actor=current_user,
+        )
         
         # 5. 获取 AI 能力趋势分析
         ability_trend = AbilityTrend.query.filter_by(student_id=student_id).first()
@@ -240,7 +248,8 @@ def view_submissions():
                             knowledge_profile_rows=knowledge_profile_rows,
                             ability_trend=ability_trend,
                             comprehensive_score=comprehensive_score,
-                            strongest_dim=strongest_dim)
+                            strongest_dim=strongest_dim,
+                            review_summaries=review_summaries)
     except Exception as e:
         import traceback
         print(f'访问学情分析时出错: {str(e)}')
@@ -281,6 +290,7 @@ def edit_profile():
     """编辑个人资料"""
     user = User.query.get(session.get('student_id'))
     form = EditProfileForm()
+    profile_settings = get_profile_settings(getattr(user, 'student_id', None))
     
     # 教学班账号保留原有资料编辑入口；自由账号只能通过教师加入码入班，
     # 不能在个人资料页直接自选任意班级。
@@ -303,7 +313,12 @@ def edit_profile():
                 ).first()
                 if existing_email_user:
                     flash('邮箱已被其他账号使用', 'danger')
-                    return render_template('edit_profile.html', form=form, user=user)
+                    return render_template(
+                        'edit_profile.html',
+                        form=form,
+                        user=user,
+                        profile_settings=profile_settings,
+                    )
 
             # 更新用户信息
             user.username = form.username.data
@@ -329,6 +344,12 @@ def edit_profile():
                 else:
                     user.class_id = None
             
+            save_profile_settings(
+                user.student_id,
+                bio=form.bio.data,
+                profile_visibility=form.profile_visibility.data,
+                commit=False,
+            )
             db.session.commit()
             flash('资料更新成功！', 'success')
             return redirect(url_for('users.view_submissions'))
@@ -342,8 +363,15 @@ def edit_profile():
         form.full_name.data = user.full_name
         form.email.data = user.email
         form.class_name.data = user.class_name
-    
-    return render_template('edit_profile.html', form=form, user=user)
+        form.bio.data = profile_settings.get('bio', '')
+        form.profile_visibility.data = profile_settings.get('profile_visibility', 'private')
+
+    return render_template(
+        'edit_profile.html',
+        form=form,
+        user=user,
+        profile_settings=profile_settings,
+    )
 
 
 @users.route('/change_password', methods=['GET', 'POST'])

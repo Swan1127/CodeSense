@@ -11,10 +11,11 @@ import gzip
 import re
 import threading
 import time
+import uuid
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from logging import FileHandler
 
-from flask import Flask, request, session, flash, redirect, url_for, g, jsonify
+from flask import Flask, request, session, flash, redirect, url_for, g, jsonify, send_file
 from flask_login import LoginManager
 from werkzeug.middleware.proxy_fix import ProxyFix
 # Flask-Session导入优化
@@ -38,6 +39,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from config import config
 from models import db, init_db
 from services.api_keys import api_keys  # 导入 API 密钥管理器
+from utils.timezone import format_display_datetime
 
 
 def _env_bool(name, default=False):
@@ -272,6 +274,10 @@ def setup_logging(app):
     @app.before_request
     def start_request_timer():
         g.codesense_request_started = time.perf_counter()
+        # Generate correlation data inside the trusted request context.  Do
+        # not accept a caller-supplied id: access and LLM logs must remain
+        # opaque and bounded even when a client sends arbitrary headers.
+        g.codesense_request_id = str(uuid.uuid4())
     
     # 单点登录校验
     @app.before_request
@@ -314,6 +320,9 @@ def setup_logging(app):
     def log_response_info(response):
         started = getattr(g, 'codesense_request_started', None)
         duration_ms = ((time.perf_counter() - started) * 1000) if started else 0
+        request_id = getattr(g, 'codesense_request_id', None)
+        if not request_id:
+            request_id = str(uuid.uuid4())
         is_static = request.endpoint in ['static', 'favicon']
         metrics = app.extensions.get('codesense_metrics')
         if metrics:
@@ -327,7 +336,8 @@ def setup_logging(app):
         if not is_static:
             line = (
                 f'{request.remote_addr} "{request.method} {request.path}" '
-                f'{response.status_code} {duration_ms:.0f}ms'
+                f'{response.status_code} {duration_ms:.0f}ms '
+                f'request_id={request_id}'
             )
             if app.config.get('ACCESS_LOG_ENABLED'):
                 access_logger.info(line)
@@ -454,11 +464,29 @@ def create_app(config_name='default'):
         except Exception:
             return []
 
+    @app.template_filter('localtime')
+    def localtime_filter(value, fmt='%Y-%m-%d %H:%M:%S'):
+        """Render a stored UTC timestamp in the configured display timezone."""
+        return format_display_datetime(value, fmt)
+
     # 注册全局上下文变量
     @app.context_processor
     def inject_now():
         from datetime import datetime as dt_now
-        return {'current_time': dt_now.utcnow()}
+        notification_unread_count = 0
+        student_id = session.get('student_id') if session.get('login') else None
+        if student_id:
+            try:
+                from services.notifications import count_unread
+                notification_unread_count = count_unread(student_id)
+            except Exception:
+                # Notification rendering must never make an otherwise healthy
+                # page unavailable; the inbox remains the source of detail.
+                app.logger.warning('站内通知未读数读取失败', exc_info=True)
+        return {
+            'current_time': dt_now.utcnow(),
+            'notification_unread_count': notification_unread_count,
+        }
     
     # 初始化Flask-Session（如果可用）
     if HAS_FLASK_SESSION and Session is not None:
@@ -531,6 +559,15 @@ def create_app(config_name='default'):
         response.headers['Vary'] = 'Accept-Encoding'
         response.headers.pop('Content-Length', None)
         return response
+
+    @app.get('/favicon.ico')
+    def favicon():
+        """Serve the same lightweight brand icon for browser defaults."""
+
+        return send_file(
+            os.path.join(app.root_path, 'static', 'img', 'favicon.svg'),
+            mimetype='image/svg+xml',
+        )
 
     @app.get('/healthz')
     def healthz():
