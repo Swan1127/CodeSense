@@ -185,6 +185,41 @@ class FeedbackLifecycleNotificationsProfileTestCase(unittest.TestCase):
             self.assertEqual(record['status'], 'received')
             self.assertEqual(SystemLog.query.filter_by(log_type='反馈状态更新').count(), 0)
 
+    def test_status_update_preserves_only_valid_admin_filters(self):
+        feedback_id = self.submit_feedback()
+        self.assertEqual(self.login('lifecycle_admin', 'admin_password').status_code, 302)
+
+        preserved = self.client.post(
+            f'/admin/feedback/{feedback_id}/status',
+            data={
+                'status': 'triaged',
+                'return_status': 'triaged',
+                'return_category': 'bug',
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(preserved.status_code, 302)
+        self.assertEqual(
+            preserved.headers['Location'],
+            '/admin/feedback?status=triaged&category=bug',
+        )
+        filtered = self.client.get(preserved.headers['Location'])
+        self.assertEqual(filtered.status_code, 200)
+        self.assertIn('状态变更通知测试'.encode('utf-8'), filtered.data)
+
+        invalid_filter_feedback_id = self.submit_feedback()
+        discarded = self.client.post(
+            f'/admin/feedback/{invalid_filter_feedback_id}/status',
+            data={
+                'status': 'triaged',
+                'return_status': 'not-a-status',
+                'return_category': 'not-a-category',
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(discarded.status_code, 302)
+        self.assertEqual(discarded.headers['Location'], '/admin/feedback')
+
     def test_profile_public_scope_is_explicit_and_reversible(self):
         self.assertEqual(self.login('lifecycle_student', 'student_password').status_code, 302)
         edit = self.client.get('/edit_profile')
