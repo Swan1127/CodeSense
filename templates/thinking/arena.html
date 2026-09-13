@@ -70,10 +70,12 @@
         {% elif preset_status == 'failed' %}
         <i class="bi bi-exclamation-triangle" style="animation: none; color: var(--arena-danger);"></i>
         <h3>学习数据生成失败</h3>
-        <p>可能由于大模型连接超时，请尝试重新生成或联系老师。</p>
+        <p>可能由于大模型连接超时，请联系作业负责教师重新生成。</p>
+        {% if is_demo_experience %}
         <button class="arena-btn arena-btn-primary" style="margin-top: 16px;" onclick="retryGeneratePreset()">
             <i class="bi bi-arrow-clockwise"></i> 重新尝试生成
         </button>
+        {% endif %}
         {% else %}
         <i class="bi bi-hourglass-split"></i>
         <h3>学习数据尚未准备</h3>

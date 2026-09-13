@@ -10,7 +10,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_sqlalchemy.session import Session as FlaskSQLAlchemySession
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin  # 添加UserMixin导入
-from sqlalchemy import Index, UniqueConstraint, inspect, text
+from sqlalchemy import Index, UniqueConstraint, and_, inspect, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 
 # 班级默认配置
@@ -135,7 +135,10 @@ class Class(db.Model):
                 0,
             ),
         ).filter(
-            User.class_name == self.name,
+            or_(
+                User.class_id == self.id,
+                and_(User.class_id.is_(None), User.class_name == self.name),
+            ),
             User.usertype == '学生',
         ).one()
 
@@ -151,7 +154,13 @@ class Class(db.Model):
         
         # 计算完成作业数 - 使用当前模块避免循环导入
         assignments_completed = db.session.query(Submission.assignment_id).join(User)\
-                                .filter(User.class_name == self.name)\
+                                .filter(
+                                    or_(
+                                        User.class_id == self.id,
+                                        and_(User.class_id.is_(None), User.class_name == self.name),
+                                    ),
+                                    User.usertype == '学生',
+                                )\
                                 .distinct().count()
         
         return {
@@ -164,15 +173,28 @@ class Class(db.Model):
     
     def get_top_students(self, limit=5):
         """获取班级前N名学生"""
-        return self.students.filter_by(usertype='学生')\
-                           .order_by(User.user_ascore.desc())\
-                           .limit(limit).all()
+        return User.query.filter(
+            or_(
+                User.class_id == self.id,
+                and_(User.class_id.is_(None), User.class_name == self.name),
+            ),
+            User.usertype == '学生',
+        ).order_by(User.user_ascore.desc()).limit(limit).all()
     
     def get_assignment_progress(self, page=1, per_page=10):
         """获取班级作业完成进度 (分页形式)"""
         # 仅获取指派给当前班级的作业
         # 注意: target_classes格式类似 '软件工程24-1班,测试班级'
-        assignments_query = Assignment.query.filter(Assignment.target_classes.contains(self.name))
+        # target_classes is a legacy comma-separated field.  ``contains``
+        # would make class "软工24-1" match "软工24-10"; match a complete
+        # comma-delimited token instead.
+        class_name = self.name.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        assignments_query = Assignment.query.filter(or_(
+            Assignment.target_classes == self.name,
+            Assignment.target_classes.like(f'{class_name},%', escape='\\'),
+            Assignment.target_classes.like(f'%,{class_name},%', escape='\\'),
+            Assignment.target_classes.like(f'%,{class_name}', escape='\\'),
+        ))
         
         # 分页
         pagination = assignments_query.paginate(page=page, per_page=per_page, error_out=False)
@@ -180,18 +202,25 @@ class Class(db.Model):
         assignment_ids = [assignment.id for assignment in pagination.items]
         completed_by_assignment = {}
         if assignment_ids:
+            student_scope = or_(
+                User.class_id == self.id,
+                and_(User.class_id.is_(None), User.class_name == self.name),
+            )
             rows = db.session.query(
                 Submission.assignment_id,
                 db.func.count(Submission.id),
             ).join(User).filter(
-                User.class_name == self.name,
+                student_scope,
                 User.usertype == '学生',
                 Submission.assignment_id.in_(assignment_ids),
             ).group_by(Submission.assignment_id).all()
             completed_by_assignment = {assignment_id: int(count) for assignment_id, count in rows}
 
         total = db.session.query(User.student_id).filter(
-            User.class_name == self.name,
+            or_(
+                User.class_id == self.id,
+                and_(User.class_id.is_(None), User.class_name == self.name),
+            ),
             User.usertype == '学生',
         ).count()
         progress = []
@@ -212,11 +241,20 @@ class Class(db.Model):
     @staticmethod
     def sync_from_users():
         """从用户数据同步班级信息"""
-        # 获取所有不同的班级名称（仅限学生）
-        class_names = db.session.query(User.class_name)\
-                     .filter(User.class_name.isnot(None))\
-                     .filter(User.usertype == '学生')\
-                     .distinct().all()
+        # class_id 是新数据的权威归属；class_name 只为旧账号保留兼容回退。
+        # 同步任务是管理员可触发的全局操作，不能因为历史字段为空而漏掉
+        # 仍被外键引用的班级。
+        effective_class_name = db.case(
+            (User.class_id.isnot(None), Class.name),
+            else_=User.class_name,
+        )
+        class_names = db.session.query(effective_class_name).outerjoin(
+            Class, User.class_id == Class.id
+        ).filter(
+            User.usertype == '学生',
+            effective_class_name.isnot(None),
+            effective_class_name != '',
+        ).distinct().all()
         
         existing_classes = {cls.name: cls for cls in Class.query.all()}
         for (class_name,) in class_names:
@@ -232,18 +270,24 @@ class Class(db.Model):
                     grade=DEFAULT_GRADE,
                     major=DEFAULT_MAJOR
                 )
+                new_class.ensure_teacher_bind_code()
+                new_class.ensure_student_join_code()
                 db.session.add(new_class)
                 existing_classes[class_name] = new_class
         
         db.session.flush()
         
-        # 清理旧的无用伪造班级数据（比如“教师”、“管理员”这些由于以前错误逻辑被同步进来的空班级）
+        # 统计也使用同一套归属规则，避免 class_id 用户被算到“未分配”。
         student_rows = db.session.query(
-            User.class_name,
+            effective_class_name,
             db.func.count(User.student_id),
             db.func.coalesce(db.func.sum(User.submit_count), 0),
             db.func.coalesce(db.func.avg(User.user_ascore), 0),
-        ).filter(User.usertype == '学生').group_by(User.class_name).all()
+        ).outerjoin(Class, User.class_id == Class.id).filter(
+            User.usertype == '学生',
+            effective_class_name.isnot(None),
+            effective_class_name != '',
+        ).group_by(effective_class_name).all()
         student_stats = {
             class_name: {
                 'student_count': int(student_count),
@@ -256,8 +300,12 @@ class Class(db.Model):
 
         for cls in list(existing_classes.values()):
             stats = student_stats.get(cls.name)
-            if not stats or cls.name in ['教师', '管理员', '管理部门']:
+            # 以前的实现会删除任何暂时没有学生的班级，这会误删已建好但
+            # 尚未招生活跃学生的真实班级。只清理已知的历史伪造空班级。
+            if cls.name in ['教师', '管理员', '管理部门'] and not stats:
                 db.session.delete(cls)
+                continue
+            if not stats:
                 continue
             cls.student_count = stats['student_count']
             cls.avg_score = stats['avg_score']
@@ -414,16 +462,23 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
             dimension_names = (
                 'algorithm', 'style', 'functionality', 'efficiency', 'readability'
             )
+            effective_class_name = db.case(
+                (User.class_id.isnot(None), Class.name),
+                else_=User.class_name,
+            )
             rows = db.session.query(
                 User.student_id,
-                User.class_name,
+                effective_class_name,
                 Submission.ai_feedback,
                 Submission.score,
             ).join(
                 Submission, Submission.student_id == User.student_id
+            ).outerjoin(
+                Class, User.class_id == Class.id
             ).filter(
                 User.usertype == '学生',
-                User.class_name.isnot(None),
+                effective_class_name.isnot(None),
+                effective_class_name != '',
             ).all()
 
             per_student = {}
@@ -551,23 +606,33 @@ class Assignment(db.Model):
         if not target_classes:
             return []
 
+        effective_class_name = db.case(
+            (User.class_id.isnot(None), Class.name),
+            else_=User.class_name,
+        )
+        student_scope = or_(
+            and_(User.class_id.isnot(None), Class.name.in_(target_classes)),
+            and_(User.class_id.is_(None), User.class_name.in_(target_classes)),
+        )
         totals = db.session.query(
-            User.class_name,
+            effective_class_name,
             db.func.count(User.student_id),
-        ).filter(
-            User.class_name.in_(target_classes),
+        ).outerjoin(Class, User.class_id == Class.id).filter(
+            student_scope,
             User.usertype == '学生',
-        ).group_by(User.class_name).all()
+        ).group_by(effective_class_name).all()
         total_by_class = {class_name: int(count) for class_name, count in totals}
 
         completed = db.session.query(
-            User.class_name,
+            effective_class_name,
             db.func.count(Submission.id),
-        ).join(Submission, Submission.student_id == User.student_id).filter(
-            User.class_name.in_(target_classes),
+        ).join(Submission, Submission.student_id == User.student_id).outerjoin(
+            Class, User.class_id == Class.id
+        ).filter(
+            student_scope,
             User.usertype == '学生',
             Submission.assignment_id == self.id,
-        ).group_by(User.class_name).all()
+        ).group_by(effective_class_name).all()
         completed_by_class = {class_name: int(count) for class_name, count in completed}
 
         progress = []
@@ -1258,6 +1323,26 @@ class InviteToken(db.Model):
             return False, '该邀请链接已被使用'
         if dt.utcnow() > record.expires_at:
             return False, '邀请链接已过期，请联系管理员获取新链接'
+        return True, ''
+
+    @staticmethod
+    def claim(token_str):
+        """在当前事务中原子占用一个邀请令牌。
+
+        注册流程必须把令牌占用和教师账号创建放在同一个事务里，避免
+        两个并发请求都先通过 ``validate`` 后重复使用同一条邀请链接。
+        支持行锁的数据库会锁定该记录；SQLite 仍由事务写锁保证最终只
+        有一个提交可以成功。
+        """
+        record = InviteToken.query.filter_by(token=token_str).with_for_update().first()
+        if not record:
+            return False, '无效的邀请链接'
+        if record.is_used:
+            return False, '该邀请链接已被使用'
+        if not record.expires_at or dt.utcnow() > record.expires_at:
+            return False, '邀请链接已过期，请联系管理员获取新链接'
+        record.is_used = True
+        record.used_at = dt.utcnow()
         return True, ''
 
     @staticmethod

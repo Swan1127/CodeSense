@@ -407,7 +407,7 @@
         };
 
         window.consumeSSE(`/api/teacher/stream_suggestions?class_id=${encodeURIComponent(classId)}`, {
-            method: 'GET',
+                method: 'POST',
             signal: controller.signal
         }, {
             onStatus: data => {

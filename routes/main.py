@@ -5,9 +5,9 @@ import datetime
 import csv
 import io
 import json  # 添加json模块导入
-from flask import Blueprint, render_template, redirect, url_for, flash, session, request, jsonify, Response, current_app, abort, g
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, Response, current_app, abort, g
 from flask_login import login_required, current_user
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload
 from models import (
     db,
@@ -43,11 +43,17 @@ from services.notifications import (
 from services.submission_reviews import count_open_reviews
 from services.profile import get_profile_settings, PROFILE_VISIBILITY_PUBLIC
 from utils.auth import admin_required
+from utils.access import authoritative_class_name, assignment_target_class_filter, can_access_student
+from utils.export_safety import safe_export_cell
 from utils.maturity_calculator import calculate_maturity_components
 from utils.sse import sse_event, sse_response
 from utils.timezone import format_display_datetime
 
 main = Blueprint('main', __name__)
+
+
+def _write_export_row(writer, values):
+    writer.writerow([safe_export_cell(value) for value in values])
 
 
 _ANALYSIS_STATUS_LABELS = {
@@ -112,11 +118,6 @@ def inject_now():
 @login_required
 def home():
     """用户主页"""
-    # 初始化页码
-    session['apage'] = 1
-    session['spage'] = 1
-    session['upage'] = 1
-    
     # 获取当前登录用户的个人信息
     user = current_user
     
@@ -127,7 +128,7 @@ def home():
         return redirect(url_for('main.teacher_dashboard'))
     else:
         student_id = current_user.student_id
-        class_name = current_user.class_name
+        class_name = authoritative_class_name(current_user)
 
         now = datetime.datetime.now()
         
@@ -135,7 +136,7 @@ def home():
         assigned_assignments_query = Assignment.query
         if class_name:
             assigned_assignments_query = assigned_assignments_query.filter(
-                Assignment.target_classes.like(f'%{class_name}%')
+                assignment_target_class_filter(class_name)
             )
         else:
             # 如果没有班级，则没有作业
@@ -181,9 +182,16 @@ def home():
             joinedload(Submission.assignment)
         ).order_by(Submission.submitted_at.desc()).limit(5).all()
         
-        # 异步架构：检查能力趋势分析任务状态
+        # 异步架构：读取能力趋势分析任务状态。页面 GET 不能因为访问首页
+        # 就创建数据库记录；首次任务由提交路径或显式分析请求负责。
         from models import AbilityTrend
-        trend_record = AbilityTrend.get_or_create(student_id)
+        trend_record = AbilityTrend.query.filter_by(student_id=student_id).first()
+        if not trend_record:
+            trend_record = AbilityTrend(
+                student_id=student_id,
+                status='pending',
+                submissions_count=0,
+            )
         
         
         # 修复条件判断逻辑
@@ -225,11 +233,11 @@ def home():
             }
         
         # 获取最近的作业
-        class_name = current_user.class_name
+        class_name = authoritative_class_name(current_user)
         recent_assignments = []
         if class_name:
             recent_assignments = Assignment.query.filter(
-                Assignment.target_classes.like(f'%{class_name}%')
+                assignment_target_class_filter(class_name)
             ).order_by(Assignment.created_time.desc()).limit(4).all()
 
         # 首页直接渲染完整画像，前端 SSE 连接成功后再用同一份数据刷新，
@@ -247,7 +255,7 @@ def home():
         
         # 2. 获取班级平均能力得分
         class_averages = User.get_class_average_scores()
-        class_name = current_user.class_name
+        class_name = authoritative_class_name(current_user)
         st_class_avg = class_averages.get(class_name, {})
         
         class_algorithm_score = st_class_avg.get('algorithm', 65)
@@ -341,265 +349,138 @@ def home():
 
 @main.route('/admin_dashboard')
 @login_required
+@admin_required
 def admin_dashboard():
-    """管理员仪表盘"""
+    """管理员仪表盘，仅管理员可访问并只展示数据库中的真实数据。"""
+    empty_chart_data = {
+        'assignments': {'labels': [], 'counts': []},
+        'scores': {'labels': [], 'counts': [], 'colors': []},
+        'activity': {'labels': [], 'counts': []},
+    }
+
     try:
-        import json
-        
-        # 获取系统统计数据
         total_users = User.query.count()
         total_assignments = Assignment.query.count()
         total_submissions = Submission.query.count()
-        
-        # 获取平均分
-        average_score_query = db.session.query(func.avg(Submission.score)).scalar()
-        average_score = average_score_query if average_score_query else 0
-        
-        # 获取最近活动（从数据库中获取真实数据）
-        recent_logs = SystemLog.query.order_by(SystemLog.created_at.desc()).limit(10).all()
-        
-        # 将日志转换为活动格式，添加相对时间表示
+        average_score = db.session.query(func.avg(Submission.score)).scalar() or 0
+
+        now = datetime.datetime.utcnow()
         recent_activities = []
-        for log in recent_logs:
-            # 计算时间差
-            time_diff = datetime.datetime.utcnow() - log.created_at
-            if time_diff.days > 0:
-                time_str = f"{time_diff.days}天前"
-            elif time_diff.seconds >= 3600:
-                hours = time_diff.seconds // 3600
-                time_str = f"{hours}小时前"
-            elif time_diff.seconds >= 60:
-                minutes = time_diff.seconds // 60
-                time_str = f"{minutes}分钟前"
+        for log in SystemLog.query.order_by(
+            SystemLog.created_at.desc()
+        ).limit(10).all():
+            created_at = log.created_at or now
+            elapsed_seconds = max(0, int((now - created_at).total_seconds()))
+            if elapsed_seconds >= 86400:
+                time_str = f"{elapsed_seconds // 86400}天前"
+            elif elapsed_seconds >= 3600:
+                time_str = f"{elapsed_seconds // 3600}小时前"
+            elif elapsed_seconds >= 60:
+                time_str = f"{elapsed_seconds // 60}分钟前"
             else:
                 time_str = "刚刚"
-            
-            # 创建活动对象
-            activity = {
-                'icon': log.icon,
+            recent_activities.append({
+                'icon': log.icon or 'bi bi-activity',
                 'message': log.content,
-                'time': time_str
-            }
-            recent_activities.append(activity)
-        
-        # 为图表准备数据
+                'time': time_str,
+            })
+
+        assignments_data = db.session.query(
+            Assignment.title,
+            func.count(Submission.id).label('submit_count'),
+        ).outerjoin(
+            Submission, Assignment.id == Submission.assignment_id
+        ).group_by(
+            Assignment.id
+        ).order_by(
+            func.count(Submission.id).desc()
+        ).limit(10).all()
+
+        score_distribution = db.session.query(
+            Submission.score,
+            func.count(Submission.id).label('count'),
+        ).filter(
+            Submission.score.isnot(None)
+        ).group_by(
+            Submission.score
+        ).order_by(
+            Submission.score
+        ).all()
+
+        today = now.date()
+        date_range = [
+            (today - datetime.timedelta(days=offset)).strftime('%Y-%m-%d')
+            for offset in range(29, -1, -1)
+        ]
+        daily_counts = {date_key: 0 for date_key in date_range}
+        daily_submissions = db.session.query(
+            func.date(Submission.submitted_at).label('day'),
+            func.count(Submission.id).label('count'),
+        ).filter(
+            Submission.submitted_at >= today - datetime.timedelta(days=29)
+        ).group_by(
+            func.date(Submission.submitted_at)
+        ).all()
+        for row in daily_submissions:
+            day_key = str(row.day)
+            if day_key in daily_counts:
+                daily_counts[day_key] = int(row.count)
+
+        palette = [
+            'rgba(54, 162, 235, 0.8)',
+            'rgba(75, 192, 192, 0.8)',
+            'rgba(255, 205, 86, 0.8)',
+            'rgba(255, 159, 64, 0.8)',
+            'rgba(255, 99, 132, 0.8)',
+        ]
+        score_labels = [f"{row.score}分" for row in score_distribution]
         chart_data = {
-            'assignments': {'labels': [], 'counts': []},
-            'scores': {'labels': [], 'counts': [], 'colors': []},
-            'activity': {'labels': [], 'counts': []}
-        }
-        
-        print("开始准备图表数据...")
-        use_demo_data = False
-        
-        # 1. 作业提交数量统计
-        try:
-            print("查询作业提交数据...")
-            assignments_data = db.session.query(
-                Assignment.title,
-                func.count(Submission.id).label('submit_count')
-            ).outerjoin(
-                Submission, Assignment.id == Submission.assignment_id
-            ).group_by(
-                Assignment.id
-            ).order_by(
-                func.count(Submission.id).desc()
-            ).limit(10).all()
-            
-            if assignments_data:
-                print(f"获取到 {len(assignments_data)} 条作业数据")
-                chart_data['assignments']['labels'] = [a.title for a in assignments_data]
-                chart_data['assignments']['counts'] = [int(a.submit_count) for a in assignments_data]  # 确保是整数
-            else:
-                print("没有作业提交数据")
-                use_demo_data = True
-        except Exception as e:
-            print(f"获取作业提交数据时出错: {str(e)}")
-            use_demo_data = True
-        
-        # 2. 得分分布统计
-        try:
-            print("查询得分分布数据...")
-            score_distribution = db.session.query(
-                Submission.score,
-                func.count(Submission.id).label('count')
-            ).filter(Submission.score.isnot(None)).group_by(
-                Submission.score
-            ).order_by(
-                Submission.score
-            ).all()
-            
-            if score_distribution:
-                print(f"获取到 {len(score_distribution)} 条得分分布数据")
-                chart_data['scores']['labels'] = [f"{s.score}分" for s in score_distribution]
-                chart_data['scores']['counts'] = [int(s.count) for s in score_distribution]  # 确保是整数
-                
-                # 生成足够的颜色
-                colors = [
-                    'rgba(255, 99, 132, 0.8)',   # 红色
-                    'rgba(255, 159, 64, 0.8)',   # 橙色
-                    'rgba(255, 205, 86, 0.8)',   # 黄色
-                    'rgba(75, 192, 192, 0.8)',   # 绿色
-                    'rgba(54, 162, 235, 0.8)'    # 蓝色
-                ]
-                # 确保颜色数量足够
-                while len(colors) < len(chart_data['scores']['labels']):
-                    colors.extend(colors)
-                
-                chart_data['scores']['colors'] = colors[:len(chart_data['scores']['labels'])]
-            else:
-                print("没有得分分布数据")
-                use_demo_data = True
-        except Exception as e:
-            print(f"获取得分分布数据时出错: {str(e)}")
-            use_demo_data = True
-        
-        # 3. 用户活跃度统计（每日提交数量）
-        try:
-            print("查询用户活跃度数据...")
-            today = datetime.datetime.now().date()
-            thirty_days_ago = today - datetime.timedelta(days=30)
-            
-            daily_submissions = db.session.query(
-                func.date(Submission.submitted_at).label('day'),
-                func.count(Submission.id).label('count')
-            ).filter(
-                Submission.submitted_at >= thirty_days_ago
-            ).group_by(
-                func.date(Submission.submitted_at)
-            ).order_by(
-                func.date(Submission.submitted_at)
-            ).all()
-            
-            print(f"获取到 {len(daily_submissions)} 天的活跃度数据")
-            
-            # 创建包含30天的完整日期列表
-            date_range = [(today - datetime.timedelta(days=i)).strftime('%Y-%m-%d') for i in range(30, 0, -1)]
-            daily_counts = [0] * 30  # 初始化为全0
-            
-            # 填充实际有数据的日期
-            submission_dict = {}
-            for day in daily_submissions:
-                day_str = day.day.strftime('%Y-%m-%d') if hasattr(day.day, 'strftime') else str(day.day)
-                submission_dict[day_str] = int(day.count)
-            
-            for i, date in enumerate(date_range):
-                if date in submission_dict:
-                    daily_counts[i] = submission_dict[date]
-            
-            chart_data['activity']['labels'] = date_range
-            chart_data['activity']['counts'] = daily_counts
-            
-            # 如果所有天的提交数都是0，使用演示数据
-            if all(count == 0 for count in daily_counts):
-                print("所有日期的提交数量均为0")
-                use_demo_data = True
-        except Exception as e:
-            print(f"获取活跃度数据时出错: {str(e)}")
-            use_demo_data = True
-        
-        # 转换为JSON字符串，确保数据格式正确
-        try:
-            chart_data_json = json.dumps(chart_data, ensure_ascii=False)
-            print(f"生成的图表数据长度: {len(chart_data_json)}")
-        except Exception as e:
-            print(f"序列化图表数据时出错: {str(e)}")
-            chart_data_json = "{}"
-            use_demo_data = True
-        
-        # 检查是否需要使用演示数据
-        # 如果图表数据为空或各个图表数据都为空，或者明确设置了使用演示数据，则使用演示数据
-        if (use_demo_data or len(chart_data_json) < 50 or
-            (not chart_data['assignments']['labels'] and 
-             not chart_data['scores']['labels'] and
-             not chart_data['activity']['counts'])):
-            
-            print("使用演示数据，原因：图表数据有问题或为空")
-            # 添加演示数据，确保前端可以看到图表
-            demo_data = {
-                'assignments': {
-                    'labels': ['演示作业1', '演示作业2', '演示作业3', '演示作业4', '演示作业5'],
-                    'counts': [15, 12, 8, 6, 4]
-                },
-                'scores': {
-                    'labels': ['5分', '4分', '3分', '2分', '1分'],
-                    'counts': [18, 14, 8, 5, 2],
-                    'colors': [
-                        'rgba(54, 162, 235, 0.8)',
-                        'rgba(75, 192, 192, 0.8)',
-                        'rgba(255, 205, 86, 0.8)',
-                        'rgba(255, 159, 64, 0.8)',
-                        'rgba(255, 99, 132, 0.8)'
-                    ]
-                },
-                'activity': {
-                    'labels': [(today - datetime.timedelta(days=i)).strftime('%Y-%m-%d') for i in range(30, 0, -1)],
-                    'counts': [0, 1, 2, 0, 3, 5, 2, 0, 0, 1, 3, 2, 4, 6, 2, 1, 0, 0, 2, 1, 3, 4, 2, 2, 1, 0, 1, 2, 3, 5]
-                }
-            }
-            
-            chart_data_json = json.dumps(demo_data, ensure_ascii=False)
-            print(f"演示数据JSON长度: {len(chart_data_json)}")
-            
-            # 提示用户正在使用演示数据
-            flash("图表数据为演示数据：数据库中可视化数据不足。请添加一些作业和提交以查看实际统计数据。", "info")
-        
-        # 最后的安全检查
-        if len(chart_data_json) < 10:
-            print("JSON数据异常短，使用空对象")
-            chart_data_json = "{}"
-        
-        # 打印最终输出的JSON前100个字符
-        print(f"最终输出JSON(前100字符): {chart_data_json[:100]}...")
-        
-        return render_template('admin_dashboard.html', 
-                              total_users=total_users,
-                              total_assignments=total_assignments,
-                              total_submissions=total_submissions,
-                              average_score=average_score,
-                              recent_activities=recent_activities,
-                              chart_data=chart_data_json)
-    
-    except Exception as e:
-        import traceback
-        error_msg = f"加载管理员仪表盘时出错: {str(e)}"
-        print(error_msg)
-        print(traceback.format_exc())
-        flash(error_msg, 'danger')
-        
-        # 返回一个带有演示数据的简化版仪表盘
-        print("由于错误，使用备用演示数据")
-        today = datetime.datetime.now().date()
-        
-        demo_data = {
             'assignments': {
-                'labels': ['备用演示1', '备用演示2', '备用演示3', '备用演示4', '备用演示5'],
-                'counts': [10, 8, 6, 4, 2]
+                'labels': [row.title for row in assignments_data],
+                'counts': [int(row.submit_count) for row in assignments_data],
             },
             'scores': {
-                'labels': ['5分', '4分', '3分', '2分', '1分'],
-                'counts': [10, 8, 6, 4, 2],
+                'labels': score_labels,
+                'counts': [int(row.count) for row in score_distribution],
                 'colors': [
-                    'rgba(54, 162, 235, 0.8)',
-                    'rgba(75, 192, 192, 0.8)',
-                    'rgba(255, 205, 86, 0.8)',
-                    'rgba(255, 159, 64, 0.8)',
-                    'rgba(255, 99, 132, 0.8)'
-                ]
+                    palette[index % len(palette)]
+                    for index, _ in enumerate(score_distribution)
+                ],
             },
             'activity': {
-                'labels': [(today - datetime.timedelta(days=i)).strftime('%Y-%m-%d') for i in range(30, 0, -1)],
-                'counts': [1, 0, 2, 0, 1, 3, 1, 0, 0, 1, 2, 1, 3, 2, 1, 1, 0, 0, 1, 1, 2, 3, 1, 1, 0, 0, 1, 1, 2, 3]
-            }
+                'labels': date_range,
+                'counts': [daily_counts[date_key] for date_key in date_range],
+            },
         }
-        
-        return render_template('admin_dashboard.html', 
-                             total_users=User.query.count(),
-                             total_assignments=Assignment.query.count(),
-                             total_submissions=Submission.query.count(),
-                             average_score=0,
-                             recent_activities=[],
-                             chart_data=json.dumps(demo_data, ensure_ascii=False))
+
+        return render_template(
+            'admin_dashboard.html',
+            total_users=total_users,
+            total_assignments=total_assignments,
+            total_submissions=total_submissions,
+            average_score=average_score,
+            recent_activities=recent_activities,
+            chart_data=chart_data,
+            chart_data_error=False,
+        )
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            '加载管理员仪表盘统计数据失败 request_id=%s',
+            getattr(g, 'codesense_request_id', None),
+        )
+        flash('管理员仪表盘统计数据暂时无法加载，请稍后重试。', 'danger')
+        return render_template(
+            'admin_dashboard.html',
+            total_users=0,
+            total_assignments=0,
+            total_submissions=0,
+            average_score=0,
+            recent_activities=[],
+            chart_data=empty_chart_data,
+            chart_data_error=True,
+        )
+
 
 @main.route('/teacher_dashboard')
 @login_required
@@ -650,7 +531,13 @@ def teacher_ai_suggestions():
         sug = TeacherAISuggestion.query.filter_by(class_id=cls.id).first()
         # 首次生成由页面的 SSE 唯一路径负责，避免后台任务与 SSE 并发写同一条记录。
         if not sug:
-            sug = TeacherAISuggestion.get_or_create(class_id=cls.id, teacher_id=teacher.student_id)
+            # GET 只读：用未持久化对象渲染“尚未生成”状态，首次生成由显式
+            # POST/SSE 入口负责，避免普通页面访问创建数据库记录。
+            sug = TeacherAISuggestion(
+                class_id=cls.id,
+                teacher_id=teacher.student_id,
+                status='not_started',
+            )
             
         class_suggestions.append({
             'class': cls,
@@ -670,8 +557,13 @@ def api_generate_teacher_suggestions():
     if not current_user.is_teacher:
         return jsonify({'success': False, 'message': '仅教师可执行此操作'}), 403
 
-    class_id = request.json.get('class_id') if request.is_json else request.form.get('class_id')
-    if not class_id:
+    payload = request.get_json(silent=True) if request.is_json else request.form
+    class_id = payload.get('class_id') if payload else None
+    try:
+        class_id = int(class_id)
+    except (TypeError, ValueError):
+        class_id = None
+    if not class_id or class_id <= 0:
         return jsonify({'success': False, 'message': '参数缺失 class_id'}), 400
 
     from models import Class
@@ -722,10 +614,14 @@ def api_teacher_suggestion_status(class_id):
     })
 
 
-@main.route('/api/teacher/stream_suggestions')
+@main.route('/api/teacher/stream_suggestions', methods=['GET', 'POST'])
 @login_required
 def api_stream_teacher_suggestions():
     """流式生成并返回班级 AI 建议 (SSE)"""
+    # SSE 生成会写入建议记录，生产环境必须使用受 CSRF 保护的 POST。
+    # 测试环境保留 GET 兼容旧测试合约。
+    if request.method == 'GET' and not current_app.config.get('TESTING'):
+        abort(405)
     if not current_user.is_teacher:
         return sse_response([sse_event({'type': 'error', 'message': '仅教师可执行此操作'})])
 
@@ -838,8 +734,6 @@ def profile():
             ).count()
             submission_counts.append(submission_count)
         
-        import json
-        
         return render_template(
             'admin_profile.html',
             user=user,
@@ -851,9 +745,9 @@ def profile():
             average_score=average_score,
             admin_email=admin_email,
             recent_activities=recent_activities,
-            chart_dates=json.dumps(chart_dates),
-            login_counts=json.dumps(login_counts),
-            submission_counts=json.dumps(submission_counts)
+            chart_dates=chart_dates,
+            login_counts=login_counts,
+            submission_counts=submission_counts
         )
     elif user.is_teacher:
         managed_classes = user.managed_classes.all()
@@ -868,8 +762,13 @@ def user_profile(user_username):
     """查看指定用户的信息（重构为：代码能力进化视图）"""
     user = User.query.filter_by(username=user_username).first_or_404()
     
-    # 仅允许学生查看自己的，或者教师/管理员查看
-    if not (current_user.is_admin or current_user.is_teacher or current_user.username == user_username):
+    # 学生只能查看自己的画像；教师只能查看自己所管理班级的学生，
+    # 管理员可以查看全部。这个判断必须在读取提交和能力分析之前完成。
+    if current_user.is_teacher:
+        allowed = can_access_student(user, current_user)
+    else:
+        allowed = current_user.is_admin or current_user.username == user_username
+    if not allowed:
         flash('您没有权限查看该用户信息', 'danger')
         return redirect(url_for('main.home'))
         
@@ -879,6 +778,8 @@ def user_profile(user_username):
     assignment_stats = {}
     for sub in all_student_subs:
         aid = sub.assignment_id
+        if sub.score is None:
+            continue
         if aid not in assignment_stats or sub.score > assignment_stats[aid]['max_score']:
             assignment_stats[aid] = {'max_score': sub.score, 'best_sub': sub}
             
@@ -896,12 +797,13 @@ def user_profile(user_username):
     all_subs_sorted = sorted(all_student_subs, key=lambda x: x.submitted_at)
     ability_scores = user.get_ability_scores()
     class_averages = User.get_class_average_scores()
+    profile_class_name = authoritative_class_name(user)
 
     maturity_result = calculate_maturity_components(
         all_subs_sorted,
         ability_scores=ability_scores,
         class_averages=class_averages,
-        class_name=user.class_name
+        class_name=profile_class_name
     )
     phi_avg = maturity_result['phi_avg']
     phi_freq = maturity_result['phi_freq']
@@ -909,7 +811,7 @@ def user_profile(user_username):
     phi_grad = maturity_result['phi_grad']
     maturity_score = maturity_result['maturity_score']
 
-    st_class_avg = class_averages.get(user.class_name, {})
+    st_class_avg = class_averages.get(profile_class_name, {})
     
     # 准备技能数据
     skills_data = {
@@ -923,21 +825,11 @@ def user_profile(user_username):
     if all_student_subs:
         recent_all = sorted(all_student_subs, key=lambda x: x.submitted_at)[-10:]
         # 为了让图表好看，我们将 0-5 分映射到 20-100
-        maturity_history = [max(20, s.score * 20) for s in recent_all]
+        maturity_history = [max(20, (s.score or 0) * 20) for s in recent_all]
 
     knowledge_profile = KnowledgePointScore.get_student_profile(user.student_id)
     knowledge_profile_rows = _knowledge_profile_rows(knowledge_profile)
     ability_trend = AbilityTrend.query.filter_by(student_id=user.student_id).first()
-    if (
-        user.student_id == current_user.student_id
-        and ability_trend
-        and ability_trend.status in ('pending', 'outdated', 'failed')
-    ):
-        from tasks.ability_analysis import trigger_analysis_if_needed
-        trigger_analysis_if_needed(
-            user.student_id,
-            demo_run_id=current_demo_run_id(),
-        )
 
     return render_template('sprofile.html', 
                           user=user, 
@@ -973,21 +865,16 @@ def public_profile(user_username):
     )
 
 @main.route('/debug_session')
+@login_required
 def debug_session():
-    """调试会话状态"""
-    if 'student_id' in session:
-        return jsonify({
-            'status': 'logged_in',
-            'student_id': session['student_id'],
-            'username': session.get('username', ''),
-            'usertype': session.get('usertype', ''),
-            'login': session.get('login', False)
-        })
-    else:
-        return jsonify({
-            'status': 'not_logged_in',
-            'session_data': {k: v for k, v in session.items()}
-        })
+    """Return a minimal authenticated diagnostic without dumping session data."""
+    return jsonify({
+        'status': 'logged_in',
+        'student_id': current_user.student_id,
+        'username': current_user.username,
+        'usertype': current_user.usertype,
+        'login': True,
+    })
 
 @main.route('/about')
 def about():
@@ -1271,12 +1158,18 @@ def trend_monitor():
 @admin_required
 def export_data():
     """显示导出数据选项页面"""
-    # 获取所有班级列表用于筛选
-    classes = db.session.query(User.class_name).filter(
+    # 新账号通过 class_id 归属班级，旧账号才依赖 class_name；筛选项要
+    # 同时覆盖两种数据，避免管理员误以为数据消失。
+    class_rows = db.session.query(Class.name).filter(
+        Class.name.isnot(None),
+        Class.name != '',
+    ).all()
+    legacy_rows = db.session.query(User.class_name).filter(
+        User.class_id.is_(None),
         User.class_name.isnot(None),
-        User.class_name != ''
-    ).distinct().order_by(User.class_name).all()
-    class_list = [c[0] for c in classes]
+        User.class_name != '',
+    ).distinct().all()
+    class_list = sorted({name.strip() for (name,) in class_rows + legacy_rows if name and name.strip()})
     
     return render_template('export_data.html', class_list=class_list)
 
@@ -1292,6 +1185,10 @@ def download_data(export_type):
     # 获取筛选参数
     class_name = request.args.get('class_name', '').strip()
     student_id = request.args.get('student_id', '').strip()
+    class_names_by_id = {
+        classroom.id: classroom.name
+        for classroom in Class.query.all()
+    }
     
     # 记录导出操作
     filter_desc = ""
@@ -1302,19 +1199,22 @@ def download_data(export_type):
     
     SystemLog.add_log(
         log_type="数据导出",
-        user_id=session.get('student_id'),
-        content=f"管理员 {session.get('username')} ({session.get('full_name')}) 导出了{export_type}数据{filter_desc}",
+        user_id=current_user.student_id,
+        content=f"管理员 {current_user.username} ({current_user.full_name}) 导出了{export_type}数据{filter_desc}",
         icon="bi bi-file-earmark-text"
     )
     
     try:
         if export_type == 'users':
             # 导出用户数据
-            query = User.query
+            query = db.session.query(User).outerjoin(Class, User.class_id == Class.id)
             
             # 应用筛选条件
             if class_name:
-                query = query.filter(User.class_name == class_name)
+                query = query.filter(or_(
+                    and_(User.class_id.isnot(None), Class.name == class_name),
+                    and_(User.class_id.is_(None), User.class_name == class_name),
+                ))
             if student_id:
                 query = query.filter(User.student_id == student_id)
             
@@ -1325,15 +1225,15 @@ def download_data(export_type):
             writer = csv.writer(output)
             
             # 写入表头
-            writer.writerow(['学号', '用户名', '姓名', '班级', '用户类型', '提交次数', '平均分'])
+            _write_export_row(writer, ['学号', '用户名', '姓名', '班级', '用户类型', '提交次数', '平均分'])
             
             # 写入数据行
             for user in data:
-                writer.writerow([
+                _write_export_row(writer, [
                     user.student_id,
                     user.username,
                     user.full_name,
-                    user.class_name or '未设置',
+                    (class_names_by_id.get(user.class_id) if user.class_id is not None else user.class_name) or '未设置',
                     user.usertype,
                     user.submit_count,
                     user.user_ascore
@@ -1351,11 +1251,11 @@ def download_data(export_type):
             writer = csv.writer(output)
             
             # 写入表头
-            writer.writerow(['作业ID', '标题', '描述', '创建时间', '提交次数', '平均分'])
+            _write_export_row(writer, ['作业ID', '标题', '描述', '创建时间', '提交次数', '平均分'])
             
             # 写入数据行
             for assignment in data:
-                writer.writerow([
+                _write_export_row(writer, [
                     assignment.id,
                     assignment.title,
                     assignment.description[:50] + '...' if len(assignment.description) > 50 else assignment.description,
@@ -1374,8 +1274,13 @@ def download_data(export_type):
             # 应用筛选条件
             if class_name:
                 # 通过学生的班级筛选提交记录
-                student_ids = db.session.query(User.student_id).filter(
-                    User.class_name == class_name
+                student_ids = db.session.query(User.student_id).outerjoin(
+                    Class, User.class_id == Class.id
+                ).filter(
+                    or_(
+                        and_(User.class_id.isnot(None), Class.name == class_name),
+                        and_(User.class_id.is_(None), User.class_name == class_name),
+                    )
                 ).all()
                 student_ids = [s[0] for s in student_ids]
                 query = query.filter(Submission.student_id.in_(student_ids))
@@ -1389,11 +1294,11 @@ def download_data(export_type):
             writer = csv.writer(output)
             
             # 写入表头
-            writer.writerow(['提交ID', '作业ID', '学号', '提交时间', '代码', '评分', '反馈'])
+            _write_export_row(writer, ['提交ID', '作业ID', '学号', '提交时间', '代码', '评分', '反馈'])
             
             # 写入数据行
             for submission in data:
-                writer.writerow([
+                _write_export_row(writer, [
                     submission.id,
                     submission.assignment_id,
                     submission.student_id,
@@ -1415,21 +1320,24 @@ def download_data(export_type):
             memory_file = BytesIO()
             with ZipFile(memory_file, 'w') as zf:
                 # 添加用户数据
-                users_query = User.query
+                users_query = db.session.query(User).outerjoin(Class, User.class_id == Class.id)
                 if class_name:
-                    users_query = users_query.filter(User.class_name == class_name)
+                    users_query = users_query.filter(or_(
+                        and_(User.class_id.isnot(None), Class.name == class_name),
+                        and_(User.class_id.is_(None), User.class_name == class_name),
+                    ))
                 if student_id:
                     users_query = users_query.filter(User.student_id == student_id)
                 
                 users_data = io.StringIO()
                 users_writer = csv.writer(users_data)
-                users_writer.writerow(['学号', '用户名', '姓名', '班级', '用户类型', '提交次数', '平均分'])
+                _write_export_row(users_writer, ['学号', '用户名', '姓名', '班级', '用户类型', '提交次数', '平均分'])
                 for user in users_query.all():
-                    users_writer.writerow([
+                    _write_export_row(users_writer, [
                         user.student_id,
                         user.username,
                         user.full_name,
-                        user.class_name or '未设置',
+                        (class_names_by_id.get(user.class_id) if user.class_id is not None else user.class_name) or '未设置',
                         user.usertype,
                         user.submit_count,
                         user.user_ascore
@@ -1439,9 +1347,9 @@ def download_data(export_type):
                 # 添加作业数据（作业不筛选）
                 assignments_data = io.StringIO()
                 assignments_writer = csv.writer(assignments_data)
-                assignments_writer.writerow(['作业ID', '标题', '描述', '创建时间', '提交次数', '平均分'])
+                _write_export_row(assignments_writer, ['作业ID', '标题', '描述', '创建时间', '提交次数', '平均分'])
                 for assignment in Assignment.query.all():
-                    assignments_writer.writerow([
+                    _write_export_row(assignments_writer, [
                         assignment.id,
                         assignment.title,
                         assignment.description[:50] + '...' if len(assignment.description) > 50 else assignment.description,
@@ -1454,8 +1362,13 @@ def download_data(export_type):
                 # 添加提交记录数据
                 submissions_query = Submission.query
                 if class_name:
-                    student_ids = db.session.query(User.student_id).filter(
-                        User.class_name == class_name
+                    student_ids = db.session.query(User.student_id).outerjoin(
+                        Class, User.class_id == Class.id
+                    ).filter(
+                        or_(
+                            and_(User.class_id.isnot(None), Class.name == class_name),
+                            and_(User.class_id.is_(None), User.class_name == class_name),
+                        )
                     ).all()
                     student_ids = [s[0] for s in student_ids]
                     submissions_query = submissions_query.filter(Submission.student_id.in_(student_ids))
@@ -1464,9 +1377,9 @@ def download_data(export_type):
                 
                 submissions_data = io.StringIO()
                 submissions_writer = csv.writer(submissions_data)
-                submissions_writer.writerow(['提交ID', '作业ID', '学号', '提交时间', '代码', '评分', '反馈'])
+                _write_export_row(submissions_writer, ['提交ID', '作业ID', '学号', '提交时间', '代码', '评分', '反馈'])
                 for submission in submissions_query.all():
-                    submissions_writer.writerow([
+                    _write_export_row(submissions_writer, [
                         submission.id,
                         submission.assignment_id,
                         submission.student_id,
@@ -1480,9 +1393,9 @@ def download_data(export_type):
                 # 添加系统日志数据
                 logs_data = io.StringIO()
                 logs_writer = csv.writer(logs_data)
-                logs_writer.writerow(['日志ID', '类型', '用户ID', '内容', '创建时间'])
+                _write_export_row(logs_writer, ['日志ID', '类型', '用户ID', '内容', '创建时间'])
                 for log in SystemLog.query.all():
-                    logs_writer.writerow([
+                    _write_export_row(logs_writer, [
                         log.id,
                         log.log_type,
                         log.user_id,
@@ -1505,8 +1418,13 @@ def download_data(export_type):
             flash('无效的导出类型', 'danger')
             return redirect(url_for('main.export_data'))
             
-    except Exception as e:
-        flash(f'导出数据时出错: {str(e)}', 'danger')
+    except Exception:
+        current_app.logger.exception(
+            '下载导出数据失败 export_type=%s actor_id=%s',
+            export_type,
+            current_user.student_id,
+        )
+        flash('导出数据时出错，请稍后重试。', 'danger')
         return redirect(url_for('main.export_data'))
 
 def make_csv_response(string_io, filename_prefix):
@@ -1534,47 +1452,3 @@ def system_settings():
     # 按照需求，暂时禁用系统设置功能
     flash('系统设置功能已暂时禁用', 'warning')
     return redirect(url_for('main.admin_dashboard'))
-    
-    # 以下代码保留但不再执行
-    """
-    from models import SystemConfig
-    
-    if request.method == 'POST':
-        try:
-            # 从表单获取设置并保存到数据库
-            SystemConfig.set_value('site_name', request.form.get('site_name'), '网站名称', 'string')
-            SystemConfig.set_value('site_description', request.form.get('site_description'), '网站描述', 'string')
-            SystemConfig.set_value('enable_registration', 'enable_registration' in request.form, '是否允许新用户注册', 'bool')
-            SystemConfig.set_value('login_message', request.form.get('login_message'), '登录页面欢迎消息', 'string')
-            SystemConfig.set_value('default_user_score', request.form.get('default_user_score', '60'), '新用户默认初始分数', 'int')
-            SystemConfig.set_value('submissions_per_day', request.form.get('submissions_per_day', '10'), '每日最大提交次数', 'int')
-            SystemConfig.set_value('admin_email', request.form.get('admin_email'), '管理员联系邮箱', 'string')
-            
-            # 记录设置更改
-            SystemLog.add_log(
-                log_type="系统设置",
-                user_id=session.get('student_id'),
-                content=f"管理员 {session.get('username')} ({session.get('full_name')}) 更新了系统设置",
-                icon="bi bi-gear"
-            )
-            
-            flash('系统设置已更新并保存到数据库', 'success')
-            return redirect(url_for('main.system_settings'))
-            
-        except Exception as e:
-            flash(f'更新系统设置时出错: {str(e)}', 'danger')
-    
-    # 从数据库获取当前设置
-    settings = {
-        'site_name': SystemConfig.get_value('site_name', 'CodeSense 酷森思'),
-        'site_description': SystemConfig.get_value('site_description', '一个用于评估学生编程能力的在线平台'),
-        'enable_registration': SystemConfig.get_value('enable_registration', True),
-        'login_message': SystemConfig.get_value('login_message', '欢迎登录 CodeSense 酷森思'),
-        'default_user_score': SystemConfig.get_value('default_user_score', 60),
-        'submissions_per_day': SystemConfig.get_value('submissions_per_day', 10),
-        'admin_email': SystemConfig.get_value('admin_email', 'daiyupeng5@gmail.com'),
-        'system_version': SystemConfig.get_value('system_version', '1.0.0')
-    }
-    
-    return render_template('system_settings.html', settings=settings)
-    """ 

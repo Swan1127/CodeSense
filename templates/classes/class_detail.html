@@ -225,6 +225,7 @@
                 <form action="{{ url_for('classes.reset_bind_code', class_id=cls.id) }}" method="POST"
                     class="d-inline"
                     onsubmit="return confirm('确定重置该班级绑定码吗？旧绑定码将立即失效。');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-warning">
                         <i class="bi bi-arrow-clockwise"></i> 重置绑定码
                     </button>
@@ -233,6 +234,7 @@
                 <form action="{{ url_for('classes.unbind_class', class_id=cls.id) }}" method="POST"
                     class="d-inline"
                     onsubmit="return confirm('确定解绑该班级吗？解绑后将不再显示在你的班级列表中。');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-light">
                         <i class="bi bi-link-45deg"></i> 解绑班级
                     </button>
@@ -341,6 +343,7 @@
         <!-- 名单上传表单 -->
         <form action="{{ url_for('classes.import_students', class_id=cls.id) }}" method="POST"
             enctype="multipart/form-data" class="row g-2 align-items-end mb-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="col-md-8">
                 <label for="studentFile" class="form-label fw-bold">上传名单文件</label>
                 <input type="file" class="form-control" id="studentFile" name="student_file"

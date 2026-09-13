@@ -5,23 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="CodeSense 酷森思 - 面向高校编程教学的 AI 引导式评测与学习平台">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}CodeSense 酷森思{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
-
-    <!-- 导航栏紧急修复样式 -->
-    <style>
-        .navbar-nav {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: wrap !important;
-            justify-content: center !important;
-        }
-
-        .navbar-nav>li {
-            display: inline-block !important;
-            margin: 0 5px !important;
-        }
-    </style>
 
     <!-- 字体（项目同源静态资源，网络不可用时仍保持一致的排版） -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fonts/codesense-fonts.css') }}?v=5.3">
@@ -53,28 +39,8 @@
     <!-- 页面特定的头部内容（如脚本） -->
     {% block extra_head %}{% endblock %}
 
-    <!-- 导航栏修复CSS -->
+    <!-- 演示模式提示与退出表单样式 -->
     <style>
-        .navbar-nav {
-            display: flex !important;
-            /* 强制横向显示 */
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        @media (max-width: 768px) {
-            .navbar-container {
-                flex-direction: column;
-                align-items: center;
-                gap: 16px;
-            }
-
-            .navbar-user {
-                margin-top: 10px;
-                justify-content: center;
-            }
-        }
-
         .navbar-demo-notice {
             display: inline-flex;
             align-items: center;
@@ -94,6 +60,26 @@
                 margin: 8px 0 0;
                 white-space: normal;
                 text-align: center;
+            }
+        }
+
+        .navbar-logout-form {
+            display: inline;
+            margin: 0;
+            padding: 0;
+        }
+
+        .navbar-logout-form .navbar-link {
+            border: 0;
+            background: transparent;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            .navbar-logout-form {
+                display: block;
+                width: 100%;
             }
         }
     </style>
@@ -207,10 +193,13 @@
                         <i class="bi bi-person-circle" style="margin-right: 8px;"></i>
                         {{ session.get('full_name') or session.get('username') }}
                     </a>
-                    <a href="{{ url_for('auth.logout') }}" class="navbar-link">
+                    <form action="{{ url_for('auth.logout') }}" method="POST" class="navbar-logout-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="navbar-link">
                         <i class="bi bi-box-arrow-right" style="margin-right: 8px;"></i>
                         退出
-                    </a>
+                        </button>
+                    </form>
                     {% else %}
                     <a href="{{ url_for('auth.login') }}" class="navbar-button">
                         <i class="bi bi-box-arrow-in-right" style="margin-right: 10px;"></i>
@@ -345,18 +334,6 @@
                 }
             });
 
-            // 强制导航栏水平排列
-            const navbarNav = document.querySelector('.navbar-nav');
-            if (navbarNav) {
-                navbarNav.style.cssText = 'display: flex !important; flex-direction: row !important; flex-wrap: wrap !important;';
-
-                // 处理每个导航项
-                const navItems = navbarNav.querySelectorAll('li');
-                navItems.forEach(item => {
-                    item.style.cssText = 'display: inline-block !important; float: left !important; margin: 0 5px !important;';
-                });
-            }
-
             // 检查CodeMirror是否正确加载
             if (typeof CodeMirror === 'undefined') {
                 console.error('CodeMirror 同源静态资源未加载');
@@ -451,6 +428,82 @@
                 });
             }
         });
+    </script>
+
+    <!-- 统一保护所有同源写请求，兼容原生表单、fetch 和 jQuery 请求 -->
+    <script>
+        (function () {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            const token = meta ? meta.getAttribute('content') : '';
+            const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+            if (!token) return;
+
+            const nativeFetch = window.fetch && window.fetch.bind(window);
+            if (nativeFetch) {
+                window.fetch = function (input, init) {
+                    const requestInit = Object.assign({}, init || {});
+                    const method = String(
+                        requestInit.method || (input && input.method) || 'GET'
+                    ).toUpperCase();
+                    let url;
+                    try {
+                        url = new URL(
+                            typeof input === 'string' ? input : input.url,
+                            window.location.href
+                        );
+                    } catch (_) {
+                        return nativeFetch(input, requestInit);
+                    }
+
+                    if (url.origin === window.location.origin && unsafeMethods.has(method)) {
+                        const inheritedHeaders =
+                            typeof Request !== 'undefined' && input instanceof Request
+                                ? input.headers
+                                : undefined;
+                        const headers = new Headers(requestInit.headers || inheritedHeaders);
+                        if (!headers.has('X-CSRFToken')) {
+                            headers.set('X-CSRFToken', token);
+                        }
+                        requestInit.headers = headers;
+                        if (!requestInit.credentials) requestInit.credentials = 'same-origin';
+                    }
+                    return nativeFetch(input, requestInit);
+                };
+            }
+
+            const addFormToken = function (form) {
+                const method = (form.getAttribute('method') || 'GET').toUpperCase();
+                if (unsafeMethods.has(method) && !form.querySelector('input[name="csrf_token"]')) {
+                    const field = document.createElement('input');
+                    field.type = 'hidden';
+                    field.name = 'csrf_token';
+                    field.value = token;
+                    form.appendChild(field);
+                }
+            };
+
+            document.querySelectorAll('form').forEach(addFormToken);
+            document.addEventListener('submit', function (event) {
+                if (event.target && event.target.tagName === 'FORM') {
+                    addFormToken(event.target);
+                }
+            }, true);
+
+            if (window.jQuery) {
+                window.jQuery.ajaxPrefilter(function (options, originalOptions, jqXHR) {
+                    const method = String(options.type || originalOptions.type || 'GET').toUpperCase();
+                    let url;
+                    try {
+                        url = new URL(options.url || window.location.href, window.location.href);
+                    } catch (_) {
+                        return;
+                    }
+                    if (url.origin === window.location.origin && unsafeMethods.has(method)) {
+                        jqXHR.setRequestHeader('X-CSRFToken', token);
+                    }
+                });
+            }
+        })();
     </script>
 
     <!-- 页面特定的JavaScript -->

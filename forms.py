@@ -131,14 +131,26 @@ class AssignmentForm(FlaskForm):
     assignment_id = IntegerField('作业ID', validators=[DataRequired(message='作业ID不能为空'), 
                                                NumberRange(min=1, message='作业ID必须为正整数')])
     title = StringField('标题', validators=[DataRequired(message='标题不能为空'), Length(1, 100)])
-    description = TextAreaField('描述', validators=[DataRequired(message='描述不能为空')])
+    description = TextAreaField(
+        '描述',
+        validators=[
+            DataRequired(message='描述不能为空'),
+            Length(max=20000, message='描述不能超过 20000 个字符'),
+        ],
+    )
     due_date = DateTimeLocalField('截止日期', format='%Y-%m-%dT%H:%M', validators=[Optional()])
     submit = SubmitField('提交')
 
 
 class SubmissionForm(FlaskForm):
     """代码提交表单"""
-    code = TextAreaField('代码', validators=[DataRequired(message='代码不能为空')])
+    code = TextAreaField(
+        '代码',
+        validators=[
+            DataRequired(message='代码不能为空'),
+            Length(max=200000, message='代码不能超过 200000 个字符'),
+        ],
+    )
     language = HiddenField('编程语言', default='cpp')
     submit = SubmitField('提交')
 

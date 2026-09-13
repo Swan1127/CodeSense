@@ -608,8 +608,8 @@
 
         container.innerHTML = `
             <div class="score-display">
-                <div class="score-circle ${passed ? 'pass' : 'fail'}">${score}%</div>
-                <div class="score-feedback">${feedback}</div>
+                <div class="score-circle ${passed ? 'pass' : 'fail'}">${escapeHtml(score)}%</div>
+                <div class="score-feedback">${escapeHtml(feedback || '')}</div>
             </div>
         `;
         container.style.display = 'block';
@@ -840,8 +840,9 @@
                 const level = getNormalizedIndent(step.indent);
                 const indent = '    ' + '    '.repeat(level);
                 if (answer) {
-                    const codeLine = (answer === step.correct_answer && step.code_line) ? step.code_line : answer;
-                    preview += indent + codeLine + '\n';
+                    // 判题答案只保存在服务端。预览展示学生当前输入，
+                    // 不依赖下发的 correct_answer/code_line。
+                    preview += indent + answer + '\n';
                 } else {
                     preview += indent + `// Step ${step.step_id}: ???\n`;
                 }
@@ -1007,14 +1008,10 @@
         const answers = state.quizAnswers || {};
         const stepsState = quizSteps.map(step => {
             const studentAns = (answers[step.step_id] || '').trim();
-            const correctAns = (step.correct_answer || '').trim();
-            const isCorrect = studentAns ? (normalizeCppCode(studentAns) === normalizeCppCode(correctAns)) : false;
             return {
                 step_id: step.step_id,
                 question: step.question,
-                student_answer: studentAns || null,
-                correct_answer: correctAns,
-                is_correct: isCorrect
+                student_answer: studentAns || null
             };
         });
 
@@ -2414,26 +2411,34 @@
 
         if (typeof bootstrap !== 'undefined') {
             const toastEl = document.createElement('div');
+            const safeType = ['success', 'warning', 'danger', 'info'].includes(type) ? type : 'info';
             // Choose color based on notification type
-            const bgClass = type === 'success' ? 'bg-success' : type === 'warning' ? 'bg-warning text-dark' : type === 'danger' ? 'bg-danger' : 'bg-info text-dark';
+            const bgClass = safeType === 'success' ? 'bg-success' : safeType === 'warning' ? 'bg-warning text-dark' : safeType === 'danger' ? 'bg-danger' : 'bg-info text-dark';
             toastEl.className = `toast align-items-center text-white ${bgClass} border-0`;
             toastEl.setAttribute('role', 'alert');
             toastEl.setAttribute('aria-live', 'assertive');
             toastEl.setAttribute('aria-atomic', 'true');
-            toastEl.innerHTML = `
-                <div class="toast-header">
-                    <strong class="me-auto">${type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️'}</strong>
-                    <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-                </div>
-                <div class="toast-body">${message}</div>
-            `;
+            const header = document.createElement('div');
+            header.className = 'toast-header';
+            const icon = document.createElement('strong');
+            icon.className = 'me-auto';
+            icon.textContent = safeType === 'success' ? '✅' : safeType === 'warning' ? '⚠️' : 'ℹ️';
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'btn-close';
+            closeButton.setAttribute('data-bs-dismiss', 'toast');
+            header.append(icon, closeButton);
+            const body = document.createElement('div');
+            body.className = 'toast-body';
+            body.textContent = message == null ? '' : String(message);
+            toastEl.append(header, body);
             toastContainer.appendChild(toastEl);
             const toast = new bootstrap.Toast(toastEl, { delay: 4000 });
             toast.show();
             return;
         }
         // Fallback
-        console.log(`[${type}] ${message}`);
+        console.log(`[${type}]`, message);
     }
 
     function showError(message) {
@@ -2715,34 +2720,7 @@
     }
 
     function debugAutoS2() {
-        if (state.currentStage !== 2) {
-            showNotification('必须在阶段二才能使用此功能', 'warning');
-            return;
-        }
-        if (!state.preset || !state.preset.quiz_steps) {
-            showNotification('缺少逐步问答预设数据', 'warning');
-            return;
-        }
-
-        const quizSteps = state.preset.quiz_steps || [];
-        quizSteps.forEach(step => {
-            state.quizAnswers[step.step_id] = step.correct_answer;
-            // Also populate inputs in the UI
-            const inputEl = document.getElementById(`quiz-fill-${step.step_id}`);
-            if (inputEl) {
-                inputEl.value = step.correct_answer;
-            }
-            const radioEl = document.querySelector(`input[name="quiz-step-${step.step_id}"][value="${escapeHtml(step.correct_answer)}"]`);
-            if (radioEl) {
-                radioEl.checked = true;
-                const optionEl = radioEl.closest('.quiz-choice-option');
-                if (optionEl) optionEl.classList.add('selected');
-            }
-        });
-
-        updateQuizPreview();
-        showNotification('已自动填入标准答案，正在提交验证...', 'info');
-        verifyQuiz();
+        showNotification('标准答案仅在服务端判定；请使用“跳到阶段三”调试阶段流转。', 'info');
     }
 
     function showCelebration() {
@@ -2946,7 +2924,7 @@
                     audioEl.src = url;
                     audioEl.style.display = 'block';
 
-                    statusEl.innerHTML = '录音完成！请点击播放按钮试听。<br>如果能听到你的声音，说明麦克风正常。';
+                    statusEl.textContent = '录音完成！请点击播放按钮试听。如果能听到你的声音，说明麦克风正常。';
                     statusEl.style.color = '#10b981';
                     resultBtns.style.display = 'flex';
                 };
@@ -2965,11 +2943,11 @@
             } catch (err) {
                 console.error('麦克风测试失败:', err);
                 if (err.name === 'NotAllowedError') {
-                    statusEl.innerHTML = '麦克风权限被拒绝。请点击浏览器地址栏左侧的🔒图标，允许麦克风权限后重试。';
+                    statusEl.textContent = '麦克风权限被拒绝。请点击浏览器地址栏左侧的🔒图标，允许麦克风权限后重试。';
                 } else if (err.name === 'NotFoundError') {
-                    statusEl.innerHTML = '未检测到麦克风设备，请检查硬件连接。';
+                    statusEl.textContent = '未检测到麦克风设备，请检查硬件连接。';
                 } else {
-                    statusEl.innerHTML = `麦克风访问失败: ${err.message}`;
+                    statusEl.textContent = `麦克风访问失败: ${err.message || '未知错误'}`;
                 }
                 statusEl.style.color = '#ef4444';
             }

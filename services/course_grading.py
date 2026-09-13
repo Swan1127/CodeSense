@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from utils.access import authoritative_class_name
+
 
 POLICY_NAME = 'trial_usage_friendly_v1'
 
@@ -123,7 +125,7 @@ def trial_usage_friendly_v1(student, submissions, thinking_sessions, thinking_lo
             'student': student,
             'student_id': getattr(student, 'student_id', ''),
             'student_name': getattr(student, 'full_name', None) or getattr(student, 'username', ''),
-            'class_name': getattr(student, 'class_name', '') or '未分班',
+            'class_name': authoritative_class_name(student) or '未分班',
             'course_score': 0,
             'formal_assignment_count': 0,
             'formal_submission_count': 0,
@@ -177,7 +179,7 @@ def trial_usage_friendly_v1(student, submissions, thinking_sessions, thinking_lo
         'student': student,
         'student_id': getattr(student, 'student_id', ''),
         'student_name': getattr(student, 'full_name', None) or getattr(student, 'username', ''),
-        'class_name': getattr(student, 'class_name', '') or '未分班',
+        'class_name': authoritative_class_name(student) or '未分班',
         'course_score': course_score,
         'formal_assignment_count': formal_assignment_count,
         'formal_submission_count': formal_submission_count,

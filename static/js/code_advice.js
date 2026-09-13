@@ -310,6 +310,12 @@ function displayAdvice(advice) {
 /**
  * 显示错误信息
  */
+function escapeAdviceText(value) {
+    const element = document.createElement('div');
+    element.textContent = value == null ? '' : String(value);
+    return element.innerHTML;
+}
+
 function showAdviceError(message) {
     const adviceContent = document.getElementById('advice-content');
     const loadingSpinner = document.getElementById('advice-loading');
@@ -319,7 +325,7 @@ function showAdviceError(message) {
         adviceContent.innerHTML = `
             <div class="alert alert-danger">
                 <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                ${message}
+                ${escapeAdviceText(message)}
             </div>
         `;
         adviceContent.style.display = 'block';
@@ -376,18 +382,18 @@ function showToast(message, type = 'info') {
     
     // 创建新的Toast
     const toast = document.createElement('div');
-    toast.className = `toast align-items-center bg-${type} text-white border-0`;
+    const safeType = ['info', 'success', 'warning', 'danger', 'primary'].includes(type) ? type : 'info';
+    toast.className = `toast align-items-center bg-${safeType} text-white border-0`;
     toast.setAttribute('role', 'alert');
     toast.setAttribute('aria-live', 'assertive');
     toast.setAttribute('aria-atomic', 'true');
     toast.innerHTML = `
         <div class="d-flex">
-            <div class="toast-body">
-                ${message}
-            </div>
+            <div class="toast-body"></div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="关闭"></button>
         </div>
     `;
+    toast.querySelector('.toast-body').textContent = message == null ? '' : String(message);
     
     // 添加到容器
     toastContainer.appendChild(toast);

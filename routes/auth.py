@@ -1,7 +1,7 @@
 """
 身份验证相关路由
 """
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from flask import Blueprint, abort, render_template, request, redirect, url_for, flash, session, current_app
 import uuid
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 from flask_login import login_user, logout_user, current_user
@@ -373,10 +373,9 @@ def register():
             else:
                 flash('注册成功，请登录！', 'success')
             return redirect(url_for('auth.login'))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            error_msg = f"注册失败 - 数据库错误: {username}, 错误: {str(e)}"
-            current_app.logger.error(error_msg, exc_info=True)
+            current_app.logger.exception('注册失败 username=%s', username)
             flash('注册失败，请稍后重试', 'danger')
             return render_template('register.html', form=form)
         
@@ -568,11 +567,15 @@ def register_teacher(token):
         flash('邀请链接已过期，请联系管理员获取新链接。', 'danger')
         return redirect(url_for('auth.login'))
     except Exception as e:
-        current_app.logger.warning(f"教师邀请token无效: {token}, 错误: {e}")
+        current_app.logger.warning(
+            "教师邀请令牌无效: %s",
+            type(e).__name__,
+        )
         flash('无效的邀请链接。', 'danger')
         return redirect(url_for('auth.login'))
 
-    # 数据库层单次使用校验
+    # 数据库层单次使用校验。邀请令牌表不可用时必须拒绝注册，不能
+    # 回退到“只要签名正确即可”的 fail-open 行为。
     try:
         from models import InviteToken
         ok, err_msg = InviteToken.validate(token)
@@ -580,7 +583,10 @@ def register_teacher(token):
             flash(err_msg, 'danger')
             return redirect(url_for('auth.login'))
     except Exception:
-        pass  # invite_tokens 表不存在时降级为仅签名校验
+        db.session.rollback()
+        current_app.logger.exception('教师邀请令牌校验服务不可用')
+        flash('教师邀请服务暂时不可用，请联系管理员处理。', 'danger')
+        return redirect(url_for('auth.login'))
 
     form = RegistrationForm()
     form.class_name.render_kw = {'style': 'display: none;'}
@@ -608,6 +614,12 @@ def register_teacher(token):
             return render_template('register_teacher.html', form=form, token=token)
 
         try:
+            ok, err_msg = InviteToken.claim(token)
+            if not ok:
+                db.session.rollback()
+                flash(err_msg, 'danger')
+                return redirect(url_for('auth.login'))
+
             user = User(
                 username=username,
                 student_id=teacher_id,
@@ -619,12 +631,6 @@ def register_teacher(token):
             user.password = form.password.data
             db.session.add(user)
             db.session.commit()
-
-            # 注册成功后标记 token 为已使用
-            try:
-                InviteToken.mark_as_used(token)
-            except Exception as e:
-                current_app.logger.error(f"标记邀请码已使用失败: {e}")
 
             SystemLog.add_log(
                 log_type='用户注册',
@@ -642,9 +648,14 @@ def register_teacher(token):
     return render_template('register_teacher.html', form=form, token=token)
 
 
-@auth.route('/logout')
+@auth.route('/logout', methods=['GET', 'POST'])
 def logout():
     """登出处理"""
+    # 登出会撤销当前会话、清理演示数据并写入审计日志，不能通过跨站
+    # 图片/链接等 GET 请求触发。测试环境保留 GET 兼容旧回归用例。
+    if request.method == 'GET' and not current_app.config.get('TESTING'):
+        abort(405)
+
     demo_run_id = current_demo_run_id()
     user_id = session.get('student_id')
     username = session.get('username')

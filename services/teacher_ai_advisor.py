@@ -9,6 +9,7 @@ from services.llm_client import LLMServiceError, SharedLLMClient
 from services.demo_database import activate_demo_run, is_active_demo_run
 from utils.sse import sse_event, stream_text_chunks
 from utils.timezone import format_display_datetime
+from utils.access import class_student_filter
 
 
 logger = logging.getLogger(__name__)
@@ -105,7 +106,10 @@ def generate_class_suggestions(class_id, teacher_id, demo_run_id=None):
             return None
 
         # 1. 获取班级所有学生和学情行
-        students = User.query.filter_by(class_id=class_id, usertype='学生').all()
+        students = User.query.filter(
+            class_student_filter(cls),
+            User.usertype == '学生',
+        ).all()
         student_ids = [s.student_id for s in students]
 
         attention_students = []
@@ -451,7 +455,10 @@ def _generate_class_suggestions_stream(class_id, teacher_id, demo_run_id=None, *
     db.session.commit()
 
     yield sse_event({'type': 'status', 'message': '正在分析学生提交与风险情况...'})
-    students = User.query.filter_by(class_id=class_id, usertype='学生').all()
+    students = User.query.filter(
+        class_student_filter(cls),
+        User.usertype == '学生',
+    ).all()
     student_ids = [s.student_id for s in students]
 
     attention_students = []

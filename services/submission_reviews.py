@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from threading import RLock
 
 from models import Assignment, Class, Submission, SystemLog, User, db
+from utils.access import can_access_submission
 
 
 REVIEW_LOG_TYPE = "提交复核"
@@ -249,23 +250,7 @@ def get_submission_review(submission_id: int) -> dict | None:
 
 def can_access_submission_review(submission, actor) -> bool:
     """Check participant access without relying on a caller-provided role."""
-
-    actor_id = _actor_id(actor)
-    role = _actor_role(actor)
-    if not actor_id or not role or submission is None:
-        return False
-    if actor_id == str(submission.student_id):
-        return True
-    if role == "admin":
-        return True
-    if role != "teacher":
-        return False
-
-    student = db.session.get(User, submission.student_id)
-    if student is None or not student.class_id:
-        return False
-    classroom = db.session.get(Class, student.class_id)
-    return bool(classroom and classroom.teacher_id == actor_id)
+    return can_access_submission(submission, actor)
 
 
 def _event_payload(

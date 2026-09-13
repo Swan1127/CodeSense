@@ -54,6 +54,12 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        function escapeHtml(value) {
+            const element = document.createElement('div');
+            element.textContent = value == null ? '' : String(value);
+            return element.innerHTML;
+        }
+
         // ==========================================
         // 批量导入处理逻辑
         // ==========================================
@@ -137,7 +143,7 @@
                     li.className = 'list-group-item list-group-item-action py-2 text-muted';
                     li.innerHTML = `<div class="d-flex w-100 justify-content-between align-items-center">
                                         <span class="text-truncate flex-grow-1" style="max-width: 75%;">
-                                            <i class="bi bi-cpu text-secondary me-2"></i><strong>[任务 ${i + 1}]</strong> ${prompts[i]}
+                                            <i class="bi bi-cpu text-secondary me-2"></i><strong>[任务 ${i + 1}]</strong> ${escapeHtml(prompts[i])}
                                         </span>
                                         <span class="badge bg-secondary rounded-pill status-badge">待处理</span>
                                     </div>`;
@@ -225,7 +231,7 @@
                         // 添加错误详情提示
                         const errText = document.createElement('div');
                         errText.className = 'text-danger small mt-1';
-                        errText.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${error.message}`;
+                        errText.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${escapeHtml(error.message)}`;
                         listItem.appendChild(errText);
                     }
 
@@ -360,6 +366,7 @@
                     <form action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}"
                         method="POST" style="display:inline;"
                         onsubmit="return confirm('确定要删除这个作业吗？这将永久删除该作业及其所有学生的提交记录，不可恢复！');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-danger">
                             <i class="bi bi-trash"></i> 删除
                         </button>

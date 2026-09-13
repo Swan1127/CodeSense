@@ -53,6 +53,7 @@
                             {% for next_status in review.next_statuses %}
                             <form method="POST"
                                 action="{{ url_for('assignments.transition_submission_review', submission_id=review.submission.id, status=selected_status) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="status" value="{{ next_status }}">
                                 <button class="btn btn-sm {% if next_status == 'resolved' %}btn-success{% else %}btn-outline-secondary{% endif %}"
                                     type="submit">{{ review_status_labels.get(next_status, next_status) }}</button>
