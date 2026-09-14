@@ -363,6 +363,10 @@
                         class="btn btn-sm btn-primary">
                         <i class="bi bi-pencil-square"></i> 布置
                     </a>
+                    <a href="{{ url_for('thinking.assignment_sessions_view', assignment_id=assignment.id) }}"
+                        class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-activity"></i> 学习会话
+                    </a>
                     <form action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}"
                         method="POST" style="display:inline;"
                         onsubmit="return confirm('确定要删除这个作业吗？这将永久删除该作业及其所有学生的提交记录，不可恢复！');">

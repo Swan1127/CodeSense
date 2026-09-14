@@ -13,6 +13,7 @@ import math
 
 from flask import Blueprint, abort, render_template, request, jsonify, session, Response, current_app
 from flask_login import current_user
+from sqlalchemy.orm import joinedload
 
 from models import (db, Assignment, AssignmentThinkingPreset,
                     ThinkingSession, ThinkingStageLog, Submission, User)
@@ -42,6 +43,13 @@ from services.demo_experience import (
     ensure_demo_guided_preset,
 )
 from services.demo_database import current_demo_run_id, is_active_demo_run
+from services.session_lifecycle import (
+    LIFECYCLE_STATUSES,
+    can_view_session,
+    can_view_assignment,
+    latest_session_activity,
+    session_lifecycle_payload,
+)
 
 thinking = Blueprint('thinking', __name__, url_prefix='/thinking')
 
@@ -464,6 +472,10 @@ def _run_stage3_forum_turn(
     payload = result.to_public_dict()
     payload['user_goal'] = _stage3_user_goal(ts.id)
     payload['forum_state'] = _stage3_forum_state(ts.id)
+    payload['session_lifecycle'] = session_lifecycle_payload(
+        ts,
+        last_activity_at=latest_session_activity([ts.id]).get(ts.id),
+    )
     return ts, target_role, payload
 
 
@@ -653,6 +665,10 @@ def _stage3_payload_with_goal(payload, thinking_session, runtime=None):
     result = dict(payload or {})
     getter = getattr(runtime, 'public_user_goal', None)
     result['user_goal'] = getter() if callable(getter) else _stage3_user_goal(thinking_session.id)
+    result['session_lifecycle'] = session_lifecycle_payload(
+        thinking_session,
+        last_activity_at=latest_session_activity([thinking_session.id]).get(thinking_session.id),
+    )
     return result
 
 
@@ -964,8 +980,10 @@ def start_session():
         if existing:
             if _ensure_stage3_initial_prompt(existing, assignment, preset):
                 db.session.commit()
-            # 计算已过秒数
-            elapsed_seconds = int((dt.utcnow() - existing.started_at).total_seconds())
+            lifecycle = session_lifecycle_payload(
+                existing,
+                last_activity_at=latest_session_activity([existing.id]).get(existing.id),
+            )
             forum_history = _stage3_forum_history(existing.id)
             forum_state = _stage3_forum_state(existing.id)
             
@@ -1068,7 +1086,8 @@ def start_session():
                 'session_id': existing.id,
                 'current_stage': existing.current_stage,
                 'resumed': True,
-                'elapsed_seconds': elapsed_seconds,
+                'elapsed_seconds': lifecycle['elapsed_seconds'],
+                'session_lifecycle': lifecycle,
                 'stage1_description': existing.stage1_description,
                 'stage1_score': existing.stage1_score,
                 'stage2_block_order': stage2_block_order,
@@ -1093,12 +1112,18 @@ def start_session():
 
         # 记录日志
         _log_event(new_session.id, 1, 'session_start', 'student', '开始引导式学习')
+        lifecycle = session_lifecycle_payload(
+            new_session,
+            last_activity_at=new_session.started_at,
+        )
 
         return jsonify({
             'success': True,
             'session_id': new_session.id,
             'current_stage': 1,
             'resumed': False,
+            'elapsed_seconds': lifecycle['elapsed_seconds'],
+            'session_lifecycle': lifecycle,
             'forum_history': [],
             'forum_state': {
                 'target_role': Stage3Target.AUTO.value,
@@ -2314,6 +2339,22 @@ def retry_preset(assignment_id):
 # API: 老师查看学习日志
 # ============================================================
 
+@thinking.route('/api/session/<int:session_id>/status')
+@login_required
+def get_session_status(session_id):
+    """Return a safe lifecycle projection for the student or an authorized teacher."""
+    thinking_session = db.session.get(ThinkingSession, session_id)
+    if not thinking_session or not can_view_session(current_user, thinking_session):
+        # Keep missing and unauthorized sessions on the same response path so
+        # this new endpoint does not reveal that a session id exists.
+        return jsonify({'error': '会话不存在或无权访问'}), 403
+
+    lifecycle = session_lifecycle_payload(
+        thinking_session,
+        last_activity_at=latest_session_activity([thinking_session.id]).get(thinking_session.id),
+    )
+    return jsonify({'success': True, 'session': lifecycle})
+
 @thinking.route('/api/session/<int:session_id>/log')
 @login_required
 def get_session_log(session_id):
@@ -2361,11 +2402,90 @@ def get_assignment_sessions(assignment_id):
 
     sessions = ThinkingSession.query.filter_by(assignment_id=assignment_id)\
         .order_by(ThinkingSession.started_at.desc()).all()
+    activity_by_session = latest_session_activity([item.id for item in sessions])
+    lifecycle_filter = str(request.args.get('lifecycle_status') or '').strip().lower()
+    if lifecycle_filter not in LIFECYCLE_STATUSES:
+        lifecycle_filter = None
+
+    summaries = []
+    for item in sessions:
+        lifecycle = session_lifecycle_payload(
+            item,
+            last_activity_at=activity_by_session.get(item.id),
+        )
+        if lifecycle_filter and lifecycle['status'] != lifecycle_filter:
+            continue
+        summary = item.to_summary_dict()
+        summary.update({
+            'lifecycle_status': lifecycle['status'],
+            'progress_percent': lifecycle['progress_percent'],
+            'stage_label': lifecycle['stage_label'],
+            'next_action': lifecycle['next_action'],
+            'last_activity_at': lifecycle['last_activity_at'],
+            'elapsed_seconds': lifecycle['elapsed_seconds'],
+            'elapsed_source': lifecycle['elapsed_source'],
+            'lifecycle': lifecycle,
+        })
+        summaries.append(summary)
 
     return jsonify({
         'success': True,
-        'sessions': [s.to_summary_dict() for s in sessions]
+        'sessions': summaries,
     })
+
+
+@thinking.route('/assignment/<int:assignment_id>/sessions/view')
+@login_required
+def assignment_sessions_view(assignment_id):
+    """Read-only teacher view of the session lifecycle projection."""
+    if not (current_user.is_admin or current_user.is_teacher):
+        flash_message = '您没有权限访问此页面'
+        # Keep this page consistent with the other teacher-only dashboard
+        # pages without changing the existing JSON endpoint's behavior.
+        from flask import redirect, url_for, flash
+        flash(flash_message, 'danger')
+        return redirect(url_for('main.home'))
+
+    assignment = Assignment.query.get_or_404(assignment_id)
+    if not can_view_assignment(current_user, assignment):
+        abort(403)
+    sessions = ThinkingSession.query.filter_by(assignment_id=assignment_id).options(
+        joinedload(ThinkingSession.student),
+        joinedload(ThinkingSession.assignment),
+    ).order_by(ThinkingSession.started_at.desc()).all()
+    activity_by_session = latest_session_activity([item.id for item in sessions])
+    lifecycle_filter = str(request.args.get('lifecycle_status') or '').strip().lower()
+    if lifecycle_filter not in LIFECYCLE_STATUSES:
+        lifecycle_filter = None
+
+    rows = []
+    for item in sessions:
+        if not can_view_session(current_user, item):
+            continue
+        lifecycle = session_lifecycle_payload(
+            item,
+            last_activity_at=activity_by_session.get(item.id),
+        )
+        if lifecycle_filter and lifecycle['status'] != lifecycle_filter:
+            continue
+        student = item.student
+        rows.append({
+            'student_name': (
+                getattr(student, 'full_name', None)
+                or getattr(student, 'username', None)
+                or item.student_id
+            ),
+            'student_id': item.student_id,
+            'lifecycle': lifecycle,
+        })
+
+    return render_template(
+        'thinking/session_overview.html',
+        assignment=assignment,
+        sessions=rows,
+        lifecycle_filter=lifecycle_filter,
+        lifecycle_statuses=LIFECYCLE_STATUSES,
+    )
 
 
 # ============================================================

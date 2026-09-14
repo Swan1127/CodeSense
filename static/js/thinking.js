@@ -16,6 +16,7 @@
         sessionId: null,
         assignmentId: null,
         currentStage: 1,
+        lifecycle: null,
         preset: null,
         // Timer
         startTime: null,
@@ -51,6 +52,94 @@
         };
     }
 
+    const lifecycleStatusLabels = {
+        active: '正在学习',
+        idle: '暂时停留',
+        completed: '已完成',
+        abandoned: '已放弃',
+        unknown: '等待同步',
+    };
+    let lifecycleSyncPromise = null;
+    let lifecycleBindingsReady = false;
+
+    function formatLifecycleDuration(seconds) {
+        const total = Math.max(0, Number.parseInt(seconds, 10) || 0);
+        const minutes = Math.floor(total / 60);
+        const remainder = total % 60;
+        return `${minutes}分${remainder}秒`;
+    }
+
+    function applySessionLifecycle(lifecycle) {
+        if (!lifecycle || typeof lifecycle !== 'object') return;
+        state.lifecycle = lifecycle;
+
+        const status = String(lifecycle.status || 'unknown');
+        const container = document.getElementById('arena-container');
+        const statusEl = document.getElementById('session-lifecycle-status');
+        const metaEl = document.getElementById('session-lifecycle-meta');
+        const nextEl = document.getElementById('session-next-action');
+        const progressEl = document.getElementById('session-lifecycle-progress');
+        const feedbackEl = document.getElementById('session-status-feedback');
+        if (container) container.dataset.sessionStatus = status;
+        if (statusEl) statusEl.textContent = lifecycleStatusLabels[status] || status;
+        if (metaEl) {
+            const activity = lifecycle.last_activity_at
+                ? `最近活动：${lifecycle.last_activity_at}`
+                : '最近活动：暂无记录';
+            const elapsed = `${lifecycle.elapsed_label || '已记录时间'}：${formatLifecycleDuration(lifecycle.elapsed_seconds)}`;
+            metaEl.textContent = `${activity} · ${elapsed}`;
+        }
+        if (nextEl) nextEl.textContent = `下一步：${lifecycle.next_action || '保持当前页面并继续学习。'}`;
+        if (progressEl) {
+            const percent = Math.min(100, Math.max(0, Number(lifecycle.progress_percent) || 0));
+            progressEl.style.width = `${percent}%`;
+            progressEl.setAttribute('aria-valuenow', String(percent));
+        }
+        if (feedbackEl) feedbackEl.textContent = '状态已同步';
+    }
+
+    function refreshSessionLifecycle(options = {}) {
+        if (!state.sessionId) return Promise.resolve(null);
+        if (lifecycleSyncPromise) return lifecycleSyncPromise;
+
+        lifecycleSyncPromise = fetchJSON(`/thinking/api/session/${state.sessionId}/status`, {
+            method: 'GET',
+        }).then(data => {
+            const lifecycle = data && (data.session || data.session_lifecycle);
+            applySessionLifecycle(lifecycle);
+            if (options.announce) showNotification('状态已同步', 'info');
+            return lifecycle;
+        }).catch(error => {
+            const feedbackEl = document.getElementById('session-status-feedback');
+            if (feedbackEl) feedbackEl.textContent = '状态同步失败，当前输入仍然保留';
+            throw error;
+        }).finally(() => {
+            lifecycleSyncPromise = null;
+        });
+        return lifecycleSyncPromise;
+    }
+
+    function handleSessionVisibilityChange() {
+        if (document.visibilityState === 'visible' && state.sessionId) {
+            refreshSessionLifecycle({ announce: false }).catch(() => {});
+        }
+    }
+
+    function bindSessionLifecycleControls() {
+        if (lifecycleBindingsReady) return;
+        lifecycleBindingsReady = true;
+        const button = document.getElementById('session-status-refresh');
+        if (button) {
+            button.addEventListener('click', () => {
+                button.disabled = true;
+                refreshSessionLifecycle({ announce: true })
+                    .catch(() => {})
+                    .finally(() => { button.disabled = false; });
+            });
+        }
+        document.addEventListener('visibilitychange', handleSessionVisibilityChange);
+    }
+
     // ============================================================
     // Initialization
     // ============================================================
@@ -59,6 +148,7 @@
         if (!container) return;
 
         state.assignmentId = parseInt(container.dataset.assignmentId);
+        bindSessionLifecycleControls();
         const presetStatus = (container.dataset.presetStatus || '').trim();
 
         if (presetStatus !== 'ready') {
@@ -100,6 +190,7 @@
                 state.sessionId = data.session_id;
                 state.currentStage = data.current_stage;
                 state.preset = data.preset;
+                applySessionLifecycle(data.session_lifecycle);
 
                 if (data.resumed) {
                     showNotification('已恢复上次的学习进度', 'info');

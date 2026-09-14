@@ -18,6 +18,7 @@ from models import (
     SystemConfig,
     AbilityTrend,
     KnowledgePointScore,
+    ThinkingSession,
 )
 from services.teacher_analytics import build_teacher_dashboard_data
 from services.demo_database import current_demo_run_id
@@ -41,6 +42,7 @@ from services.notifications import (
     mark_notification_read,
 )
 from services.submission_reviews import count_open_reviews
+from services.session_lifecycle import latest_session_activity, session_lifecycle_payload
 from services.profile import get_profile_settings, PROFILE_VISIBILITY_PUBLIC
 from utils.auth import admin_required
 from utils.access import authoritative_class_name, assignment_target_class_filter, can_access_student
@@ -240,6 +242,27 @@ def home():
                 assignment_target_class_filter(class_name)
             ).order_by(Assignment.created_time.desc()).limit(4).all()
 
+        # 会话连续性只读取当前学生自己的最近记录，并用一次聚合查询补充最后活动时间。
+        recent_sessions = ThinkingSession.query.filter_by(
+            student_id=student_id,
+        ).options(
+            joinedload(ThinkingSession.assignment),
+        ).order_by(
+            ThinkingSession.started_at.desc(),
+            ThinkingSession.id.desc(),
+        ).limit(3).all()
+        activity_by_session = latest_session_activity([item.id for item in recent_sessions])
+        recent_learning_sessions = []
+        for item in recent_sessions:
+            lifecycle = session_lifecycle_payload(
+                item,
+                last_activity_at=activity_by_session.get(item.id),
+            )
+            recent_learning_sessions.append({
+                'assignment': item.assignment,
+                'lifecycle': lifecycle,
+            })
+
         # 首页直接渲染完整画像，前端 SSE 连接成功后再用同一份数据刷新，
         # 这样首屏不会只显示“加载中”，网络较慢时也能看到真实的演示数据。
         knowledge_profile = KnowledgePointScore.get_student_profile(student_id)
@@ -324,6 +347,7 @@ def home():
             'phi_std': round(phi_std, 1),
             'phi_grad': round(phi_grad, 1),
             'recent_assignments': recent_assignments,
+            'recent_learning_sessions': recent_learning_sessions,
             'submissions': submissions,
             'knowledge_profile': knowledge_profile,
             'knowledge_profile_rows': knowledge_profile_rows,
