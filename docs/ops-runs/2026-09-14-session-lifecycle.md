@@ -2,7 +2,7 @@
 
 ## 结论
 
-本轮功能已合并到本地 `main`，合并提交为 `732013e2edae2f6a37108b88e31bedc861daf55b`。候选功能提交为 `f17aca9622e257b71de8f1ae3379b3096f4891eb`，测试隔离修复为 `ca0b092b09165917fe016f1c7da9cada94862b13`。版本目标为 `v1.1.0`；本地合并和素材已就绪，GitHub Release、知识库和群同步将在本记录之后执行。生产环境没有部署。
+本轮功能已合并到本地 `main`，合并提交为 `732013e2edae2f6a37108b88e31bedc861daf55b`。候选功能提交为 `f17aca9622e257b71de8f1ae3379b3096f4891eb`，测试隔离修复为 `ca0b092b09165917fe016f1c7da9cada94862b13`。版本 `v1.1.0` 已推送并发布到 [GitHub Release](https://github.com/XiaoCow666/CodeSense/releases/tag/v1.1.0)；知识库和群同步仍待执行。生产环境没有部署。
 
 ## 用户价值与迭代清单
 
@@ -57,7 +57,7 @@
 ## 发布状态
 
 - 本地：`main` 已合并，信息图已生成并带有 `v1.1.0` 版本标识。
-- GitHub：待创建同名 tag 和 Release，并附上信息图。
+- GitHub：`v1.1.0` tag 和正式 Release 已发布，信息图附件已验证存在。
 - CodeSense 知识库：待写入本轮富文本更新记录和信息图。
 - CodeSense / CoDeBuGo 群：待由“小牛顿”同步图文更新。
 - 生产环境：未部署，未触碰生产数据库、Redis 或线上流量。
