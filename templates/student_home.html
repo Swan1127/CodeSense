@@ -444,6 +444,50 @@
     </div>
 </div>
 
+<!-- 继续学习 -->
+<div class="card mt-4" style="margin-top: 2rem; margin-bottom: 2rem;" aria-labelledby="recent-learning-title">
+    <div class="card-header d-flex justify-content-between align-items-center" style="padding: 1rem 1.5rem;">
+        <div class="card-title mb-0" id="recent-learning-title">
+            <i class="bi bi-arrow-repeat" style="margin-right: 10px;"></i> 继续学习
+        </div>
+        <span class="small text-muted">最近 3 个会话</span>
+    </div>
+    <div class="card-body" style="padding: 1.5rem;">
+        {% if recent_learning_sessions %}
+        <div class="row g-3">
+            {% for item in recent_learning_sessions %}
+            {% set lifecycle = item.lifecycle %}
+            {% set status_label = {'active': '正在学习', 'idle': '暂时停留', 'completed': '已完成', 'abandoned': '已放弃'}.get(lifecycle.status, lifecycle.status) %}
+            <div class="col-md-4">
+                <article class="border rounded-3 h-100 p-3 d-flex flex-column">
+                    <div class="d-flex justify-content-between gap-2 align-items-start">
+                        <h3 class="h6 mb-2">{{ item.assignment.title if item.assignment else '未命名作业' }}</h3>
+                        <span class="badge rounded-pill text-bg-{% if lifecycle.status == 'active' %}success{% elif lifecycle.status == 'completed' %}primary{% elif lifecycle.status == 'idle' %}warning{% else %}secondary{% endif %}">
+                            {{ status_label }}
+                        </span>
+                    </div>
+                    <p class="small text-muted mb-2">{{ lifecycle.stage_label }} · {{ lifecycle.progress_percent }}%</p>
+                    <p class="small mb-2 flex-grow-1">下一步：{{ lifecycle.next_action }}</p>
+                    <p class="small text-muted mb-3">最近活动：{{ lifecycle.last_activity_at or '暂无记录' }}</p>
+                    {% if lifecycle.is_resumable and item.assignment %}
+                    <a class="btn btn-sm btn-outline-primary w-100" href="{{ url_for('thinking.arena', assignment_id=item.assignment.id) }}">
+                        <i class="bi bi-play-circle me-1" aria-hidden="true"></i>继续当前阶段
+                    </a>
+                    {% else %}
+                    <span class="small text-muted">{{ '已完成，可查看学习记录' if lifecycle.status == 'completed' else '已结束，不会自动开启新会话' }}</span>
+                    {% endif %}
+                </article>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-light border mb-0" role="status">
+            <i class="bi bi-journal-plus me-2" aria-hidden="true"></i>还没有学习会话，打开一份作业即可开始。
+        </div>
+        {% endif %}
+    </div>
+</div>
+
 <!-- 最近作业 -->
 <div class="card mt-4" style="margin-top: 2rem; margin-bottom: 2rem;">
     <div class="card-header" style="padding: 1rem 1.5rem;">
