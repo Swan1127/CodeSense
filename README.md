@@ -21,14 +21,14 @@
   <a href="https://github.com/XiaoCow666/CodeSense/stargazers"><img src="https://img.shields.io/github/stars/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub stars"></a>
   <a href="https://github.com/XiaoCow666/CodeSense/network/members"><img src="https://img.shields.io/github/forks/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub forks"></a>
   <a href="https://github.com/XiaoCow666/CodeSense/blob/main/LICENSE"><img src="https://img.shields.io/github/license/XiaoCow666/CodeSense?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/version-v1.0.0-2563eb?style=flat-square" alt="v1.0.0">
+  <img src="https://img.shields.io/badge/version-v1.1.0-2563eb?style=flat-square" alt="v1.1.0">
   <img src="https://img.shields.io/badge/Python-3.8--3.13-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.8–3.13">
   <img src="https://img.shields.io/badge/Flask-2.2.3-000000?style=flat-square&logo=flask&logoColor=white" alt="Flask 2.2.3">
 </p>
 
-> 当前版本：<a href="https://github.com/XiaoCow666/CodeSense/releases/tag/v1.0.0"><code>v1.0.0</code></a>。
+> 当前版本：<a href="https://github.com/XiaoCow666/CodeSense/releases/tag/v1.1.0"><code>v1.1.0</code></a>。
 >
-> 这是 CodeSense Standard Edition 的首个正式版本。后续版本会同时更新 [CHANGELOG.md](CHANGELOG.md)、Git tag 和 GitHub Release。
+> 这是 CodeSense Standard Edition 的当前正式版本。发布级变更会记录在 [CHANGELOG.md](CHANGELOG.md)、Git tag 和 GitHub Release 中。
 
 ## 目录
 
@@ -115,6 +115,10 @@ CodeSense 把代码提交、受限执行、AI 辅导、分阶段练习和学情�
 系统会记录代码提交、评测结果、提示请求和引导式学习过程，并从算法、代码风格、功能完整性、执行效率和可读性等维度整理能力信息。教师端可以查看知识点得分、个人趋势和班级视图。
 
 作业提交得分与能力画像不是同一个指标：前者当前按 0–5 分记录，后者按 0–100 分记录。
+
+### 学习会话连续性与状态可视化
+
+CodeSense 会把引导式学习过程投影为可解释的会话状态：学生离开或刷新页面后，可以从“继续学习”入口回到最近会话，并看到当前阶段、下一步动作和可恢复提示；教师可以在授权范围内查看会话概览、阶段进度，并按“进行中、空闲、已完成、已放弃”筛选。状态接口只读已有学习记录，不改写历史数据，也会明确区分服务器观察时间、已存客户端计时和时间戳来源。
 
 ### 教师端
 
@@ -384,7 +388,7 @@ CodeSense 使用语义化版本号：
 - <code>MINOR</code>：向后兼容的功能增加；
 - <code>PATCH</code>：向后兼容的问题修复和小幅调整。
 
-当前版本是 [v1.0.0](https://github.com/XiaoCow666/CodeSense/releases/tag/v1.0.0)，对应标准版首个正式发布。后续版本请同时更新 [CHANGELOG.md](CHANGELOG.md)，并使用同名 Git tag 和 GitHub Release。
+当前版本是 [v1.1.0](https://github.com/XiaoCow666/CodeSense/releases/tag/v1.1.0)，增加了学习会话连续性与可解释状态。日常更新状态记录在运行记录中并同步到 GitHub Release；README 不作为日常更新日志，仅在新增重要功能或明显改变使用方式时补充说明。
 
 ## Star History
 

@@ -2,7 +2,7 @@
 
 ## 结论
 
-隔离候选已完成，建议状态为 `needs_human`。候选位于 `codex/session-lifecycle-20260914`，基于远端主线 `31272696ec5dfb865d1c1b5e40588b719cd4c551`。本轮没有合并、push 或部署，也没有修改主工作区。
+本轮功能已合并到本地 `main`，合并提交为 `732013e2edae2f6a37108b88e31bedc861daf55b`。候选功能提交为 `f17aca9622e257b71de8f1ae3379b3096f4891eb`，测试隔离修复为 `ca0b092b09165917fe016f1c7da9cada94862b13`。版本目标为 `v1.1.0`；本地合并和素材已就绪，GitHub Release、知识库和群同步将在本记录之后执行。生产环境没有部署。
 
 ## 用户价值与迭代清单
 
@@ -30,6 +30,8 @@
 - 学生端：`templates/student_home.html`、`templates/thinking/arena.html`、`static/js/thinking.js`、`static/css/thinking.css`。
 - 教师端：`templates/thinking/session_overview.html`、`templates/teacher_assignments.html`。
 - 测试：`tests/test_session_lifecycle.py`、`tests/test_session_lifecycle_routes.py`、`tests/test_session_lifecycle_ui.py`，以及阶段 3 论坛响应契约。
+- 测试隔离：`config.py`、`tests/test_config.py`，测试配置默认关闭进程内后台 worker 和预设扫描，避免临时 SQLite 连接跨测试复用。
+- 发布素材：`docs/assets/codesense-v1.1.0-session-lifecycle.png`、`README.md`、`CHANGELOG.md`。
 - 计划：`docs/superpowers/plans/2026-09-14-session-lifecycle.md`。
 
 ## 研究依据
@@ -43,12 +45,22 @@
 ## 验证证据
 
 - 隔离候选基线：`619 passed, 1508 warnings`。
-- 最终全量回归：`644 passed, 1558 warnings in 280.30s`，退出码 0。
+- 候选修复后的全量回归：`645 passed, 2130031 warnings in 349.94s`，退出码 0。
+- 合并后按 `git ls-files tests/*.py` 得到的已跟踪测试集：`643 passed, 2129981 warnings in 443.77s`，退出码 0。
+- 合并后直接运行默认 `pytest -q` 时，收集阶段遇到本地 `.gitignore` 忽略的研究测试 `tests/test_guided_learning_paper_docx.py`，其依赖的未跟踪脚本不存在；该测试和脚本不在仓库跟踪树中，随后已用已跟踪测试文件列表完成发布验证。
 - 最终定向回归：`26 passed, 56 warnings`，覆盖新服务、API、权限、模板/UI 和阶段 3 论坛响应。
-- `python -m compileall -q services routes tests` 通过。
+- `python -m compileall -q services routes tests` 通过（候选修复后）。
 - `git diff --check` 通过；新增文件无尾随空白。
 - 浏览器 smoke：本地隔离服务使用演示数据，390px 窄屏加载竞技场，状态条和手动同步可见；点击同步后状态仍为“正在学习”，`documentWidth=375`、`bodyWidth=375`、`viewportWidth=375`，无横向溢出。
 - 权限 smoke：学生本人、所管理班级教师可读；无关教师和不存在会话均为 403；教师概览页不向无关教师泄露作业内容。
+
+## 发布状态
+
+- 本地：`main` 已合并，信息图已生成并带有 `v1.1.0` 版本标识。
+- GitHub：待创建同名 tag 和 Release，并附上信息图。
+- CodeSense 知识库：待写入本轮富文本更新记录和信息图。
+- CodeSense / CoDeBuGo 群：待由“小牛顿”同步图文更新。
+- 生产环境：未部署，未触碰生产数据库、Redis 或线上流量。
 
 ## 发布风险与回滚
 
@@ -56,4 +68,4 @@
 - `elapsed_seconds` 对进行中会话是服务器观察时间，对旧终态会话优先沿用已存客户端计时；页面明确展示来源。
 - 既有宽权限教师日志/会话 JSON 接口未收紧，避免本轮引入隐含的授权行为变更；新的生命周期接口使用更窄的对象级授权。
 - 本轮未验证远端服务器、生产 Redis、SMTP、真实 AI provider 或真实浏览器线上流量，不能标记为已发布。
-- 回滚方式：在用户明确同意前保留此隔离候选；若确认不采用，删除隔离 worktree/分支即可，不涉及生产数据或数据库迁移。
+- 回滚方式：删除本地 `v1.1.0` tag 并将 `main` 回退到合并前提交即可；本轮没有数据库迁移或生产数据变更。已合并后不再需要的候选 worktree/分支会在验证完成后清理。
