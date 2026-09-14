@@ -92,6 +92,8 @@ def _ensure_class(teacher):
     demo_class.major = '软件工程'
     demo_class.grade = '2024'
     demo_class.teacher_id = teacher.student_id
+    demo_class.ensure_teacher_bind_code()
+    demo_class.ensure_student_join_code()
     db.session.flush()
     return demo_class
 

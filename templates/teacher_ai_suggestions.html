@@ -169,7 +169,7 @@
                                     基于本周班级提交活跃度、薄弱知识点及学习偏离度进行综合智能推荐
                                 </p>
                             </div>
-                            <button class="btn btn-light text-primary fw-bold px-3 py-2 btn-refresh-sug" data-class-id="{{ cls.id }}">
+                            <button type="button" class="btn btn-light text-primary fw-bold px-3 py-2 btn-refresh-sug" data-class-id="{{ cls.id }}" aria-label="刷新 {{ cls.name }} 的 AI 教学建议">
                                 <i class="bi bi-arrow-repeat me-1 btn-refresh-icon"></i>刷新 AI 建议
                             </button>
                         </div>
@@ -188,17 +188,17 @@
                         <!-- 核心区域 -->
                         <div class="card-body p-4">
                             <!-- 状态容器 -->
-                            <div class="status-container-{{ cls.id }} d-none p-5 text-center">
-                                <div class="spinner-border text-primary fs-3 mb-3 spin" role="status" style="width: 3rem; height: 3rem;"></div>
+                            <div class="status-container-{{ cls.id }} d-none p-5 text-center" role="status" aria-live="polite" aria-atomic="true" aria-busy="true">
+                                <div class="spinner-border text-primary fs-3 mb-3 spin" role="status" aria-label="正在生成 AI 教学建议" style="width: 3rem; height: 3rem;"></div>
                                 <h5 class="fw-bold text-slate-800">AI 正在深度分析班级学情...</h5>
                                 <p class="text-muted small">正在聚合班级数据并生成针对性对策；首段通常几秒可见，上游响应过慢时会自动切换快速报告。</p>
                             </div>
 
                             <!-- 内容展示区 -->
-                            <div class="content-container-{{ cls.id }}">
+                            <div class="content-container-{{ cls.id }}" aria-live="polite" aria-busy="false">
                                 {% if sug.status == 'pending' or sug.status == 'processing' %}
                                     <div class="p-5 text-center loading-placeholder">
-                                        <div class="spinner-border text-primary fs-3 mb-3 spin" role="status" style="width: 3rem; height: 3rem;"></div>
+                                        <div class="spinner-border text-primary fs-3 mb-3 spin" role="status" aria-label="正在生成 AI 教学建议" style="width: 3rem; height: 3rem;"></div>
                                         <h5 class="fw-bold text-slate-800">AI 正在深度分析班级学情...</h5>
                                         <script>
                                             document.addEventListener("DOMContentLoaded", function() {
@@ -207,11 +207,11 @@
                                         </script>
                                     </div>
                                 {% elif sug.status == 'failed' %}
-                                    <div class="alert alert-danger p-4 text-center rounded-3">
+                                    <div class="alert alert-danger p-4 text-center rounded-3" role="alert">
                                         <i class="bi bi-exclamation-triangle-fill text-danger fs-2 mb-2 d-block"></i>
                                         <h5 class="fw-bold">AI 建议生成失败</h5>
                                         <p class="text-muted small">系统在调用 AI 或汇总数据时出现异常，请尝试重新生成。</p>
-                                        <button class="btn btn-danger mt-2 btn-refresh-sug" data-class-id="{{ cls.id }}">重新生成</button>
+                                        <button type="button" class="btn btn-danger mt-2 btn-refresh-sug" data-class-id="{{ cls.id }}" aria-label="重新生成 {{ cls.name }} 的 AI 教学建议">重新生成</button>
                                     </div>
                                 {% else %}
                                     <!-- 建议已生成 -->
@@ -314,6 +314,26 @@
         });
     });
 
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (character) {
+            return {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[character];
+        });
+    }
+
+    function setSuggestionBusy(classId, busy) {
+        const statusContainer = document.querySelector(`.status-container-${classId}`);
+        const contentContainer = document.querySelector(`.content-container-${classId}`);
+        [statusContainer, contentContainer].forEach(function (container) {
+            if (container) container.setAttribute('aria-busy', busy ? 'true' : 'false');
+        });
+    }
+
     // 触发并流式获取建议生成过程。所有 AI 文本流统一走 consumeSSE。
     function startSuggestionStream(classId, buttonElement = null) {
         // 动画控制：旋转图标并禁用按钮
@@ -325,6 +345,7 @@
 
         const statusContainer = document.querySelector(`.status-container-${classId}`);
         const contentContainer = document.querySelector(`.content-container-${classId}`);
+        setSuggestionBusy(classId, true);
         
         // 显示初始分析进度条/状态面板
         if (statusContainer) {
@@ -373,13 +394,13 @@
             const reportContentDiv = document.querySelector(`.report-content-box-${classId}`);
             if (!reportContentDiv) return;
             const stickToBottom = reportContentDiv.scrollHeight - reportContentDiv.scrollTop - reportContentDiv.clientHeight < 64;
-            if (typeof marked !== 'undefined') {
-                reportContentDiv.innerHTML = marked.parse(markdownBuffer);
-            } else {
-                reportContentDiv.textContent = markdownBuffer;
-            }
+            const rendered = typeof marked !== 'undefined'
+                ? marked.parse(markdownBuffer)
+                : escapeHtml(markdownBuffer).replace(/\n/g, '<br>');
+            reportContentDiv.innerHTML = typeof DOMPurify !== 'undefined'
+                ? DOMPurify.sanitize(rendered)
+                : escapeHtml(markdownBuffer).replace(/\n/g, '<br>');
             if (stickToBottom) reportContentDiv.scrollTop = reportContentDiv.scrollHeight;
-
         };
 
         const scheduleRender = (flush = false) => {
@@ -396,7 +417,7 @@
         };
 
         window.consumeSSE(`/api/teacher/stream_suggestions?class_id=${encodeURIComponent(classId)}`, {
-            method: 'GET',
+                method: 'POST',
             signal: controller.signal
         }, {
             onStatus: data => {
@@ -437,6 +458,7 @@
                     durationMs: Math.round(performance.now() - startedAt),
                     server: data.stream_metrics || null,
                 });
+                if (window.CodeSenseUI) window.CodeSenseUI.announce('AI 教学建议已生成。');
                 resetRefreshButton(classId, buttonElement);
             },
             onError: data => {
@@ -444,6 +466,7 @@
                 streamReportedError = true;
                 scheduleRender(true);
                 showTeacherStreamError(classId, data.message || data.error || '系统繁忙');
+                if (window.CodeSenseUI) window.CodeSenseUI.announce('AI 教学建议生成失败，请重试。', 'assertive');
                 resetRefreshButton(classId, buttonElement);
                 // The server has already emitted a terminal SSE error and
                 // closes the response itself. Aborting here turns a clean
@@ -459,6 +482,7 @@
             if (!isCurrentStream() || streamReportedError || error.name === 'AbortError') return;
             console.error('SSE connection error:', error);
             showTeacherStreamError(classId, '连接中断，已保留已生成内容；请点击“刷新 AI 建议”重试。');
+            if (window.CodeSenseUI) window.CodeSenseUI.announce('AI 教学建议连接中断，请重试。', 'assertive');
             resetRefreshButton(classId, buttonElement);
         }).finally(() => {
             if (isCurrentStream()) delete window.suggestionStreams[classId];
@@ -468,14 +492,22 @@
     function showTeacherStreamError(classId, message) {
         const reportContentDiv = document.querySelector(`.report-content-box-${classId}`);
         if (!reportContentDiv) {
-            alert('流式生成 AI 建议失败: ' + message);
+            if (window.CodeSenseUI) window.CodeSenseUI.announce('流式生成 AI 建议失败：' + message, 'assertive');
             return;
         }
+        const previousError = reportContentDiv.querySelector('.teacher-stream-error');
+        if (previousError) previousError.remove();
         const error = document.createElement('div');
-        error.className = 'alert alert-warning mt-3 mb-0';
-        error.innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i>';
+        error.className = 'alert alert-warning mt-3 mb-0 teacher-stream-error';
+        error.setAttribute('role', 'alert');
+        error.setAttribute('tabindex', '-1');
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-exclamation-triangle me-2';
+        icon.setAttribute('aria-hidden', 'true');
+        error.appendChild(icon);
         error.appendChild(document.createTextNode(message));
         reportContentDiv.appendChild(error);
+        error.focus();
     }
 
     function clearSuggestionRenderTimer(classId) {
@@ -503,6 +535,7 @@
 
     // 复位按钮与布局
     function resetRefreshButton(classId, buttonElement) {
+        setSuggestionBusy(classId, false);
         if (buttonElement) {
             buttonElement.disabled = false;
             const icon = buttonElement.querySelector('.btn-refresh-icon');
@@ -523,7 +556,7 @@
             <!-- 左侧：卡片加载等待态 -->
             <div class="col-lg-5 col-md-12">
                 <div class="p-4 text-center border rounded-3 bg-light" style="min-height: 400px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-                    <div class="spinner-border text-primary mb-3 spin" role="status" style="width: 2.5rem; height: 2.5rem;"></div>
+                    <div class="spinner-border text-primary mb-3 spin" role="status" aria-label="正在汇总 AI 教学建议" style="width: 2.5rem; height: 2.5rem;"></div>
                     <h6 class="fw-bold text-slate-800">正在同步汇总行动要素...</h6>
                     <p class="text-muted small px-3">报告会边生成边显示；如果上游迟迟没有首段，系统会自动切换快速报告。</p>
                 </div>
@@ -545,8 +578,9 @@
         const contentContainer = document.querySelector(`.content-container-${classId}`);
         const statusContainer = document.querySelector(`.status-container-${classId}`);
         const updateTimeSpan = document.querySelector(`.update-time-${classId}`);
+        setSuggestionBusy(classId, false);
         
-        if (updateTimeSpan) updateTimeSpan.textContent = data.last_updated;
+        if (updateTimeSpan) updateTimeSpan.textContent = String(data.last_updated || '');
 
         // 拼接 HTML
         let htmlContent = '<div class="row g-4">';
@@ -558,8 +592,8 @@
         if (data.suggestion_json.attention_students && data.suggestion_json.attention_students.length > 0) {
             data.suggestion_json.attention_students.forEach(student => {
                 htmlContent += `    <div class="student-card shadow-sm">
-                                      <div class="fw-bold text-danger mb-1">${student.name} (${student.student_id})</div>
-                                      <div class="text-muted small">${student.risk_reason}</div>
+                                      <div class="fw-bold text-danger mb-1">${escapeHtml(student.name)} (${escapeHtml(student.student_id)})</div>
+                                      <div class="text-muted small">${escapeHtml(student.risk_reason)}</div>
                                     </div>`;
             });
         } else {
@@ -573,8 +607,8 @@
         if (data.suggestion_json.weak_knowledge_points && data.suggestion_json.weak_knowledge_points.length > 0) {
             data.suggestion_json.weak_knowledge_points.forEach(kp => {
                 htmlContent += `    <div class="point-card shadow-sm">
-                                      <div class="fw-bold text-primary mb-1">${kp.point_name}</div>
-                                      <div class="text-muted small">${kp.explanation}</div>
+                                      <div class="fw-bold text-primary mb-1">${escapeHtml(kp.point_name)}</div>
+                                      <div class="text-muted small">${escapeHtml(kp.explanation)}</div>
                                     </div>`;
             });
         } else {
@@ -589,10 +623,10 @@
             data.suggestion_json.suggested_assignments.forEach(assign => {
                 htmlContent += `    <div class="assignment-card shadow-sm">
                                       <div class="d-flex justify-content-between align-items-center mb-1">
-                                        <span class="fw-bold text-success">${assign.title}</span>
-                                        <span class="badge bg-success text-white">${assign.difficulty || '中等'}</span>
+                                        <span class="fw-bold text-success">${escapeHtml(assign.title)}</span>
+                                        <span class="badge bg-success text-white">${escapeHtml(assign.difficulty || '中等')}</span>
                                       </div>
-                                      <div class="text-muted small">${assign.reason || assign.description || '课后针对巩固学习。'}</div>
+                                      <div class="text-muted small">${escapeHtml(assign.reason || assign.description || '课后针对巩固学习。')}</div>
                                     </div>`;
             });
         } else {
@@ -609,10 +643,13 @@
         const renderedMd = window.CodeSenseMarkdown
             ? window.CodeSenseMarkdown.renderToString(data.suggestion_markdown)
             : '<p>' + String(data.suggestion_markdown || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
-        htmlContent += `    <div>${renderedMd}</div>`;
+        const safeRenderedMd = typeof DOMPurify !== 'undefined'
+            ? DOMPurify.sanitize(renderedMd)
+            : renderedMd;
+        htmlContent += `    <div>${safeRenderedMd}</div>`;
         
         htmlContent += '  </div>';
-        htmlContent += `  <div class="text-end mt-2"><span class="text-muted small"><i class="bi bi-clock me-1"></i>上次更新: <span class="update-time-${classId}">${data.last_updated}</span></span></div>`;
+        htmlContent += `  <div class="text-end mt-2"><span class="text-muted small"><i class="bi bi-clock me-1"></i>上次更新: <span class="update-time-${classId}">${escapeHtml(data.last_updated)}</span></span></div>`;
         htmlContent += '</div>';
 
         htmlContent += '</div>';

@@ -693,11 +693,11 @@
                         {% for user in pagination.items %}
                         <tr>
                             <td>{{ user.username }}</td>
-                            <td>{{ user.student_id }}</td>
+                            <td>{{ user.student_number or user.student_id }}</td>
                             <td>{{ user.full_name }}</td>
                             <td>
                                 <span
-                                    class="badge {% if user.usertype == '管理员' %}bg-danger{% elif user.usertype == '教师' %}bg-success{% else %}bg-primary{% endif %}">
+                                    class="user-badge badge {% if user.usertype == '管理员' %}bg-danger{% elif user.usertype == '教师' %}bg-success{% else %}bg-primary{% endif %}">
                                     {{ user.usertype }}
                                 </span>
                             </td>
@@ -708,6 +708,14 @@
                                     class="btn btn-sm btn-info">
                                     <i class="fas fa-eye"></i> 查看
                                 </a>
+                                <form action="{{ url_for('users.admin_reset_password', student_id=user.student_id) }}"
+                                    method="POST" class="d-inline"
+                                    onsubmit="return confirm('确定为该用户生成一次性密码重置链接吗？链接仅显示一次，过期后失效。');">
+                                    {{ admin_reset_form.hidden_tag() }}
+                                    <button type="submit" class="btn btn-sm btn-warning">
+                                        <i class="fas fa-key"></i> 生成重置链接
+                                    </button>
+                                </form>
                                 <button class="btn btn-sm btn-danger delete-btn" data-user-id="{{ user.student_id }}">
                                     <i class="fas fa-trash"></i> 删除
                                 </button>
@@ -768,7 +776,10 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-danger" id="confirmDelete">删除</button>
+                <form id="delete-user-form" method="POST" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger" id="confirmDelete">删除</button>
+                </form>
             </div>
         </div>
     </div>
@@ -886,6 +897,7 @@
 
                 var userIdToDelete = null;
                 var isAdmin = false;
+                var deleteForm = document.getElementById('delete-user-form');
 
                 // 确保关闭按钮工作
                 document.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function (btn) {
@@ -934,20 +946,18 @@
                     });
                 });
 
-                document.getElementById('confirmDelete').addEventListener('click', function () {
-                    if (userIdToDelete) {
-                        if (isAdmin) {
-                            alert('无法删除管理员用户');
-                            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                                deleteModal.hide();
-                            } else if (typeof $ !== 'undefined' && $.fn.modal) {
-                                $(deleteModalElement).modal('hide');
-                            }
-                        } else {
-                            var deleteUrl = "{{ url_for('users.delete_user', student_id='') }}" + userIdToDelete;
-                            window.location.href = deleteUrl;
-                        }
+                deleteForm.addEventListener('submit', function (event) {
+                    event.preventDefault();
+                    if (!userIdToDelete) return;
+                    if (isAdmin) {
+                        alert('无法删除管理员用户');
+                        deleteModal.hide();
+                        return;
                     }
+
+                    this.action = "{{ url_for('users.delete_user', student_id='__STUDENT_ID__') }}"
+                        .replace('__STUDENT_ID__', encodeURIComponent(userIdToDelete));
+                    HTMLFormElement.prototype.submit.call(this);
                 });
             } catch (e) {
                 console.error('初始化模态框时出错:', e);

@@ -783,7 +783,7 @@
             abilityStreamController = typeof AbortController === 'function'
                 ? new AbortController()
                 : null;
-            const requestOptions = { method: 'GET' };
+            const requestOptions = { method: 'POST' };
             if (abilityStreamController) {
                 requestOptions.signal = abilityStreamController.signal;
             }
@@ -1222,11 +1222,15 @@
     function showError(message) {
         const outputDiv = document.getElementById('analysis-output');
         if (outputDiv) {
-            outputDiv.innerHTML = `
-            <div class="alert alert-danger">
-                <i class="bi bi-exclamation-triangle-fill"></i> ${message}
-            </div>
-        `;
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-danger';
+            const icon = document.createElement('i');
+            icon.className = 'bi bi-exclamation-triangle-fill';
+            const text = document.createTextNode(
+                ` ${message == null ? '请求失败，请稍后重试。' : String(message)}`
+            );
+            alert.append(icon, text);
+            outputDiv.replaceChildren(alert);
         }
 
         const statusBadge = document.getElementById('analysis-status-badge');

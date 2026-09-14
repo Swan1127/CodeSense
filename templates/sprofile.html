@@ -429,7 +429,7 @@
             const original = this.innerHTML;
             this.disabled = true;
             this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>分析中…';
-            fetch('{{ url_for("users.refresh_analysis") }}')
+            fetch('{{ url_for("users.refresh_analysis") }}', { method: 'POST' })
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {

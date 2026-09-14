@@ -200,6 +200,7 @@
                 </a>
                 <form action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}" method="post"
                     onsubmit="return confirm('确定要删除此作业吗？此操作不可撤销。');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger btn-sm">
                         <i class="bi bi-trash"></i> 删除
                     </button>

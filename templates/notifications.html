@@ -129,6 +129,7 @@
         </div>
         {% if filter_name == 'all' and notification_unread_count %}
         <form method="POST" action="{{ url_for('main.notifications_read_all') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-outline-primary" type="submit">全部标为已读</button>
         </form>
         {% endif %}
@@ -159,6 +160,7 @@
                 {% endif %}
                 {% if not notification.read %}
                 <form method="POST" action="{{ url_for('main.notification_read', notification_id=notification.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="next" value="{{ request.full_path }}">
                     <button class="btn btn-sm btn-outline-secondary" type="submit">标记为已读</button>
                 </form>

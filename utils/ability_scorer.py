@@ -2,7 +2,9 @@
 基于班级整体数据的学生能力评分系统
 """
 import numpy as np
-from models import db, User, Submission
+from models import db, Class, User, Submission
+from sqlalchemy import and_, or_
+from utils.access import authoritative_class_name
 from typing import Dict, List
 import logging
 
@@ -44,7 +46,7 @@ class AbilityScorer:
                 return 0.0
             
             # 获取班级数据用于相对评分
-            class_data = self._get_class_comparison_data(user.class_name)
+            class_data = self._get_class_comparison_data(authoritative_class_name(user))
             
             # 计算各项指标
             submission_score = self._calculate_submission_frequency_score(submissions, class_data)
@@ -78,9 +80,12 @@ class AbilityScorer:
         
         try:
             # 只取统计所需的标量列，避免加载用户对象和密码哈希。
-            class_students = User.query.filter_by(
-                class_name=class_name,
-                usertype='学生',
+            classroom = Class.query.filter_by(name=class_name).first()
+            legacy_scope = and_(User.class_id.is_(None), User.class_name == class_name)
+            class_scope = or_(User.class_id == classroom.id, legacy_scope) if classroom else legacy_scope
+            class_students = User.query.filter(
+                class_scope,
+                User.usertype == '学生',
             ).with_entities(User.student_id, User.submit_count).all()
             if not class_students:
                 return {'avg_submissions': 1, 'avg_score': 2.5, 'total_students': 1}

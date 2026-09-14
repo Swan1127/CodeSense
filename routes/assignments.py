@@ -1,13 +1,27 @@
 """
 作业相关路由
 """
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response, current_app, jsonify, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, Response, current_app, jsonify, abort
 from flask_login import current_user
 from models import db, User, Assignment, Submission, SystemLog, AssignmentThinkingPreset
 from forms import AssignmentForm, SubmissionForm
-from utils.auth import login_required, admin_required, teacher_required, admin_or_teacher_required
+from utils.auth import (
+    login_required,
+    admin_required,
+    teacher_required,
+    admin_or_teacher_required,
+    student_required,
+)
+from utils.access import (
+    assignment_target_class_filter,
+    authoritative_class_name,
+    can_access_assignment,
+    can_access_submission,
+    can_manage_assignment,
+    managed_classes as accessible_classes,
+)
 from utils.code_evaluator import evaluate_cpp_code
-from tasks.submission_tasks import evaluate_submission_async
+from tasks.submission_tasks import evaluate_submission_async, mark_submission_failed
 from services.demo_database import current_demo_run_id
 from services.demo_experience import ensure_demo_guided_preset, is_demo_guided_assignment
 from services.submission_reviews import (
@@ -76,8 +90,15 @@ class InMemoryPagination:
 @admin_or_teacher_required
 def generate_assignment():
     """根据简短提示智能生成作业题目和描述"""
-    data = request.json
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': '请求数据格式不正确'}), 400
     prompt = data.get('prompt', '')
+    if not isinstance(prompt, str):
+        return jsonify({'error': '提示词格式不正确'}), 400
+    prompt = prompt.strip()
+    if len(prompt) > 4000:
+        return jsonify({'error': '提示词不能超过 4000 个字符'}), 413
     
     if not prompt:
         return jsonify({'error': '提示词不能为空'}), 400
@@ -123,6 +144,25 @@ def generate_assignment():
                 json_str = result_content.strip()
             return json.loads(json_str)
 
+        def normalize_result(result_json):
+            if not isinstance(result_json, dict):
+                raise ValueError('AI返回的数据格式不正确')
+            title = result_json.get('title', '')
+            description = result_json.get('description', '')
+            if not isinstance(title, str) or not isinstance(description, str):
+                raise ValueError('AI返回的题目字段格式不正确')
+            title = title.strip()
+            description = description.strip()
+            if not title or len(title) > 100:
+                raise ValueError('AI返回的题目标题无效')
+            if len(description) > 20000:
+                raise ValueError('AI返回的题目描述过长')
+            return {
+                'success': True,
+                'title': title,
+                'description': description,
+            }
+
         def chunk_content(chunk):
             if isinstance(chunk, str):
                 return chunk
@@ -159,12 +199,7 @@ def generate_assignment():
                             'message': 'AI服务暂时不可用，请稍后重试',
                         })
                         return
-                    result_json = parse_result(raw_content)
-                    result = {
-                        'success': True,
-                        'title': result_json.get('title', ''),
-                        'description': result_json.get('description', ''),
-                    }
+                    result = normalize_result(parse_result(raw_content))
                     yield sse_event({
                         'type': 'done',
                         'done': True,
@@ -175,7 +210,7 @@ def generate_assignment():
                     current_app.logger.exception('流式生成作业失败')
                     yield sse_event({
                         'type': 'error',
-                        'error': str(stream_error),
+                        'error': 'ASSIGNMENT_GENERATION_FAILED',
                         'message': '生成失败，请重试',
                     })
 
@@ -186,20 +221,15 @@ def generate_assignment():
         if not result_content.strip():
             return jsonify({'error': 'AI服务暂时不可用，请稍后重试'}), 503
         try:
-            result_json = parse_result(result_content)
+            result = normalize_result(parse_result(result_content))
         except Exception as json_err:
-            current_app.logger.error(f"解析AI产生的JSON失败: {str(json_err)}, 原内容: {result_content}")
+            current_app.logger.exception('解析 AI 产生的作业 JSON 失败')
             return jsonify({'error': "AI返回格式有误，请重试"}), 500
 
-        return jsonify({
-            'success': True,
-            'title': result_json.get('title', ''),
-            'description': result_json.get('description', '')
-        })
-    except Exception as e:
-        current_app.logger.error(f"智能生成作业失败: {str(e)}")
-        traceback.print_exc()
-        return jsonify({'error': f"生成失败: {str(e)}"}), 500
+        return jsonify(result)
+    except Exception:
+        current_app.logger.exception('智能生成作业失败')
+        return jsonify({'error': '生成失败，请稍后重试'}), 500
 
 
 
@@ -214,11 +244,17 @@ def manage_assignments():
         sort_by = request.args.get('sort_by', 'id')  # 获取排序字段，默认为id
         sort_order = request.args.get('sort_order', 'asc')  # 获取排序顺序，默认为升序
         
-        print(f"当前页码: {page}, 搜索词: {search_term}")
-        session['apage'] = page
+        current_app.logger.debug('作业列表请求: page=%s, sort_by=%s', page, sort_by)
         
-        # 构建查询
+        # 构建查询。学生只能看到被明确布置到自己班级的作业；旧版
+        # ``LIKE %班级名%`` 会把相似班级一起带出来。
         query = Assignment.query
+        if current_user.usertype == '学生':
+            class_name = authoritative_class_name(current_user)
+            if not class_name:
+                query = query.filter(db.false())
+            else:
+                query = query.filter(assignment_target_class_filter(class_name))
         
         # 添加排序逻辑
         if sort_by == 'id':
@@ -261,7 +297,7 @@ def manage_assignments():
         student_count = db.session.query(db.func.count(db.distinct(Submission.student_id))).scalar() or 0
         
         # 根据用户类型展示不同视图
-        usertype = session.get('usertype')
+        usertype = current_user.usertype
         print(f"用户类型: {usertype}")
         
         if usertype == '管理员':
@@ -280,7 +316,7 @@ def manage_assignments():
             return redirect(url_for('assignments.teacher_assignments'))
         else:
             # 对于学生用户，获取每个作业的最高得分
-            student_id = session.get('student_id')
+            student_id = current_user.student_id
             print(f"学生ID: {student_id}")
             
             if not student_id:
@@ -323,10 +359,9 @@ def manage_assignments():
                 sort_by=sort_by,
                 sort_order=sort_order
             )
-    except Exception as e:
-        print(f"访问题库时出错: {str(e)}")
-        print(traceback.format_exc())  # 打印完整的堆栈跟踪
-        flash(f'访问题库时出错: {str(e)}')
+    except Exception:
+        current_app.logger.exception('访问作业列表失败 actor_id=%s', current_user.student_id)
+        flash('访问题库时出错，请稍后重试。', 'danger')
         return redirect(url_for('main.home'))
 
 
@@ -369,7 +404,7 @@ def add_assignment():
                 current_app.logger.error(f"触发预设生成任务失败: {e}")
             
             # 添加系统日志
-            admin_id = session.get('student_id')
+            admin_id = current_user.student_id
             admin_user = User.query.get(admin_id)
             SystemLog.add_log(
                 log_type='添加作业',
@@ -380,15 +415,17 @@ def add_assignment():
             
             flash('作业添加成功！', 'success')
             return redirect(url_for('assignments.manage_assignments'))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f'添加作业失败: {str(e)}', 'danger')
+            current_app.logger.exception('管理员添加作业失败 assignment_id=%s', assignment_id)
+            flash('添加作业失败，请稍后重试。', 'danger')
     
     return render_template('add_assignment.html', form=form)
 
 
 @assignments.route('/delete_assignment/<int:assignment_id>', methods=['POST'])
 @login_required
+@admin_or_teacher_required
 def delete_assignment(assignment_id):
     """删除作业 (仅限管理员或作业创建者)"""
     assignment_to_delete = Assignment.query.get_or_404(assignment_id)
@@ -396,7 +433,10 @@ def delete_assignment(assignment_id):
     
     # 权限检查：仅允许管理员或创建者删除
     is_admin = getattr(current_user, 'usertype', '') == '管理员'
-    is_creator = assignment_to_delete.creator_id == current_user.student_id
+    # 教师只能删除自己创建的作业；学生不可能通过伪造 creator_id 获得删除能力。
+    is_creator = current_user.is_teacher and (
+        assignment_to_delete.creator_id == current_user.student_id
+    )
     
     if not (is_admin or is_creator):
         flash('您没有权限删除此作业', 'danger')
@@ -407,7 +447,7 @@ def delete_assignment(assignment_id):
         db.session.commit()
         
         # 添加系统日志
-        user_id = session.get('student_id')
+        user_id = current_user.student_id
         user_role = '管理员' if is_admin else '教师'
         SystemLog.add_log(
             log_type='删除作业',
@@ -419,7 +459,8 @@ def delete_assignment(assignment_id):
         flash('作业已成功删除', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'删除作业失败: {str(e)}', 'danger')
+        current_app.logger.exception('删除作业失败 assignment_id=%s', assignment_id)
+        flash('删除作业失败，请稍后重试。', 'danger')
     
     # 根据用户角色返回不同的列表页面
     if is_admin:
@@ -432,92 +473,92 @@ def delete_assignment(assignment_id):
 @login_required
 def view_assignment(assignment_id):
     """查看作业详情，不包括代码提交功能"""
-    # 获取作业详情
     assignment = Assignment.query.get_or_404(assignment_id)
-    
-    # 获取用户信息
-    student_id = session.get('student_id')
-    usertype = session.get('usertype')
-    if not student_id:
-        flash('会话已过期，请重新登录')
-        return redirect(url_for('auth.login'))
-    
-    # 获取该作业的提交总数
-    submission_count = Submission.query.filter_by(
-        assignment_id=assignment_id
-    ).count()
-    
-    # 获取全部用户的平均分
-    average_score = assignment.average_score if assignment and assignment.count > 0 else 0
-    
-    # 根据用户类型提供不同的数据
-    if usertype == '管理员':
-        # 管理员视图 - 提供更多统计数据
-        
-        # 获取参与学生数量
-        student_count = db.session.query(db.func.count(db.distinct(Submission.student_id)))\
-                        .filter_by(assignment_id=assignment_id).scalar() or 0
-        
-        # 获取分数分布
-        score_counts = db.session.query(
-            Submission.score, db.func.count(Submission.id)
-        ).filter_by(assignment_id=assignment_id).group_by(Submission.score).all()
-        
-        score_distribution = {int(score): count for score, count in score_counts}
-        
-        # 获取最近的10个提交记录
-        recent_submissions = Submission.query.filter_by(assignment_id=assignment_id).order_by(desc(Submission.submitted_at)).limit(10).all()
-            
-        # 添加用户信息到提交记录
+    if not can_access_assignment(assignment, current_user):
+        flash('您无权访问此作业', 'danger')
+        return redirect(url_for('main.home'))
+
+    usertype = current_user.usertype
+    if usertype in ('管理员', '教师'):
+        # 教师只能看到自己管理班级的提交；出题教师可以继续查看该题目的
+        # 全部提交，便于维护自己发布的题目。
+        visible_submissions = [
+            submission for submission in Submission.query.filter_by(
+                assignment_id=assignment_id
+            ).all()
+            if can_access_submission(submission, current_user)
+        ]
+        submission_count = len(visible_submissions)
+        scores = [s.score for s in visible_submissions if s.score is not None]
+        score_distribution = {}
+        for score in scores:
+            score_distribution[int(score)] = score_distribution.get(int(score), 0) + 1
+        recent_submissions = sorted(
+            visible_submissions,
+            key=lambda submission: submission.submitted_at or datetime.min,
+            reverse=True,
+        )[:10]
         for submission in recent_submissions:
             submission.user = User.query.get(submission.student_id)
-            
+
         return render_template(
             'assignment_detail.html',
             assignment=assignment,
             submission_count=submission_count,
-            average_score=average_score,
-            student_count=student_count,
+            average_score=(sum(scores) / len(scores)) if scores else 0,
+            student_count=len({s.student_id for s in visible_submissions}),
             score_distribution=score_distribution,
             recent_submissions=recent_submissions,
-            usertype=usertype
+            usertype=usertype,
         )
-    else:
-        # 学生视图 - 提供个人提交数据
-        latest_submission = Submission.query.filter_by(
-            student_id=student_id,
-            assignment_id=assignment_id
-        ).order_by(desc(Submission.id)).first()
-        
-        # 获取该学生的最高分
-        max_score = db.session.query(db.func.max(Submission.score)).filter_by(
-            student_id=student_id,
-            assignment_id=assignment_id
-        ).scalar() or 0
-        
-        return render_template(
-            'assignment_detail.html',
-            assignment=assignment,
-            latest_submission=latest_submission,
-            submission_count=submission_count,
-            average_score=average_score,
-            max_score=max_score,
-            usertype=usertype
-        )
+
+    student_id = current_user.student_id
+    latest_submission = Submission.query.filter_by(
+        student_id=student_id,
+        assignment_id=assignment_id,
+    ).order_by(desc(Submission.id)).first()
+    student_submissions = Submission.query.filter_by(
+        student_id=student_id,
+        assignment_id=assignment_id,
+    ).all()
+    scores = [s.score for s in student_submissions if s.score is not None]
+    return render_template(
+        'assignment_detail.html',
+        assignment=assignment,
+        latest_submission=latest_submission,
+        submission_count=len(student_submissions),
+        average_score=assignment.average_score if assignment.count > 0 else 0,
+        max_score=max(scores) if scores else 0,
+        usertype=usertype,
+    )
 
 
 @assignments.route('/submit/<int:assignment_id>', methods=['GET', 'POST'])
 @login_required
+@student_required
 def submit_code(assignment_id):
     """提交代码"""
     # 获取作业详情
     assignment = Assignment.query.get_or_404(assignment_id)
+    if not can_access_assignment(assignment, current_user):
+        flash('您无权提交此作业', 'danger')
+        return redirect(url_for('main.home'))
     
     # 获取用户最近的提交
-    student_id = session.get('student_id')
+    student_id = current_user.student_id
     if not student_id:
         flash('会话已过期，请重新登录')
         return redirect(url_for('auth.login'))
+
+    if (
+        current_user.usertype == '学生'
+        and assignment.due_date
+        and assignment.due_date < datetime.utcnow()
+    ):
+        flash('该作业已截止，不再接受新的提交。', 'warning')
+        return redirect(
+            url_for('assignments.view_assignment', assignment_id=assignment_id)
+        )
         
     # 获取用户最近的提交及提交历史
     latest_submission = Submission.query.filter_by(
@@ -541,8 +582,20 @@ def submit_code(assignment_id):
     
     if form.validate_on_submit():
         # 获取用户提交的代码和语言
-        code = form.code.data
-        language = form.language.data
+        code = form.code.data or ''
+        language = (form.language.data or '').strip().lower()
+        language_aliases = {'c++': 'cpp', 'c': 'cpp', 'py': 'python'}
+        language = language_aliases.get(language, language)
+        if language not in {'cpp', 'python', 'java'}:
+            flash('不支持的编程语言。', 'danger')
+            return render_template(
+                'submit_code.html',
+                form=form,
+                assignment=assignment,
+                latest_submission=latest_submission,
+                submissions=submissions,
+                submission_count=submission_count,
+            )
         
         # 检查代码长度
         if len(code.strip()) < 10:
@@ -583,14 +636,25 @@ def submit_code(assignment_id):
                 return redirect(url_for('assignments.evaluating_submission', submission_id=submission.id))
             except Exception as async_err:
                 print(f"启动异步评测失败: {async_err}")
-                flash(f'后台评测系统启动失败，请稍后重试: {str(async_err)}', 'danger')
+                try:
+                    mark_submission_failed(
+                        submission.id,
+                        '后台评测启动失败，请稍后重试。',
+                    )
+                except Exception:
+                    db.session.rollback()
+                current_app.logger.exception(
+                    '后台评测系统启动失败 submission_id=%s', submission.id
+                )
+                flash('后台评测系统启动失败，请稍后重试。', 'danger')
                 return redirect(url_for('assignments.submit_code', assignment_id=assignment_id))
 
         except Exception as e:
             db.session.rollback()
             print(f"处理提交时出错: {e}")
             traceback.print_exc()
-            flash(f'提交代码时出错: {str(e)}', 'danger')
+            current_app.logger.exception('提交代码时出错 assignment_id=%s', assignment_id)
+            flash('提交代码时出错，请稍后重试。', 'danger')
             return redirect(url_for('assignments.submit_code', assignment_id=assignment_id))
     
     return render_template(
@@ -608,8 +672,7 @@ def evaluating_submission(submission_id):
     """等待评测完成的过渡页面"""
     submission = Submission.query.get_or_404(submission_id)
     
-    # 安全检查
-    if current_user.usertype == '学生' and submission.student_id != current_user.student_id:
+    if not can_access_submission(submission, current_user):
         flash('您无权访问此提交。', 'danger')
         return redirect(url_for('main.home'))
         
@@ -627,8 +690,7 @@ def download_code(submission_id):
     try:
         submission = Submission.query.get_or_404(submission_id)
         
-        # 确保只有提交者、教师或管理员可以下载代码
-        if session['usertype'] not in ['管理员', '教师'] and session['student_id'] != submission.student_id:
+        if not can_access_submission(submission, current_user):
             flash('您无权下载该代码', 'danger')
             return redirect(url_for('main.home'))
         
@@ -675,15 +737,19 @@ def download_code(submission_id):
         )
         
         return response
-    except Exception as e:
-        print(f"下载代码时出错: {str(e)}")
-        print(traceback.format_exc())
-        flash(f'下载代码时出错: {str(e)}', 'danger')
+    except Exception:
+        current_app.logger.exception(
+            '下载代码失败 submission_id=%s actor_id=%s',
+            submission_id,
+            current_user.student_id,
+        )
+        flash('下载代码时出错，请稍后重试。', 'danger')
         return redirect(url_for('assignments.view_submission', submission_id=submission_id))
 
 
 @assignments.route('/student_assignments')
 @login_required
+@student_required
 def student_assignments():
     """学生查看作业列表"""
     page = request.args.get('page', 1, type=int)
@@ -694,7 +760,7 @@ def student_assignments():
     try:
         # 获取学生ID和班级
         student_id = current_user.student_id
-        class_name = current_user.class_name
+        class_name = authoritative_class_name(current_user)
         
         if not student_id:
             flash('会话已过期，请重新登录', 'danger')
@@ -703,15 +769,15 @@ def student_assignments():
         # 根据学生所在班级筛选作业
         if class_name:
             all_assignments = Assignment.query.filter(
-                Assignment.target_classes.like(f'%{class_name}%')
+                assignment_target_class_filter(class_name)
             ).all()
         else:
             all_assignments = []
 
-        # 获取当前学生对所有作业的最高分与提交状态，同时自动触发缺失/旧版预设的后台生成
+        # 获取当前学生对所有作业的最高分与提交状态。学生列表页保持只读，
+        # 不在 GET 请求中创建预设、重置状态或投递后台 AI 任务。
         assignment_max_scores = {}
         assignment_statuses = {}
-        from utils.async_tasks import add_generate_preset_task
         demo_run_id = current_demo_run_id()
         is_demo_session = bool(demo_run_id and getattr(current_user, 'is_demo', False))
 
@@ -738,10 +804,13 @@ def student_assignments():
             }
 
         for a in all_assignments:
-            # 公开体验的预设只能在当前临时库中修复，绝不能把列表加载
-            # 变成写入正式任务队列的入口。普通账号保留原有异步生成逻辑。
+            # 公开体验的预设只能在当前临时库中修复；正式账号的列表加载
+            # 仍然是只读操作，预设生成由教师明确触发。
             preset = presets_by_assignment.get(a.id)
-            a.is_guided_available = not is_demo_session or is_demo_guided_assignment(a)
+            a.is_guided_available = bool(
+                (is_demo_session and is_demo_guided_assignment(a))
+                or (not is_demo_session and preset is not None)
+            )
             if is_demo_session:
                 if is_demo_guided_assignment(a):
                     if (
@@ -752,38 +821,6 @@ def student_assignments():
                     ):
                         preset = ensure_demo_guided_preset(a)
                         db.session.commit()
-            elif not preset:
-                try:
-                    preset = AssignmentThinkingPreset(assignment_id=a.id, status='generating')
-                    db.session.add(preset)
-                    db.session.commit()
-                    add_generate_preset_task(a.id)
-                    current_app.logger.info(f"列表加载发现作业 {a.id} 无预设，已触发后台生成任务")
-                except Exception as ex:
-                    db.session.rollback()
-                    current_app.logger.error(f"列表加载自动触发作业 {a.id} 预设失败: {ex}")
-            elif preset.status == 'failed':
-                try:
-                    preset.status = 'generating'
-                    preset.error_message = None
-                    db.session.commit()
-                    add_generate_preset_task(a.id)
-                    current_app.logger.info(f"列表加载发现作业 {a.id} 预设失败，已重新触发后台生成任务")
-                except Exception as ex:
-                    db.session.rollback()
-                    current_app.logger.error(f"列表加载重新触发作业 {a.id} 预设失败: {ex}")
-            elif preset.status == 'ready' and (not hasattr(preset, 'quiz_steps') or not preset.quiz_steps or preset.quiz_steps.strip() == '' or preset.quiz_steps == '[]'):
-                # 检查预设是否是老版本（状态为 ready 但没有 quiz_steps），如果是，则自动重新生成
-                try:
-                    preset.status = 'generating'
-                    preset.error_message = None
-                    db.session.commit()
-                    add_generate_preset_task(a.id)
-                    current_app.logger.info(f"列表加载发现作业 {a.id} 预设缺少 quiz_steps 数据，已重置并重新触发生成任务")
-                except Exception as ex:
-                    db.session.rollback()
-                    current_app.logger.error(f"列表加载重置作业 {a.id} 预设状态失败: {ex}")
-
             max_score = max_scores_by_assignment.get(a.id)
             if max_score is not None:
                 assignment_max_scores[a.id] = max_score
@@ -902,10 +939,12 @@ def student_assignments():
                                search_term=search_term,
                                is_llm_recommended=is_llm_recommended,
                                current_time=datetime.utcnow())
-    except Exception as e:
-        print(f"获取学生作业列表时出错: {str(e)}")
-        print(traceback.format_exc())
-        flash('获取学生作业列表时出错', 'danger')
+    except Exception:
+        current_app.logger.exception(
+            '获取学生作业列表失败 student_id=%s',
+            current_user.student_id,
+        )
+        flash('获取学生作业列表时出错，请稍后重试。', 'danger')
         return redirect(url_for('main.home'))
 
 @assignments.route('/view_submission/<int:submission_id>')
@@ -915,21 +954,7 @@ def view_submission(submission_id):
     try:
         submission = Submission.query.get_or_404(submission_id)
         
-        # 权限检查
-        allowed = False
-        # 1. 提交者本人
-        if current_user.is_authenticated and submission.student_id == current_user.student_id:
-            allowed = True
-        # 2. 管理员
-        elif current_user.is_authenticated and current_user.is_admin:
-            allowed = True
-        # 3. 学生的任课教师
-        elif current_user.is_authenticated and current_user.is_teacher:
-            student = User.query.get(submission.student_id)
-            if student and student.class_id in [c.id for c in current_user.managed_classes]:
-                allowed = True
-
-        if not allowed:
+        if not can_access_submission(submission, current_user):
             flash('您无权查看此提交', 'danger')
             return redirect(url_for('main.home'))
         
@@ -1005,10 +1030,13 @@ def view_submission(submission_id):
             can_access_review=can_access_submission_review(submission, current_user),
             ai_feedback_signal=ai_feedback_signal,
         )
-    except Exception as e:
-        print(f"查看提交详情时出错: {str(e)}")
-        print(traceback.format_exc())
-        flash(f'查看提交详情时出错: {str(e)}', 'danger')
+    except Exception:
+        current_app.logger.exception(
+            '查看提交详情失败 submission_id=%s actor_id=%s',
+            submission_id,
+            current_user.student_id,
+        )
+        flash('查看提交详情时出错，请稍后重试。', 'danger')
         return redirect(url_for('assignments.student_assignments'))
 
 
@@ -1258,22 +1286,25 @@ def all_submissions():
                                   'min_score': min_score,
                                   'max_score': max_score
                               })
-    except Exception as e:
-        print(f"查看所有提交记录时出错: {str(e)}")
-        print(traceback.format_exc())
-        flash(f'查看所有提交记录时出错: {str(e)}', 'danger')
+    except Exception:
+        current_app.logger.exception('查看所有提交记录失败')
+        flash('查看所有提交记录时出错，请稍后重试。', 'danger')
         return redirect(url_for('main.admin_dashboard'))
 
 
 @assignments.route('/submission-history/<int:assignment_id>')
 @login_required
+@student_required
 def submission_history(assignment_id):
     """查看特定作业的提交历史"""
     # 获取作业信息
     assignment = Assignment.query.get_or_404(assignment_id)
+    if not can_access_assignment(assignment, current_user):
+        flash('您无权访问此作业', 'danger')
+        return redirect(url_for('main.home'))
     
     # 获取当前学生ID
-    student_id = session.get('student_id')
+    student_id = current_user.student_id
     if not student_id:
         flash('会话已过期，请重新登录', 'danger')
         return redirect(url_for('auth.login'))
@@ -1350,17 +1381,25 @@ def teacher_assignments():
 def assign_to_classes(assignment_id):
     """为教师的班级指派作业"""
     assignment = Assignment.query.get_or_404(assignment_id)
-    managed_classes = current_user.managed_classes.all()
+    if not can_manage_assignment(assignment, current_user):
+        flash('您无权修改此作业的班级分配。', 'danger')
+        return redirect(url_for('assignments.teacher_assignments'))
+    managed_classes = accessible_classes(current_user)
     
     if request.method == 'POST':
         # 获取教师从表单中选择的班级
         selected_class_names = request.form.getlist('class_names')
+        managed_class_names = {cls.name for cls in managed_classes}
+        invalid_class_names = set(selected_class_names) - managed_class_names
+        if invalid_class_names:
+            flash('只能把作业布置给您管理的班级。', 'danger')
+            return redirect(url_for('assignments.assign_to_classes', assignment_id=assignment_id))
         
         # 获取该作业当前已分配的所有班级
         current_target_classes = set(assignment.get_target_class_list())
         
         # 从当前列表中移除该教师管理的所有班级，以便用新的选择替换
-        teacher_class_names = {cls.name for cls in managed_classes}
+        teacher_class_names = managed_class_names
         current_target_classes -= teacher_class_names
         
         # 添加教师本次选择的班级
@@ -1372,9 +1411,10 @@ def assign_to_classes(assignment_id):
         try:
             db.session.commit()
             flash(f'作业 "{assignment.title}" 的班级分配已更新。', 'success')
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f'更新失败: {str(e)}', 'danger')
+            current_app.logger.exception('更新作业班级分配失败 assignment_id=%s', assignment_id)
+            flash('更新失败，请稍后重试。', 'danger')
             
         return redirect(url_for('assignments.teacher_assignments'))
 
@@ -1426,9 +1466,10 @@ def add_teacher_assignment():
                 return jsonify({'success': True, 'assignment_id': new_assignment.id,
                                  'redirect': url_for('assignments.teacher_assignments')})
             return redirect(url_for('assignments.teacher_assignments'))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f'创建作业失败: {str(e)}', 'danger')
+            current_app.logger.exception('教师创建作业失败')
+            flash('创建作业失败，请稍后重试。', 'danger')
             
     return render_template('teacher_add_assignment.html', form=form)
 
@@ -1475,8 +1516,9 @@ def edit_assignment(assignment_id):
                 return jsonify({'success': True, 'assignment_id': assignment.id,
                                  'redirect': url_for('assignments.teacher_assignments')})
             return redirect(url_for('assignments.teacher_assignments'))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f'更新作业失败: {str(e)}', 'danger')
+            current_app.logger.exception('教师更新作业失败 assignment_id=%s', assignment_id)
+            flash('更新作业失败，请稍后重试。', 'danger')
             
     return render_template('edit_assignment.html', form=form, assignment=assignment)

@@ -249,8 +249,6 @@ def test_stream_reports_network_diagnostic_after_all_providers_fail(monkeypatch)
 
     assert exc_info.value.code == "NETWORK_UNAVAILABLE"
     assert len(fake.completions.calls) == 3
-
-
 def test_stream_can_use_a_single_attempt_for_interactive_timeout():
     fake = FakeProviderClient([TimeoutError("timed out")])
     client = make_client({LLMProvider.ZHIPU: fake})

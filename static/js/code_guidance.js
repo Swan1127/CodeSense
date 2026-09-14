@@ -170,7 +170,7 @@ function updateGuidanceFeedback() {
             });
             showNotification('指导建议生成成功', 'success');
         } else {
-            guidanceContent.innerHTML = `<div class="error-message">获取指导失败：${data.error || '未知错误'}</div>`;
+            guidanceContent.innerHTML = `<div class="error-message">获取指导失败：${escapeGuidanceText(data.error || '未知错误')}</div>`;
             showNotification('获取指导失败', 'error');
         }
     })
@@ -179,7 +179,7 @@ function updateGuidanceFeedback() {
         
         // 更新UI
         guidanceLoading.style.display = 'none';
-        guidanceContent.innerHTML = `<div class="error-message">获取指导时发生错误：${error.message}</div>`;
+        guidanceContent.innerHTML = `<div class="error-message">获取指导时发生错误：${escapeGuidanceText(error.message || '网络异常')}</div>`;
         showNotification('获取指导时发生错误', 'error');
     })
     .finally(() => {
@@ -221,6 +221,12 @@ function formatMarkdown(markdown) {
     }
 }
 
+function escapeGuidanceText(value) {
+    const element = document.createElement('div');
+    element.textContent = value == null ? '' : String(value);
+    return element.innerHTML;
+}
+
 // 显示通知
 function showNotification(message, type = 'info') {
     const notificationContainer = document.getElementById('notification-container');
@@ -238,15 +244,19 @@ function showNotification(message, type = 'info') {
     
     // 创建通知元素
     const notification = document.createElement('div');
-    notification.className = `alert alert-${type} alert-dismissible fade show`;
+    const safeType = ['info', 'success', 'warning', 'danger'].includes(type) ? type : 'info';
+    notification.className = `alert alert-${safeType} alert-dismissible fade show`;
     notification.style.minWidth = '250px';
     notification.style.marginBottom = '10px';
     notification.style.boxShadow = '0 0 10px rgba(0,0,0,0.1)';
     
-    notification.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
+    notification.textContent = message == null ? '' : String(message);
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'btn-close';
+    closeButton.setAttribute('data-bs-dismiss', 'alert');
+    closeButton.setAttribute('aria-label', 'Close');
+    notification.appendChild(closeButton);
     
     // 添加到容器
     document.getElementById('notification-container').appendChild(notification);

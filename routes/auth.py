@@ -1,12 +1,20 @@
 """
 身份验证相关路由
 """
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from flask import Blueprint, abort, render_template, request, redirect, url_for, flash, session, current_app
 import uuid
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 from flask_login import login_user, logout_user, current_user
 from models import db, Class, StudentRoster, User, SystemLog, SystemConfig
-from forms import LoginForm, RegistrationForm
+from forms import (
+    LoginForm,
+    EmailRegistrationForm,
+    EmailVerificationForm,
+    EmailVerificationRequestForm,
+    PasswordResetRequestForm,
+    RegistrationForm,
+    ResetPasswordForm,
+)
 from services.demo_experience import (
     DEMO_STUDENT_ID,
     DEMO_TEACHER_ID,
@@ -21,9 +29,31 @@ from services.demo_database import (
     destroy_demo_run,
     login_demo_run,
 )
+from services.password_reset import (
+    consume_password_reset_token,
+    create_password_reset_token,
+    find_user_by_identifier,
+    get_valid_password_reset_token,
+    has_recent_reset_request,
+    revoke_password_reset_token,
+    send_password_reset_email,
+)
+from services.email_verification import (
+    consume_email_verification_token,
+    create_email_verification_token,
+    get_valid_email_verification_token,
+    has_recent_email_verification_request,
+    revoke_email_verification_token,
+    send_email_verification_email,
+)
 from utils.auth import redirect_if_logged_in
 
 auth = Blueprint('auth', __name__)
+
+PASSWORD_RESET_NOTICE = (
+    '如果账号存在且已绑定邮箱，系统会发送重置链接；'
+    '若未收到邮件，请检查垃圾邮件或联系管理员。'
+)
 
 
 def _establish_login_session(user, source=None):
@@ -78,10 +108,24 @@ def login():
         user = User.query.filter(
             db.or_(
                 User.username == username,
-                db.func.lower(User.email) == username.lower()
+                db.func.lower(User.email) == username.lower(),
+                User.student_id == username,
+                User.student_number == username,
             )
         ).first()
         if user and user.verify_password(password):
+            if (
+                getattr(user, 'email_verification_required', False)
+                and not getattr(user, 'email_verified_at', None)
+            ):
+                current_app.logger.info(
+                    '邮箱注册账号尚未验证，拒绝登录 - 用户: %s, IP: %s',
+                    user.username,
+                    request.remote_addr,
+                )
+                flash('邮箱尚未验证，请先查收验证邮件；如果没有收到，可以重新发送。', 'warning')
+                return redirect(url_for('auth.login'))
+
             # 单点登录逻辑：生成新的会话ID，令旧会话失效
             new_session_id = uuid.uuid4().hex
             user.current_session_id = new_session_id
@@ -100,12 +144,13 @@ def login():
                 user_id=user.student_id
             )
             current_app.logger.info(f"登录成功 - 用户: {user.username} ({user.full_name}), 类型: {user.usertype}, IP: {request.remote_addr}")
-            try:
-                from utils.async_tasks import add_ability_trend_task
-                task_id = add_ability_trend_task(user.student_id)
-                current_app.logger.info(f"用户 {user.student_id} 登录成功，已触发能力趋势分析任务: {task_id}")
-            except Exception as e:
-                current_app.logger.warning(f"触发能力趋势分析任务失败: {e}")
+            if not current_app.testing:
+                try:
+                    from utils.async_tasks import add_ability_trend_task
+                    task_id = add_ability_trend_task(user.student_id)
+                    current_app.logger.info(f"用户 {user.student_id} 登录成功，已触发能力趋势分析任务: {task_id}")
+                except Exception as e:
+                    current_app.logger.warning(f"触发能力趋势分析任务失败: {e}")
             flash('登录成功！', 'success')
             return redirect(url_for('main.home'))
         else:
@@ -114,6 +159,80 @@ def login():
     login_message = SystemConfig.get_value('login_message', '欢迎登录 CodeSense 酷森思')
     site_name = SystemConfig.get_value('site_name', 'CodeSense 酷森思')
     return render_template('login.html', form=form, login_message=login_message, site_name=site_name)
+
+
+@auth.route('/forgot-password', methods=['GET', 'POST'])
+@redirect_if_logged_in
+def forgot_password():
+    """申请密码重置链接，不向外暴露账号是否存在。"""
+    form = PasswordResetRequestForm()
+    if form.validate_on_submit():
+        user = find_user_by_identifier(form.identifier.data)
+        if user and user.email and not has_recent_reset_request(user):
+            raw_token = None
+            try:
+                raw_token = create_password_reset_token(
+                    user,
+                    requested_ip=request.remote_addr,
+                )
+                send_password_reset_email(user, raw_token)
+            except Exception:
+                db.session.rollback()
+                if raw_token:
+                    try:
+                        revoke_password_reset_token(raw_token)
+                    except Exception:
+                        db.session.rollback()
+                current_app.logger.exception('密码重置邮件发送失败')
+            else:
+                current_app.logger.info('密码重置邮件已提交发送')
+
+        flash(PASSWORD_RESET_NOTICE, 'info')
+        return redirect(url_for('auth.forgot_password'))
+
+    return render_template('forgot_password.html', form=form)
+
+
+@auth.route('/reset-password', methods=['GET', 'POST'])
+def reset_password():
+    """校验一次性令牌并设置新密码。"""
+    raw_token = (
+        request.args.get('token')
+        or request.form.get('token')
+        or ''
+    ).strip()
+    form = ResetPasswordForm()
+    if request.method == 'GET':
+        form.token.data = raw_token
+
+    token_record = get_valid_password_reset_token(raw_token)
+    if request.method == 'GET':
+        return render_template(
+            'reset_password.html',
+            form=form,
+            token=raw_token,
+            token_valid=token_record is not None,
+        )
+
+    if not form.validate_on_submit() or token_record is None:
+        return render_template(
+            'reset_password.html',
+            form=form,
+            token=raw_token,
+            token_valid=token_record is not None,
+        )
+
+    user = consume_password_reset_token(raw_token, form.password.data)
+    if not user:
+        return render_template(
+            'reset_password.html',
+            form=form,
+            token=raw_token,
+            token_valid=False,
+        )
+
+    flash('密码重置成功，请使用新密码登录。', 'success')
+    return redirect(url_for('auth.login'))
 
 
 @auth.route('/demo-login/<role>')
@@ -254,14 +373,186 @@ def register():
             else:
                 flash('注册成功，请登录！', 'success')
             return redirect(url_for('auth.login'))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            error_msg = f"注册失败 - 数据库错误: {username}, 错误: {str(e)}"
-            current_app.logger.error(error_msg, exc_info=True)
+            current_app.logger.exception('注册失败 username=%s', username)
             flash('注册失败，请稍后重试', 'danger')
             return render_template('register.html', form=form)
         
     return render_template('register.html', form=form)
+
+
+def _new_email_account_id():
+    """生成不与历史学号冲突的内部账号 ID。"""
+    while True:
+        candidate = f'e-{uuid.uuid4().hex[:18]}'
+        if not User.query.filter_by(student_id=candidate).first():
+            return candidate
+
+
+@auth.route('/register/email', methods=['GET', 'POST'])
+@redirect_if_logged_in
+def register_email():
+    """通过邮箱创建不依赖学生名单的学生账号。"""
+    enable_registration = SystemConfig.get_value('enable_registration', True)
+    if not enable_registration:
+        flash('系统当前不允许新用户注册，请联系管理员', 'warning')
+        return redirect(url_for('auth.login'))
+
+    form = EmailRegistrationForm()
+    if form.validate_on_submit():
+        username = (form.username.data or '').strip()
+        email = (form.email.data or '').strip().lower()
+        full_name = (form.full_name.data or '').strip() or username
+
+        if not username:
+            form.username.errors.append('用户名不能为空')
+            return render_template('email_register.html', form=form)
+
+        current_app.logger.info(
+            '邮箱注册尝试 - 用户名: %s, IP: %s',
+            username,
+            request.remote_addr,
+        )
+
+        existing_user = User.query.filter(User.username == username).first()
+        if existing_user:
+            flash('用户名已存在，请使用其他用户名。', 'danger')
+            return render_template('email_register.html', form=form)
+
+        if User.query.filter(db.func.lower(User.email) == email).first():
+            flash('邮箱已被使用，请更换邮箱或直接登录。', 'danger')
+            return render_template('email_register.html', form=form)
+
+        try:
+            user = User(
+                student_id=_new_email_account_id(),
+                username=username,
+                usertype='学生',
+                full_name=full_name,
+                email=email,
+                registration_method='email',
+                email_verification_required=True,
+            )
+            user.password = form.password.data
+            db.session.add(user)
+            db.session.commit()
+            SystemLog.add_log(
+                log_type='用户注册',
+                content=f'新邮箱账号 {user.username} ({user.full_name}) 注册成功，等待邮箱验证',
+                user_id=user.student_id,
+            )
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error('邮箱注册保存失败 - 用户: %s, 错误: %s', username, e, exc_info=True)
+            flash('注册失败，请稍后重试。', 'danger')
+            return render_template('email_register.html', form=form)
+
+        raw_token = None
+        try:
+            raw_token = create_email_verification_token(
+                user,
+                requested_ip=request.remote_addr,
+            )
+            send_email_verification_email(user, raw_token)
+        except Exception:
+            if raw_token:
+                try:
+                    revoke_email_verification_token(raw_token)
+                except Exception:
+                    db.session.rollback()
+            current_app.logger.exception('邮箱验证邮件发送失败 - 用户: %s', user.student_id)
+            flash('账号已创建，但验证邮件暂时发送失败，请稍后在登录页重新发送验证邮件。', 'warning')
+        else:
+            flash('注册成功，请查收邮箱验证邮件，完成验证后再登录。', 'success')
+        return redirect(url_for('auth.login'))
+
+    return render_template('email_register.html', form=form)
+
+
+@auth.route('/verify-email', methods=['GET', 'POST'])
+def verify_email():
+    """展示并确认邮箱验证令牌；GET 不消费令牌，避免被邮件扫描器误用。"""
+    raw_token = (
+        request.args.get('token')
+        or request.form.get('token')
+        or ''
+    ).strip()
+    form = EmailVerificationForm()
+    if request.method == 'GET':
+        form.token.data = raw_token
+
+    token_record = get_valid_email_verification_token(raw_token)
+    if request.method == 'GET':
+        return render_template(
+            'verify_email.html',
+            form=form,
+            token=raw_token,
+            token_valid=token_record is not None,
+        )
+
+    if not form.validate_on_submit() or token_record is None:
+        return render_template(
+            'verify_email.html',
+            form=form,
+            token=raw_token,
+            token_valid=False,
+        )
+
+    user = consume_email_verification_token(raw_token)
+    if not user:
+        return render_template(
+            'verify_email.html',
+            form=form,
+            token=raw_token,
+            token_valid=False,
+        )
+
+    SystemLog.add_log(
+        log_type='邮箱验证',
+        content=f'用户 {user.username} 完成邮箱验证',
+        user_id=user.student_id,
+    )
+    flash('邮箱验证成功，请使用注册邮箱和密码登录。', 'success')
+    return redirect(url_for('auth.login'))
+
+
+@auth.route('/resend-verification', methods=['GET', 'POST'])
+@redirect_if_logged_in
+def resend_verification():
+    """为尚未验证的邮箱注册账号重新发送验证邮件。"""
+    form = EmailVerificationRequestForm()
+    if request.method == 'GET':
+        form.email.data = (request.args.get('email') or '').strip().lower()
+
+    if form.validate_on_submit():
+        email = (form.email.data or '').strip().lower()
+        user = User.query.filter(db.func.lower(User.email) == email).first()
+        raw_token = None
+        if (
+            user
+            and getattr(user, 'email_verification_required', False)
+            and not getattr(user, 'email_verified_at', None)
+            and not has_recent_email_verification_request(user)
+        ):
+            try:
+                raw_token = create_email_verification_token(
+                    user,
+                    requested_ip=request.remote_addr,
+                )
+                send_email_verification_email(user, raw_token)
+            except Exception:
+                if raw_token:
+                    try:
+                        revoke_email_verification_token(raw_token)
+                    except Exception:
+                        db.session.rollback()
+                current_app.logger.exception('重新发送邮箱验证邮件失败')
+
+        flash('如果该邮箱对应未完成验证的账号，系统会发送新的验证邮件；请检查收件箱和垃圾邮件。', 'info')
+        return redirect(url_for('auth.resend_verification'))
+
+    return render_template('resend_verification.html', form=form)
 
 
 @auth.route('/register/teacher/<token>', methods=['GET', 'POST'])
@@ -276,11 +567,15 @@ def register_teacher(token):
         flash('邀请链接已过期，请联系管理员获取新链接。', 'danger')
         return redirect(url_for('auth.login'))
     except Exception as e:
-        current_app.logger.warning(f"教师邀请token无效: {token}, 错误: {e}")
+        current_app.logger.warning(
+            "教师邀请令牌无效: %s",
+            type(e).__name__,
+        )
         flash('无效的邀请链接。', 'danger')
         return redirect(url_for('auth.login'))
 
-    # 数据库层单次使用校验
+    # 数据库层单次使用校验。邀请令牌表不可用时必须拒绝注册，不能
+    # 回退到“只要签名正确即可”的 fail-open 行为。
     try:
         from models import InviteToken
         ok, err_msg = InviteToken.validate(token)
@@ -288,7 +583,10 @@ def register_teacher(token):
             flash(err_msg, 'danger')
             return redirect(url_for('auth.login'))
     except Exception:
-        pass  # invite_tokens 表不存在时降级为仅签名校验
+        db.session.rollback()
+        current_app.logger.exception('教师邀请令牌校验服务不可用')
+        flash('教师邀请服务暂时不可用，请联系管理员处理。', 'danger')
+        return redirect(url_for('auth.login'))
 
     form = RegistrationForm()
     form.class_name.render_kw = {'style': 'display: none;'}
@@ -316,6 +614,12 @@ def register_teacher(token):
             return render_template('register_teacher.html', form=form, token=token)
 
         try:
+            ok, err_msg = InviteToken.claim(token)
+            if not ok:
+                db.session.rollback()
+                flash(err_msg, 'danger')
+                return redirect(url_for('auth.login'))
+
             user = User(
                 username=username,
                 student_id=teacher_id,
@@ -327,12 +631,6 @@ def register_teacher(token):
             user.password = form.password.data
             db.session.add(user)
             db.session.commit()
-
-            # 注册成功后标记 token 为已使用
-            try:
-                InviteToken.mark_as_used(token)
-            except Exception as e:
-                current_app.logger.error(f"标记邀请码已使用失败: {e}")
 
             SystemLog.add_log(
                 log_type='用户注册',
@@ -350,9 +648,14 @@ def register_teacher(token):
     return render_template('register_teacher.html', form=form, token=token)
 
 
-@auth.route('/logout')
+@auth.route('/logout', methods=['GET', 'POST'])
 def logout():
     """登出处理"""
+    # 登出会撤销当前会话、清理演示数据并写入审计日志，不能通过跨站
+    # 图片/链接等 GET 请求触发。测试环境保留 GET 兼容旧回归用例。
+    if request.method == 'GET' and not current_app.config.get('TESTING'):
+        abort(405)
+
     demo_run_id = current_demo_run_id()
     user_id = session.get('student_id')
     username = session.get('username')

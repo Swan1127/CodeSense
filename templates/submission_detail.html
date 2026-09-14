@@ -301,6 +301,7 @@
             <div id="ai-feedback-signal-help" class="form-text mb-2">你的选择只用于改进学习反馈，不会修改本次得分。</div>
             <form method="POST" action="{{ url_for('assignments.save_submission_ai_feedback_signal', submission_id=submission.id) }}"
                 class="d-flex flex-wrap gap-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn btn-sm {% if ai_feedback_signal == 'helpful' %}btn-primary{% else %}btn-outline-primary{% endif %}"
                     type="submit" name="value" value="helpful">有帮助</button>
                 <button class="btn btn-sm {% if ai_feedback_signal == 'needs_clarification' %}btn-primary{% else %}btn-outline-primary{% endif %}"
@@ -521,6 +522,7 @@
         {% if session.get('usertype') == '学生' or review.status != 'resolved' %}
         <form class="submission-review-form" method="POST"
             action="{{ url_for('assignments.add_submission_review_message', submission_id=submission.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="form-label" for="review-message">补充复核消息</label>
             <textarea class="form-control" id="review-message" name="body" rows="4" maxlength="2000"
                 required aria-describedby="review-message-help"></textarea>
@@ -533,6 +535,7 @@
         {% elif session.get('usertype') == '学生' %}
         <form class="submission-review-form" method="POST"
             action="{{ url_for('assignments.request_submission_review', submission_id=submission.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="form-label" for="review-request-body">复核说明</label>
             <textarea class="form-control" id="review-request-body" name="body" rows="4" maxlength="2000"
                 required aria-describedby="review-request-help"></textarea>

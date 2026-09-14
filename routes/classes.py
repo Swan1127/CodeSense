@@ -1,14 +1,22 @@
 """
 班级管理路由
 """
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
-from sqlalchemy import func, desc
+from sqlalchemy import and_, func, desc, or_
 import pandas as pd
 from models import db, Class, StudentRoster, User, Assignment, Submission
 from services.demo_experience import seed_legacy_demo_experience
 from services.teacher_analytics import build_assignment_completion_matrix, build_class_learning_rows
 from utils.auth import admin_required, admin_or_teacher_required
+from utils.access import (
+    assignment_target_class_names,
+    can_access_assignment,
+    can_access_class,
+    class_student_filter,
+    managed_classes,
+)
+from utils.upload_safety import UploadValidationError, validate_upload
 
 classes = Blueprint('classes', __name__, url_prefix='/classes')
 
@@ -53,7 +61,7 @@ def download_template():
 
 
 def _can_manage_class(cls):
-    return current_user.is_admin or cls.teacher_id == current_user.student_id
+    return can_access_class(cls, current_user)
 
 
 def _join_student_to_class(user, cls):
@@ -83,11 +91,16 @@ def _pick_column(df, candidates):
 
 
 def _read_roster_dataframe(file_storage):
+    validate_upload(
+        file_storage,
+        max_bytes=8 * 1024 * 1024,
+        zip_extensions={'.xlsx'},
+    )
     filename = (file_storage.filename or '').lower()
     if filename.endswith(('.xlsx', '.xls')):
-        return pd.read_excel(file_storage, dtype=str)
+        return pd.read_excel(file_storage, dtype=str, nrows=5000)
     if filename.endswith('.csv'):
-        return pd.read_csv(file_storage, dtype=str, encoding='utf-8-sig')
+        return pd.read_csv(file_storage, dtype=str, encoding='utf-8-sig', nrows=5000)
     raise ValueError('仅支持 .xlsx、.xls、.csv 格式的学生名单')
 
 @classes.route('/')
@@ -101,11 +114,6 @@ def class_list():
         all_classes = Class.query.order_by(Class.name).all()
     else: # is_teacher
         all_classes = current_user.managed_classes.order_by(Class.name).all()
-
-    for cls in all_classes:
-        cls.ensure_teacher_bind_code()
-        cls.ensure_student_join_code()
-    db.session.commit()
 
     for cls in all_classes:
         stats = cls.get_statistics()
@@ -149,7 +157,7 @@ def bind_class():
         return redirect(url_for('classes.class_list'))
 
     bind_code = (request.form.get('bind_code') or '').strip().upper()
-    if not bind_code:
+    if not bind_code or len(bind_code) > 20:
         flash('请输入班级绑定码', 'danger')
         return redirect(url_for('classes.class_list'))
 
@@ -205,7 +213,7 @@ def join_class():
         return redirect(url_for('main.home'))
 
     join_code = (request.form.get('join_code') or '').strip().upper()
-    if not join_code:
+    if not join_code or len(join_code) > 20:
         flash('请输入教师提供的班级加入码。', 'danger')
         return redirect(url_for('main.home'))
 
@@ -273,6 +281,17 @@ def import_students(class_id):
             student_id = _clean_cell(row.get(student_id_col))
             full_name = _clean_cell(row.get(full_name_col))
 
+            if len(student_id) > 20 or len(full_name) > 50:
+                results.append({
+                    'row_num': row_num,
+                    'student_id': student_id[:20] or '-',
+                    'full_name': full_name[:50] or '-',
+                    'status': 'error',
+                    'message': '学号不能超过20个字符，姓名不能超过50个字符',
+                })
+                skipped_count += 1
+                continue
+
             if not student_id:
                 results.append({
                     'row_num': row_num,
@@ -308,6 +327,42 @@ def import_students(class_id):
                 continue
 
             roster = StudentRoster.query.filter_by(student_id=student_id).first()
+            if roster and roster.class_id != cls.id and not current_user.is_admin:
+                results.append({
+                    'row_num': row_num,
+                    'student_id': student_id,
+                    'full_name': full_name,
+                    'status': 'error',
+                    'message': '该学生已在其他班级花名册中，不能由教师跨班级转移',
+                })
+                skipped_count += 1
+                continue
+
+            if (
+                existing_user
+                and not current_user.is_admin
+                and (
+                    (
+                        existing_user.class_id is not None
+                        and existing_user.class_id != cls.id
+                    )
+                    or (
+                        existing_user.class_id is None
+                        and existing_user.class_name
+                        and existing_user.class_name != cls.name
+                    )
+                )
+            ):
+                results.append({
+                    'row_num': row_num,
+                    'student_id': student_id,
+                    'full_name': full_name,
+                    'status': 'error',
+                    'message': '该学生已属于其他班级，不能由教师跨班级转移',
+                })
+                skipped_count += 1
+                continue
+
             if not roster:
                 roster = StudentRoster(student_id=student_id, full_name=full_name, class_id=cls.id,
                                        class_name_snapshot=cls.name)
@@ -362,9 +417,14 @@ def import_students(class_id):
                 'skipped': skipped_count
             }
         )
-    except Exception as e:
+    except UploadValidationError as exc:
         db.session.rollback()
-        flash(f'导入失败：{str(e)}', 'danger')
+        flash(str(exc), 'danger')
+        return redirect(url_for('classes.class_detail', class_id=class_id))
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('导入学生名单失败 class_id=%s', class_id)
+        flash('导入失败，请稍后重试。', 'danger')
         return redirect(url_for('classes.class_detail', class_id=class_id))
 
 @classes.route('/<int:class_id>')
@@ -375,15 +435,12 @@ def class_detail(class_id):
     cls = Class.query.get_or_404(class_id)
 
     # 权限检查: 管理员可以访问任何班级, 教师只能访问自己的班级
-    if not current_user.is_admin and cls.teacher_id != current_user.student_id:
+    if not can_access_class(cls, current_user):
         flash('您没有权限访问此班级详情', 'danger')
         return redirect(url_for('classes.class_list'))
 
     # 获取班级统计
     stats = cls.get_statistics()
-    cls.ensure_teacher_bind_code()
-    cls.ensure_student_join_code()
-    db.session.commit()
     roster_total = StudentRoster.query.filter_by(class_id=cls.id).count()
     roster_registered = StudentRoster.query.filter_by(class_id=cls.id, is_registered=True).count()
     
@@ -414,9 +471,14 @@ def class_detail(class_id):
     page = request.args.get('page', 1, type=int)
     per_page = 20
     
-    students = cls.students.filter_by(usertype='学生')\
-                          .order_by(desc(User.user_ascore))\
-                          .paginate(page=page, per_page=per_page, error_out=False)
+    students = User.query.filter(
+        class_student_filter(cls),
+        User.usertype == '学生',
+    ).order_by(desc(User.user_ascore)).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False,
+    )
     learning_rows = build_class_learning_rows(cls, students=students.items)
     assignment_matrix = build_assignment_completion_matrix(cls, students=students.items, assignment_limit=5)
     
@@ -445,15 +507,29 @@ def class_assignment_detail(class_id, assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
 
     # 权限检查
-    if not current_user.is_admin and cls.teacher_id != current_user.student_id:
+    if not can_access_class(cls, current_user):
         flash('您没有权限访问此班级详情', 'danger')
         return redirect(url_for('classes.class_list'))
+
+    if not can_access_assignment(assignment, current_user):
+        flash('您没有权限查看此作业。', 'danger')
+        return redirect(url_for('classes.class_detail', class_id=class_id))
+
+    target_class_names = assignment_target_class_names(assignment)
+    # This page is specifically scoped to one class.  A teacher-created draft
+    # with no target classes must not turn into a view of every managed class.
+    if cls.name not in target_class_names:
+        flash('该作业未布置给此班级。', 'danger')
+        return redirect(url_for('classes.class_detail', class_id=class_id))
 
     # 获取分页学生
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
-    students_query = cls.students.filter_by(usertype='学生').order_by(desc(User.user_ascore))
+    students_query = User.query.filter(
+        class_student_filter(cls),
+        User.usertype == '学生',
+    ).order_by(desc(User.user_ascore))
     students_paginated = students_query.paginate(page=page, per_page=per_page, error_out=False)
     
     student_records = []
@@ -490,9 +566,20 @@ def class_comparison():
     """班级对比分析页面"""
     # 教师只看自己的班级，管理员看全部
     if current_user.usertype == '管理员':
-        main_classes = Class.query.all()
+        main_classes = Class.query.order_by(Class.name.asc()).all()
+        assignments = Assignment.query.order_by(Assignment.id.asc()).all()
     else:
-        main_classes = Class.query.filter_by(teacher_id=current_user.student_id).all()
+        main_classes = managed_classes(current_user)
+        managed_names = {
+            classroom.name for classroom in main_classes
+        }
+        assignments = [
+            assignment for assignment in Assignment.query.order_by(Assignment.id.asc()).all()
+            if (
+                assignment.creator_id == current_user.student_id
+                or assignment_target_class_names(assignment) & managed_names
+            )
+        ]
     
     comparison_data = []
     for cls in main_classes:
@@ -500,11 +587,19 @@ def class_comparison():
         
         # 获取班级在各个作业上的平均分
         assignment_scores = []
-        assignments = Assignment.query.all()
         
         for assignment in assignments:
+            # ``creator_id`` grants the author maintenance access, but it does
+            # not mean an unassigned draft belongs to every managed class.
+            if cls.name not in assignment_target_class_names(assignment):
+                continue
+            student_scope = or_(
+                User.class_id == cls.id,
+                and_(User.class_id.is_(None), User.class_name == cls.name),
+            )
             avg_score = db.session.query(func.avg(Submission.score))\
-                       .join(User).filter(User.class_name == cls.name,
+                       .join(User).filter(student_scope,
+                                        User.usertype == '学生',
                                         Submission.assignment_id == assignment.id)\
                        .scalar()
             
@@ -527,7 +622,7 @@ def class_comparison():
 @admin_or_teacher_required
 def api_class_stats():
     """获取班级统计数据API"""
-    all_classes = Class.query.all()
+    all_classes = managed_classes(current_user)
     
     data = {
         'labels': [],
@@ -575,16 +670,18 @@ def api_class_progress(class_id):
     
     return jsonify(data)
 
-@classes.route('/sync', methods=['GET', 'POST'])
+@classes.route('/sync', methods=['POST'])
 @login_required
-@admin_or_teacher_required
+@admin_required
 def sync_classes():
-    """同步班级数据"""
+    """同步班级数据（全局清理操作，仅管理员可执行）。"""
     try:
         synced_count = Class.sync_from_users()
         flash(f'成功同步 {synced_count} 个班级的数据', 'success')
-    except Exception as e:
-        flash(f'同步失败: {str(e)}', 'error')
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('同步班级数据失败')
+        flash('同步失败，请稍后重试。', 'error')
     
     return redirect(url_for('classes.class_list'))
 
@@ -593,21 +690,33 @@ def sync_classes():
 @admin_required
 def add_class():
     """添加新班级 (管理员专属)"""
-    name = request.form.get('name')
-    school = request.form.get('school', '酷森思大学')
-    college = request.form.get('college', '计算机学院')
-    grade = request.form.get('grade')
-    major = request.form.get('major')
-    teacher_id = request.form.get('teacher_id')
+    name = (request.form.get('name') or '').strip()
+    school = (request.form.get('school') or '酷森思大学').strip()
+    college = (request.form.get('college') or '计算机学院').strip()
+    grade = (request.form.get('grade') or '').strip() or None
+    major = (request.form.get('major') or '').strip() or None
+    teacher_id = (request.form.get('teacher_id') or '').strip() or None
     
-    if not name:
-        flash('班级名称不能为空', 'danger')
+    if not name or len(name) > 50:
+        flash('班级名称不能为空且不能超过 50 个字符', 'danger')
+        return redirect(url_for('classes.class_list'))
+    if len(school) > 100 or len(college) > 100 or len(grade or '') > 20 or len(major or '') > 50:
+        flash('学校、学院、年级或专业字段长度超出限制', 'danger')
+        return redirect(url_for('classes.class_list'))
+    if teacher_id and len(teacher_id) > 20:
+        flash('教师工号长度不能超过 20 个字符', 'danger')
         return redirect(url_for('classes.class_list'))
         
     # 检查重名
     if Class.query.filter_by(name=name).first():
         flash(f'班级 "{name}" 已存在', 'danger')
         return redirect(url_for('classes.class_list'))
+
+    if teacher_id:
+        teacher = User.query.filter_by(student_id=teacher_id).first()
+        if not teacher or teacher.usertype != '教师':
+            flash('只能将班级分配给已注册的教师账号。', 'danger')
+            return redirect(url_for('classes.class_list'))
         
     try:
         new_class = Class(
@@ -618,12 +727,15 @@ def add_class():
             major=major,
             teacher_id=teacher_id if teacher_id else None
         )
+        new_class.ensure_teacher_bind_code()
+        new_class.ensure_student_join_code()
         db.session.add(new_class)
         db.session.commit()
         flash(f'成功添加班级 "{name}"', 'success')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'添加班级失败: {str(e)}', 'danger')
+        current_app.logger.exception('添加班级失败')
+        flash('添加班级失败，请稍后重试。', 'danger')
         
     return redirect(url_for('classes.class_list'))
 
@@ -638,15 +750,75 @@ def edit_class(class_id):
     teachers = User.query.filter_by(usertype='教师').all()
     
     if request.method == 'POST':
-        teacher_id = request.form.get('teacher_id')
-        cls.teacher_id = teacher_id if teacher_id else None
-        cls.school = request.form.get('school', '酷森思大学')
-        cls.college = request.form.get('college', '计算机学院')
-        cls.major = request.form.get('major')
-        cls.grade = request.form.get('grade')
-        cls.name = request.form.get('name')
-        
-        db.session.commit()
+        old_name = cls.name
+        new_name = (request.form.get('name') or '').strip()
+        if not new_name or len(new_name) > 50:
+            flash('班级名称不能为空且不能超过 50 个字符。', 'danger')
+            return render_template('classes/edit_class.html', cls=cls, teachers=teachers), 400
+        duplicate = Class.query.filter(
+            Class.name == new_name,
+            Class.id != cls.id,
+        ).first()
+        if duplicate:
+            flash(f'班级 "{new_name}" 已存在', 'danger')
+            return render_template('classes/edit_class.html', cls=cls, teachers=teachers), 400
+
+        teacher_id = (request.form.get('teacher_id') or '').strip() or None
+        if teacher_id and len(teacher_id) > 20:
+            flash('教师工号长度不能超过 20 个字符。', 'danger')
+            return render_template('classes/edit_class.html', cls=cls, teachers=teachers), 400
+        if teacher_id:
+            teacher = User.query.filter_by(student_id=teacher_id).first()
+            if not teacher or teacher.usertype != '教师':
+                flash('只能将班级分配给已注册的教师账号。', 'danger')
+                return render_template('classes/edit_class.html', cls=cls, teachers=teachers), 400
+        school = (request.form.get('school') or '酷森思大学').strip()
+        college = (request.form.get('college') or '计算机学院').strip()
+        major = (request.form.get('major') or '').strip() or None
+        grade = (request.form.get('grade') or '').strip() or None
+        if len(school) > 100 or len(college) > 100 or len(grade or '') > 20 or len(major or '') > 50:
+            flash('学校、学院、年级或专业字段长度超出限制。', 'danger')
+            return render_template('classes/edit_class.html', cls=cls, teachers=teachers), 400
+
+        cls.teacher_id = teacher_id
+        cls.school = school
+        cls.college = college
+        cls.major = major
+        cls.grade = grade
+        cls.name = new_name
+
+        # 班级名称仍被旧版用户、花名册快照和作业 target_classes 同时引用。
+        # 改名必须在同一事务中同步这些字段，否则会出现学生看不到作业、
+        # 教师统计归零或权限边界绕过等跨版本数据不一致。
+        if new_name != old_name:
+            User.query.filter(
+                (User.class_id == cls.id)
+                | and_(User.class_id.is_(None), User.class_name == old_name)
+            ).update(
+                {User.class_name: new_name},
+                synchronize_session=False,
+            )
+            StudentRoster.query.filter_by(class_id=cls.id).update(
+                {StudentRoster.class_name_snapshot: new_name},
+                synchronize_session=False,
+            )
+            for assignment in Assignment.query.all():
+                target_names = assignment.get_target_class_list()
+                if old_name not in target_names:
+                    continue
+                assignment.set_target_classes([
+                    new_name if target == old_name else target
+                    for target in target_names
+                ])
+
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception('更新班级信息失败，已回滚 class_id=%s', class_id)
+            flash('班级信息更新失败，请稍后重试。', 'danger')
+            return render_template('classes/edit_class.html', cls=cls, teachers=teachers), 500
+
         flash('班级信息更新成功', 'success')
         return redirect(url_for('classes.class_detail', class_id=class_id))
     
@@ -739,6 +911,27 @@ def import_classes():
             major = _clean_cell(row.get(major_col)) if major_col else '计算机相关专业'
             grade = _clean_cell(row.get(grade_col)) if grade_col else '2024'
             teacher_id = _clean_cell(row.get(teacher_id_col)) if teacher_id_col else None
+
+            field_limits = {
+                '班级名称': (class_name, 50),
+                '学校': (school, 100),
+                '学院': (college, 100),
+                '专业': (major, 50),
+                '年级': (grade, 20),
+                '教师工号': (teacher_id, 20),
+            }
+            oversized = [label for label, (value, limit) in field_limits.items() if len(value or '') > limit]
+            if oversized:
+                results.append({
+                    'row_num': row_num,
+                    'class_name': class_name[:50] or '-',
+                    'school': school[:100],
+                    'college': college[:100],
+                    'status': 'error',
+                    'message': f'{"、".join(oversized)}字段长度超出限制',
+                })
+                skipped_count += 1
+                continue
             
             if not class_name:
                 results.append({
@@ -772,6 +965,8 @@ def import_classes():
                     grade=grade or '2024',
                     teacher_id=teacher_id if teacher_user and teacher_user.usertype == '教师' else None
                 )
+                cls.ensure_teacher_bind_code()
+                cls.ensure_student_join_code()
                 db.session.add(cls)
                 action_status = 'inserted'
                 msg = f'成功新建班级{teacher_msg}'
@@ -812,9 +1007,14 @@ def import_classes():
             }
         )
         
-    except Exception as e:
+    except UploadValidationError as exc:
         db.session.rollback()
-        flash(f'导入失败: {str(e)}', 'danger')
+        flash(str(exc), 'danger')
+        return redirect(url_for('classes.import_classes'))
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('批量导入班级失败')
+        flash('导入失败，请稍后重试。', 'danger')
         return redirect(url_for('classes.import_classes'))
 
 

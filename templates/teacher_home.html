@@ -196,9 +196,10 @@
             <span><i class="bi bi-link-45deg text-primary me-2"></i>绑定已有班级</span>
         </div>
         <form action="{{ url_for('classes.bind_class') }}" method="POST" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="col-md-8">
                 <label for="dashboardBindCode" class="form-label fw-bold">班级绑定码</label>
-                <input type="text" class="form-control" id="dashboardBindCode" name="bind_code"
+                <input type="text" class="form-control" id="dashboardBindCode" name="bind_code" maxlength="20"
                     placeholder="请输入管理员提供的班级绑定码" required>
             </div>
             <div class="col-md-4">

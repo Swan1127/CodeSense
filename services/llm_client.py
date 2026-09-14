@@ -198,6 +198,9 @@ class _LLMTrace:
 
 _RETRYABLE_STATUS_CODES = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 _DEFAULT_PROVIDER_ORDER = (LLMProvider.ZHIPU, LLMProvider.OPENAI)
+# Keep the public vocabulary used by production call sites bounded so the
+# request-kind routing contract can validate labels without changing the
+# local interactive/background priority policy below.
 _REQUEST_KINDS = frozenset(
     {
         "interactive",
@@ -242,7 +245,11 @@ def _normalize_request_kind(value: Any) -> str:
     """Keep trace labels useful without allowing arbitrary high-cardinality data."""
 
     candidate = str(value or "").strip().lower()
-    return candidate if candidate in _REQUEST_KINDS else "interactive"
+    return candidate if candidate in _REQUEST_KINDS else _INTERACTIVE_REQUEST_KIND
+
+
+def _is_background_request_kind(value: Any) -> bool:
+    return _normalize_request_kind(value) in _BACKGROUND_REQUEST_KINDS
 
 
 def _trace_request_id(value: Optional[str]) -> str:
@@ -270,12 +277,6 @@ def _flask_request_id() -> Optional[str]:
     except (ImportError, RuntimeError):
         # The shared client is also used by workers and standalone tests.
         return None
-
-
-def _is_background_request_kind(value: Any) -> bool:
-    return _normalize_request_kind(value) in _BACKGROUND_REQUEST_KINDS
-
-
 def _status_code(error: Any) -> Optional[int]:
     for candidate in (
         getattr(error, "status_code", None),
@@ -1149,9 +1150,6 @@ class SharedLLMClient:
             raise LLMServiceError(failure_code) from final_error
         finally:
             self._record_request_metric(request_kind, outcome, started_at)
-
-
-
     def _chat_with_provider(
         self,
         state: _ProviderState,
