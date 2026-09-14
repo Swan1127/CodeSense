@@ -46,7 +46,7 @@
 
 - 隔离候选基线：`619 passed, 1508 warnings`。
 - 候选修复后的全量回归：`645 passed, 2130031 warnings in 349.94s`，退出码 0。
-- 合并后按 `git ls-files tests/*.py` 得到的已跟踪测试集：`643 passed, 2129981 warnings in 443.77s`，退出码 0。
+- 合并后按 `git ls-files tests/*.py` 得到的已跟踪测试集：`643 passed, 2129827 warnings in 441.35s`，退出码 0。
 - 合并后直接运行默认 `pytest -q` 时，收集阶段遇到本地 `.gitignore` 忽略的研究测试 `tests/test_guided_learning_paper_docx.py`，其依赖的未跟踪脚本不存在；该测试和脚本不在仓库跟踪树中，随后已用已跟踪测试文件列表完成发布验证。
 - 最终定向回归：`26 passed, 56 warnings`，覆盖新服务、API、权限、模板/UI 和阶段 3 论坛响应。
 - `python -m compileall -q services routes tests` 通过（候选修复后）。
