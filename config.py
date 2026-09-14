@@ -211,6 +211,11 @@ class TestingConfig(Config):
     TESTING = True
     DB_AUTO_INIT = True
     DB_ENSURE_INDEXES = True
+
+    # 测试使用临时 SQLite 库；禁止进程内后台线程跨测试持有数据库连接。
+    # 需要验证 worker 的测试应显式覆盖这些开关，并使用隔离的队列/数据库。
+    ASYNC_TASKS_ENABLED = False
+    PRESET_SCAN_ENABLED = False
     
     # 测试环境使用独立的SQLite数据库
     SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL') or \
