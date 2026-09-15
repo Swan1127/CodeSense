@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/caifusi-logo-wordmark-v1.png" alt="财赋思品牌标志" width="480">
+  <img src="docs/assets/codesense-logo-final.png" alt="CodeSense 品牌标志" width="480">
 </p>
 
 <h1 align="center">CodeSense 酷森思</h1>
@@ -21,14 +21,14 @@
   <a href="https://github.com/XiaoCow666/CodeSense/stargazers"><img src="https://img.shields.io/github/stars/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub stars"></a>
   <a href="https://github.com/XiaoCow666/CodeSense/network/members"><img src="https://img.shields.io/github/forks/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub forks"></a>
   <a href="https://github.com/XiaoCow666/CodeSense/blob/main/LICENSE"><img src="https://img.shields.io/github/license/XiaoCow666/CodeSense?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/version-v1.0.0-2563eb?style=flat-square" alt="v1.0.0">
-  <img src="https://img.shields.io/badge/Python-3.8%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
+  <img src="https://img.shields.io/badge/version-v1.2.0-2563eb?style=flat-square" alt="v1.2.0">
+  <img src="https://img.shields.io/badge/Python-3.8--3.13-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.8–3.13">
   <img src="https://img.shields.io/badge/Flask-2.2.3-000000?style=flat-square&logo=flask&logoColor=white" alt="Flask 2.2.3">
 </p>
 
-> 当前版本：<a href="https://github.com/XiaoCow666/CodeSense/releases/tag/v1.0.0"><code>v1.0.0</code></a>。
+> 当前版本：<a href="https://github.com/XiaoCow666/CodeSense/releases/tag/v1.2.0"><code>v1.2.0</code></a>。
 >
-> 这是 CodeSense Standard Edition 的首个正式版本。后续版本会同时更新 [CHANGELOG.md](CHANGELOG.md)、Git tag 和 GitHub Release。
+> 这是 CodeSense Standard Edition 的当前正式版本。发布级变更会记录在 [CHANGELOG.md](CHANGELOG.md)、Git tag 和 GitHub Release 中。
 
 ## 目录
 
@@ -68,6 +68,10 @@
     </td>
   </tr>
 </table>
+
+<p align="center">
+  <img src="docs/assets/codesense-v1.2.0-action-center-clear.png" alt="CodeSense v1.2.0 角色化行动中心清晰手绘信息图" width="100%">
+</p>
 
 ## 为什么做这个项目
 
@@ -115,6 +119,14 @@ CodeSense 把代码提交、受限执行、AI 辅导、分阶段练习和学情�
 系统会记录代码提交、评测结果、提示请求和引导式学习过程，并从算法、代码风格、功能完整性、执行效率和可读性等维度整理能力信息。教师端可以查看知识点得分、个人趋势和班级视图。
 
 作业提交得分与能力画像不是同一个指标：前者当前按 0–5 分记录，后者按 0–100 分记录。
+
+### 学习会话连续性与状态可视化
+
+CodeSense 会把引导式学习过程投影为可解释的会话状态：学生离开或刷新页面后，可以从“继续学习”入口回到最近会话，并看到当前阶段、下一步动作和可恢复提示；教师可以在授权范围内查看会话概览、阶段进度，并按“进行中、空闲、已完成、已放弃”筛选。状态接口只读已有学习记录，不改写历史数据，也会明确区分服务器观察时间、已存客户端计时和时间戳来源。
+
+### 角色化行动中心
+
+v1.2.0 增加统一的行动中心，把学生的继续学习、评测与复核提示，教师的待复核与学情动作，以及管理员的反馈、能力与系统治理入口汇总为角色化队列。页面与只读 API 共用同一份聚合结果，按当前身份隔离数据源、限制条数并标记降级来源；返回内容不包含学生代码正文、姓名或联系方式等敏感字段。入口位于 `/action-center`，接口位于 `/api/action-center`。
 
 ### 教师端
 
@@ -212,7 +224,7 @@ flowchart LR
 
 ### 环境要求
 
-- Python 3.8 或更高版本；
+- Python 3.8–3.13；当前锁定的 Flask/Werkzeug 2.2.3 组合在 Python 3.14 下存在已知的路由初始化兼容性错误。
 - C++ 评测需要可执行的 <code>g++</code>，并确保它在 <code>PATH</code> 中；
 - 开发环境可以使用 SQLite，生产环境需要配置 <code>DATABASE_URL</code>；
 - AI 引导、代码建议和部分学情分析需要智谱或 OpenAI API 密钥。
@@ -228,7 +240,7 @@ python -m venv .venv
 Windows PowerShell：
 
 ~~~powershell
-.venvScriptsActivate.ps1
+.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ~~~
@@ -257,9 +269,19 @@ SECRET_KEY=replace-with-a-random-secret
 # 至少配置一个，AI 功能才会启用
 ZHIPU_API_KEY=
 OPENAI_API_KEY=
+
+# 密码找回邮件（不配置时，管理员可在用户管理页生成一次性重置链接）
+MAIL_SERVER=
+MAIL_PORT=587
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_DEFAULT_SENDER=
+APP_BASE_URL=https://codesense.example.com
 ~~~
 
 开发和测试配置会在启动时创建数据库表。生产配置要显式设置 <code>DATABASE_URL</code> 和 <code>SECRET_KEY</code>；生产 WSGI 默认跳过启动期建表和迁移，请先执行 <code>python database_maintenance.py</code>。不要把 <code>.env</code>、API 密钥或本地数据库文件提交到 Git。
+
+登录页同时提供学生名单注册和邮箱注册。邮箱注册不要求提前导入学生名单，账号创建后必须点击验证邮件中的链接才能登录；验证令牌只保存摘要，过期或重复发送后旧链接会自动失效。<code>AuthIdentity</code> 表为后续接入 Google、微信等社交登录保留统一的身份绑定位置。
 
 ### 3. 安装 C++ 编译器
 
@@ -280,9 +302,17 @@ python run.py
 
 ### 5. 运行测试
 
+如果需要运行仓库测试，请额外安装测试依赖：
+
+~~~powershell
+python -m pip install -r requirements-test.txt
+~~~
+
 ~~~bash
 python -m pytest tests -q
 ~~~
+
+> 兼容性边界：在 Python 3.14 下，当前 Flask/Werkzeug 2.2.3 组合会在路由初始化阶段触发 `ast.Str` 兼容性错误。本次仅记录边界，不升级框架依赖；如需支持 Python 3.14，应单独评审 Flask/Werkzeug 升级并执行完整回归。
 
 涉及 C++ 评测的测试需要 <code>g++</code>；涉及真实 AI 服务的测试还需要相应环境变量。
 
@@ -310,6 +340,9 @@ gunicorn -c gunicorn_config.py wsgi:application
 | <code>TEST_DATABASE_URL</code> | 测试数据库连接，不设置时使用独立 SQLite |
 | <code>SECRET_KEY</code> | Flask 会话和签名密钥；生产环境必须设置随机值 |
 | <code>ZHIPU_API_KEY</code> / <code>OPENAI_API_KEY</code> | AI 服务密钥，至少配置一个 |
+| <code>MAIL_SERVER</code> / <code>MAIL_PORT</code> / <code>MAIL_USERNAME</code> / <code>MAIL_PASSWORD</code> / <code>MAIL_DEFAULT_SENDER</code> | 忘记密码邮件服务配置；敏感值只放服务器环境变量或受限配置文件 |
+| <code>APP_BASE_URL</code> | 邮件和管理员重置链接使用的公开 HTTPS 地址 |
+| <code>PASSWORD_RESET_TOKEN_TTL_MINUTES</code> / <code>PASSWORD_RESET_REQUEST_INTERVAL_SECONDS</code> | 重置链接有效期和重复申请冷却时间 |
 | <code>AI_PROVIDER_ORDER</code> | 多 provider 的优先顺序，例如 <code>zhipu,openai</code> |
 | <code>ZHIPU_MODEL</code> / <code>OPENAI_MODEL</code> | 各 provider 使用的模型 |
 | <code>AI_RETRY_ATTEMPTS</code> | 网络错误、限流和 5xx 的最大重试次数 |
@@ -337,10 +370,15 @@ gunicorn -c gunicorn_config.py wsgi:application
 | <code>/api/code_advice</code> | <code>POST</code> | 获取代码建议 |
 | <code>/api/get_programming_guidance</code> | <code>POST</code> | 获取编程引导 |
 | <code>/api/stream/ability-analysis</code> | <code>GET</code> | 流式获取能力分析 |
+| <code>/forgot-password</code> | <code>GET/POST</code> | 申请密码重置链接 |
+| <code>/reset-password</code> | <code>GET/POST</code> | 使用一次性链接设置新密码 |
+| <code>/users/reset_password/&lt;student_id&gt;</code> | <code>POST</code> | 管理员为账号生成兜底重置链接 |
 | <code>/thinking/&lt;assignment_id&gt;</code> | <code>GET</code> | 进入三阶段引导式学习页面 |
 | <code>/thinking/api/stage1/submit</code> | <code>POST</code> | 提交阶段一思路 |
 | <code>/thinking/api/stage2/verify</code> | <code>POST</code> | 验证阶段二步骤组装 |
 | <code>/thinking/api/stage3/chat</code> | <code>POST</code> | 进行阶段三对话 |
+
+阶段一接口的请求示例、本地测试命令和验证边界见 [`STAGE1_VERIFICATION.md`](STAGE1_VERIFICATION.md)。
 
 ## 安全边界与已知限制
 
@@ -358,7 +396,7 @@ CodeSense 使用语义化版本号：
 - <code>MINOR</code>：向后兼容的功能增加；
 - <code>PATCH</code>：向后兼容的问题修复和小幅调整。
 
-当前版本是 [v1.0.0](https://github.com/XiaoCow666/CodeSense/releases/tag/v1.0.0)，对应标准版首个正式发布。后续版本请同时更新 [CHANGELOG.md](CHANGELOG.md)，并使用同名 Git tag 和 GitHub Release。
+当前版本是 [v1.2.0](https://github.com/XiaoCow666/CodeSense/releases/tag/v1.2.0)，增加了角色化行动中心与权限隔离的只读聚合 API。日常更新状态记录在运行记录中并同步到 GitHub Release；README 不作为日常更新日志，仅在新增重要功能或明显改变使用方式时补充说明。
 
 ## Star History
 

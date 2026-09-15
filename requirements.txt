@@ -18,6 +18,9 @@ email-validator==2.0.0
 pymysql[rsa]==1.0.3
 requests>=2.28.0
 
+# Test runner used by the documented pytest commands and tests/
+pytest>=7.4.0
+
 # LLM & AI 功能
 openai>=1.0.0
 zhipuai>=2.0.1
@@ -27,5 +30,6 @@ Markdown>=3.4.0
 
 # 高并发会话与缓存优化
 redis>=5.0.0
+rq==2.11.0
 
 # 标准版不需要 torch / transformers；代码评估使用启发式规则和已配置的 AI 服务

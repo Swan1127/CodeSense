@@ -128,7 +128,7 @@ class CodeAdvisor:
                     code, assignment_title, assignment_description)
             except Exception as e:
                 logger.error(f"分析{language}代码时出错: {e}")
-                return self._generate_error_response(f"分析代码时出错: {str(e)}")
+                return self._generate_error_response("分析代码时暂时不可用，请稍后重试")
         else:
             logger.warning(f"不支持的语言: {language}")
             return self._generate_error_response(f"不支持的编程语言: {language}")
@@ -230,7 +230,7 @@ class CodeAdvisor:
                 return self.supported_languages[language](
                     code, assignment_title, assignment_description)
             else:
-                return self._generate_error_response(f"LLM分析失败: {str(e)}")
+                return self._generate_error_response("AI 分析暂时不可用，请稍后重试")
 
     def _analyze_with_guidance_mode(self, 
                                    code: str, 
@@ -290,6 +290,7 @@ class CodeAdvisor:
                         max_tokens=1200,
                         provider=self.llm.api_type,
                         model=getattr(self.llm, "model_name", None),
+                        request_kind="code_advice",
                     )
                     if not guidance_text:
                         raise RuntimeError("AI服务暂时不可用")
@@ -364,6 +365,7 @@ class CodeAdvisor:
                         max_tokens=1600,
                         provider=self.llm.api_type,
                         model=getattr(self.llm, "model_name", None),
+                        request_kind="code_advice",
                     )
                     if not response_text:
                         raise RuntimeError("AI服务暂时不可用")
@@ -421,7 +423,7 @@ class CodeAdvisor:
                 return self.supported_languages[language](
                     code, assignment_title, assignment_description)
             else:
-                return self._generate_error_response(f"结构化评估失败: {str(e)}")
+                return self._generate_error_response("结构化评估暂时不可用，请稍后重试")
 
     def _generate_fallback_guidance(self, code: str, assignment_title: str = None) -> str:
         """生成通用的指导性建议作为回退方案"""
@@ -651,7 +653,7 @@ algorithm_score, style_score, functionality_score, efficiency_score, overall_fee
         except Exception as e:
             logger.error(f"分析C++代码时出错: {e}")
             traceback.print_exc()
-            return self._generate_error_response(f"分析C++代码时出错: {str(e)}")
+            return self._generate_error_response("C++ 代码分析暂时不可用，请稍后重试")
     
     def _analyze_python_code(self, 
                              code: str, 
@@ -777,7 +779,7 @@ algorithm_score, style_score, functionality_score, efficiency_score, overall_fee
         except Exception as e:
             logger.error(f"分析Python代码时出错: {e}")
             traceback.print_exc()
-            return self._generate_error_response(f"分析Python代码时出错: {str(e)}")
+            return self._generate_error_response("Python 代码分析暂时不可用，请稍后重试")
     
     def _analyze_java_code(self, 
                            code: str, 
@@ -945,7 +947,7 @@ def generate_code_advice(code: str,
         logger.error(f"生成代码建议时出错: {e}")
         traceback.print_exc()
         return {
-            'overall_feedback': f'分析代码时出错: {str(e)}',
+            'overall_feedback': '代码分析暂时不可用，请稍后重试。',
             'algorithm_score': 0,
             'style_score': 0,
             'functionality_score': 0,
