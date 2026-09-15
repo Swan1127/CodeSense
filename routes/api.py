@@ -33,6 +33,7 @@ from utils.upload_safety import UploadValidationError, validate_upload
 from services.ai_evaluator import AIEvaluator
 from services.api_keys import api_keys  # 导入 API 密钥管理器
 from services.demo_database import current_demo_run_id
+from services.action_center import build_action_center
 from tasks.submission_tasks import evaluate_submission_async
 from tasks.submission_queue import (
     SubmissionQueueUnavailable,
@@ -79,6 +80,20 @@ def _language(value):
 def api_docs():
     """API文档页面"""
     return render_template('api_docs.html')
+
+
+@api.route('/action-center', methods=['GET'])
+@login_required
+def get_action_center():
+    """Return the authenticated user's read-only action queue."""
+
+    response = jsonify(build_action_center(
+        current_user,
+        priority=request.args.get('priority', 'all'),
+        limit=request.args.get('limit', 20),
+    ))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @api.route('/assignments', methods=['GET'])

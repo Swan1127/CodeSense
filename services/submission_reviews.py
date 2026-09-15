@@ -480,6 +480,41 @@ def list_review_queue(actor, *, status: str | None = None, limit: int = 100) -> 
     return rows[:safe_limit]
 
 
+def list_student_review_queue(actor, *, limit: int = 100) -> list[dict]:
+    """Return bounded review summaries for the owning student only."""
+
+    if _actor_role(actor) != "student":
+        return []
+    student_id = _actor_id(actor)
+    if not student_id:
+        return []
+
+    safe_limit = max(1, min(int(limit), 200))
+    submissions = (
+        Submission.query.filter_by(student_id=student_id)
+        .order_by(Submission.submitted_at.desc(), Submission.id.desc())
+        .limit(MAX_REVIEW_SCAN)
+        .all()
+    )
+    event_groups = _all_review_event_groups()
+    events_by_submission = {
+        str(events[0]["submission_id"]): events
+        for events in event_groups.values()
+        if events
+    }
+    rows = []
+    for submission in submissions:
+        review = _review_from_events(events_by_submission.get(str(submission.id), []))
+        if review is None:
+            continue
+        review["submission"] = submission
+        review["assignment"] = db.session.get(Assignment, submission.assignment_id)
+        rows.append(review)
+        if len(rows) >= safe_limit:
+            break
+    return rows
+
+
 def count_open_reviews(actor) -> int:
     return sum(
         1 for review in list_review_queue(actor, limit=200)

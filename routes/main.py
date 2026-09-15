@@ -43,6 +43,7 @@ from services.notifications import (
 )
 from services.submission_reviews import count_open_reviews
 from services.session_lifecycle import latest_session_activity, session_lifecycle_payload
+from services.action_center import build_action_center
 from services.profile import get_profile_settings, PROFILE_VISIBILITY_PUBLIC
 from utils.auth import admin_required
 from utils.access import authoritative_class_name, assignment_target_class_filter, can_access_student
@@ -1118,6 +1119,23 @@ def notifications():
         'notifications.html',
         notifications=notification_items,
         filter_name=filter_name,
+    )
+
+
+@main.route('/action-center')
+@login_required
+def action_center():
+    """Display the authenticated user's bounded action queue."""
+
+    payload = build_action_center(
+        current_user,
+        priority=request.args.get('priority', 'all'),
+        limit=request.args.get('limit', 20),
+    )
+    return render_template(
+        'action_center.html',
+        action_center=payload,
+        selected_priority=request.args.get('priority', 'all'),
     )
 
 
