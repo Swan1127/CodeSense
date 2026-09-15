@@ -70,7 +70,7 @@
 </table>
 
 <p align="center">
-  <img src="docs/assets/codesense-v1.2.0-action-center-ghibli.png" alt="CodeSense v1.2.0 角色化行动中心手绘信息图" width="100%">
+  <img src="docs/assets/codesense-v1.2.0-action-center-clear.png" alt="CodeSense v1.2.0 角色化行动中心清晰手绘信息图" width="100%">
 </p>
 
 ## 为什么做这个项目
