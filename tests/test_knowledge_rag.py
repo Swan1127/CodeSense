@@ -117,6 +117,106 @@ def test_ask_question_returns_scoped_citations_and_metrics(knowledge_context, mo
     assert "参考知识证据" in data["answer"]
 
 
+def test_ask_question_reranks_matching_knowledge_before_priority(
+    knowledge_context, monkeypatch
+):
+    app, client, assignment_id = knowledge_context
+    with app.app_context():
+        AssignmentKnowledgePoint.add_to_assignment(
+            assignment_id,
+            "pointer",
+            weight=2.0,
+        )
+        AssignmentKnowledgePoint.add_to_assignment(
+            assignment_id,
+            "array",
+            weight=1.0,
+        )
+
+    monkeypatch.setattr(
+        api_routes,
+        "generate_answer_to_question",
+        lambda **_: "请先检查数组边界。",
+    )
+    response = client.post(
+        "/api/ask_question",
+        json={
+            "assignment_id": assignment_id,
+            "code": "int main(){return 0;}",
+            "question": "数组边界怎么检查？",
+        },
+    )
+
+    assert response.status_code == 200
+    evidence = response.json["data"]["knowledge_retrieval"]["evidence"]
+    assert evidence[0]["title"] == "数组"
+    assert evidence[0]["citation"] == "[K1]"
+
+
+def test_retriever_keeps_numeric_record_order_for_equal_priority(knowledge_context):
+    app, _, assignment_id = knowledge_context
+    with app.app_context():
+        db.session.add_all(
+            [
+                AssignmentKnowledgePoint(
+                    id=10,
+                    assignment_id=assignment_id,
+                    knowledge_point="pointer",
+                    weight=1.0,
+                ),
+                AssignmentKnowledgePoint(
+                    id=2,
+                    assignment_id=assignment_id,
+                    knowledge_point="array",
+                    weight=1.0,
+                ),
+            ]
+        )
+        db.session.commit()
+
+        empty_query = retrieve_assignment_knowledge(assignment_id, query="")
+        unmatched_query = retrieve_assignment_knowledge(
+            assignment_id,
+            query="unmatched terminology",
+        )
+
+    assert empty_query["evidence"][0]["evidence_id"] == "assignment-kp:2"
+    assert unmatched_query["evidence"][0]["evidence_id"] == "assignment-kp:2"
+
+
+def test_retriever_only_reranks_the_bounded_candidate_pool(knowledge_context):
+    app, _, assignment_id = knowledge_context
+    with app.app_context():
+        db.session.add_all(
+            [
+                AssignmentKnowledgePoint(
+                    id=index,
+                    assignment_id=assignment_id,
+                    knowledge_point=f"base-{index}",
+                    weight=1.0,
+                )
+                for index in range(1, 10)
+            ]
+            + [
+                AssignmentKnowledgePoint(
+                    id=10,
+                    assignment_id=assignment_id,
+                    knowledge_point="unique-ten",
+                    weight=1.0,
+                )
+            ]
+        )
+        db.session.commit()
+        retrieval = retrieve_assignment_knowledge(
+            assignment_id,
+            query="unique-ten",
+        )
+
+    assert retrieval["metrics"]["candidate_count"] == 8
+    assert len(retrieval["evidence"]) == 8
+    assert all(item["evidence_id"] != "assignment-kp:10" for item in retrieval["evidence"])
+
+
 def test_ask_question_sse_includes_retrieval_receipt(knowledge_context, monkeypatch):
     _, client, assignment_id = knowledge_context
     captured = {}
