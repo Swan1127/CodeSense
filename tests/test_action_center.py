@@ -192,6 +192,7 @@ def test_student_contract_is_bounded_owned_and_content_free(action_center_contex
     assert len(payload["items"]) <= 50
     assert payload["counts"]["total"] >= len(payload["items"])
     assert all(item["href"].startswith("/") for item in payload["items"])
+    assert all(not item["id"].rsplit(":", 1)[-1].isdigit() for item in payload["items"])
     serialized = json.dumps(payload, ensure_ascii=False)
     for private_value in (
         "SECRET_STUDENT_CODE",
@@ -207,6 +208,9 @@ def test_teacher_and_admin_sources_are_role_scoped(action_center_context):
     app, ids = action_center_context
     with app.app_context():
         teacher_payload = build_action_center(db.session.get(User, ids["teacher"]), limit=50)
+        trend = db.session.get(AbilityTrend, 1)
+        trend.status = "processing"
+        db.session.commit()
         admin_payload = build_action_center(db.session.get(User, ids["admin"]), limit=50)
 
     teacher_kinds = {item["kind"] for item in teacher_payload["items"]}
@@ -219,6 +223,8 @@ def test_teacher_and_admin_sources_are_role_scoped(action_center_context):
     assert "OUTSIDER_TEACHER_AI_OUTPUT" not in teacher_json
     assert {"feedback", "ability"}.issubset(admin_kinds)
     assert admin_payload["data_scope"] == "system-queue"
+    assert any(item["status"] == "processing" for item in admin_payload["items"] if item["kind"] == "ability")
+    assert "行动中心学生" not in json.dumps(admin_payload, ensure_ascii=False)
 
 
 def test_priority_filter_limit_and_degraded_source_contract(action_center_context, monkeypatch):
@@ -230,7 +236,7 @@ def test_priority_filter_limit_and_degraded_source_contract(action_center_contex
         info = build_action_center(db.session.get(User, ids["student"]), priority="info", limit=999)
         fallback = build_action_center(db.session.get(User, ids["student"]), priority="not-valid")
 
-        def broken_source(_actor):
+        def broken_source(_actor, **_kwargs):
             raise RuntimeError("SECRET_INTERNAL_ERROR")
 
         monkeypatch.setattr(action_center, "_read_student_submissions", broken_source)
@@ -283,10 +289,12 @@ def test_role_pages_render_their_scoped_queue_sources(action_center_context):
     teacher_html = teacher_client.get("/action-center").get_data(as_text=True)
     assert "班级建议：行动中心班" in teacher_html
     assert "其他教师作业" not in teacher_html
+    assert 'class="action-center-count notification-count"' in teacher_html
 
     teacher_client.post("/logout")
     _login(teacher_client, ids["admin"])
     admin_html = teacher_client.get("/action-center").get_data(as_text=True)
     assert "反馈：后台反馈主题" in admin_html
-    assert "能力分析：行动中心学生" in admin_html
+    assert "能力分析：系统队列" in admin_html
+    assert "行动中心学生" not in admin_html
     assert "PRIVATE_REVIEW_BODY" not in admin_html

@@ -490,6 +490,7 @@ def create_app(config_name='default'):
     def inject_now():
         from datetime import datetime as dt_now
         notification_unread_count = 0
+        action_center_count = 0
         student_id = current_user.student_id if current_user.is_authenticated else None
         if student_id:
             try:
@@ -499,9 +500,17 @@ def create_app(config_name='default'):
                 # Notification rendering must never make an otherwise healthy
                 # page unavailable; the inbox remains the source of detail.
                 app.logger.warning('站内通知未读数读取失败', exc_info=True)
+            try:
+                from services.action_center import count_action_center_items
+                action_center_count = count_action_center_items(current_user)
+            except Exception:
+                # The action badge is advisory; the full action center remains
+                # available even when one of its sources is temporarily down.
+                app.logger.warning('行动中心待处理数读取失败', exc_info=True)
         return {
             'current_time': dt_now.utcnow(),
             'notification_unread_count': notification_unread_count,
+            'action_center_count': action_center_count,
         }
     
     # 初始化Flask-Session（如果可用）

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import hmac
 import time
 from datetime import datetime, timezone
 
@@ -15,7 +17,6 @@ from models import (
     Submission,
     TeacherAISuggestion,
     ThinkingSession,
-    User,
     db,
 )
 from services.feedback import list_feedback
@@ -56,6 +57,7 @@ _TEACHER_AI_STATUS_LABELS = {
     "outdated": "等待刷新",
 }
 _ABILITY_STATUS_LABELS = {
+    "processing": "分析中",
     "failed": "分析失败",
     "outdated": "等待刷新",
 }
@@ -111,6 +113,26 @@ def _safe_href(value, fallback="/") -> str:
     return href[:300]
 
 
+def _opaque_id(kind: str, value) -> str:
+    """Return a stable, non-enumerable identifier for the UI contract."""
+
+    try:
+        secret = str(current_app.config.get("SECRET_KEY") or "codesense-action-center")
+    except RuntimeError:
+        secret = "codesense-action-center"
+    digest = hmac.new(
+        secret.encode("utf-8"),
+        f"{kind}:{value}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:24]
+    return f"{kind}:{digest}"
+
+
+def _known_status(value, labels: dict[str, str], fallback: str) -> str:
+    status = _safe_text(value, limit=40).lower()
+    return status if status in labels else fallback
+
+
 def _route(endpoint: str, fallback: str, **values) -> str:
     """Build a local URL in requests and remain testable in app contexts."""
 
@@ -164,7 +186,7 @@ def _assignment_title(assignment) -> str:
     return _safe_text(getattr(assignment, "title", ""), limit=100, fallback="未命名作业")
 
 
-def _read_student_submissions(actor) -> list[dict]:
+def _read_student_submissions(actor, *, source_limit=ACTION_CENTER_SOURCE_LIMIT) -> list[dict]:
     if _actor_role(actor) != "student":
         return []
     submissions = (
@@ -174,7 +196,7 @@ def _read_student_submissions(actor) -> list[dict]:
             Submission.status.in_(tuple(_SUBMISSION_STATUS_LABELS)),
         )
         .order_by(Submission.submitted_at.desc(), Submission.id.desc())
-        .limit(_safe_source_limit())
+        .limit(_safe_source_limit(source_limit))
         .all()
     )
     items = []
@@ -190,7 +212,7 @@ def _read_student_submissions(actor) -> list[dict]:
             else "评测尚未完成，稍后可从这里继续查看。"
         )
         items.append(_item(
-            item_id=f"submission:{submission.id}",
+            item_id=_opaque_id("submission", submission.id),
             kind="submission",
             priority=priority,
             title=f"作业「{_assignment_title(assignment)}」",
@@ -208,18 +230,18 @@ def _read_student_submissions(actor) -> list[dict]:
     return items
 
 
-def _read_student_reviews(actor) -> list[dict]:
+def _read_student_reviews(actor, *, source_limit=ACTION_CENTER_SOURCE_LIMIT) -> list[dict]:
     if _actor_role(actor) != "student":
         return []
     items = []
-    for review in list_student_review_queue(actor, limit=_safe_source_limit()):
-        status = str(review.get("status") or "requested")
+    for review in list_student_review_queue(actor, limit=_safe_source_limit(source_limit)):
+        status = _known_status(review.get("status"), _REVIEW_STATUS_LABELS, "in_review")
         if status == "resolved":
             continue
         assignment = review.get("assignment")
         submission_id = review.get("submission_id")
         items.append(_item(
-            item_id=f"review:{review.get('review_id') or submission_id}",
+            item_id=_opaque_id("review", review.get("review_id") or submission_id),
             kind="review",
             priority="urgent" if status == "requested" else "next",
             title=f"提交复核：{_assignment_title(assignment)}",
@@ -237,14 +259,14 @@ def _read_student_reviews(actor) -> list[dict]:
     return items
 
 
-def _read_student_sessions(actor) -> list[dict]:
+def _read_student_sessions(actor, *, source_limit=ACTION_CENTER_SOURCE_LIMIT) -> list[dict]:
     if _actor_role(actor) != "student":
         return []
     sessions = (
         ThinkingSession.query.options(joinedload(ThinkingSession.assignment))
         .filter_by(student_id=getattr(actor, "student_id", None), status="in_progress")
         .order_by(ThinkingSession.started_at.desc(), ThinkingSession.id.desc())
-        .limit(_safe_source_limit())
+        .limit(_safe_source_limit(source_limit))
         .all()
     )
     activity_by_session = latest_session_activity([session.id for session in sessions])
@@ -258,7 +280,7 @@ def _read_student_sessions(actor) -> list[dict]:
             continue
         status = str(lifecycle.get("status") or "idle")
         items.append(_item(
-            item_id=f"session:{session.id}",
+            item_id=_opaque_id("session", session.id),
             kind="session",
             priority="next",
             title=f"继续学习：{_assignment_title(session.assignment)}",
@@ -276,17 +298,17 @@ def _read_student_sessions(actor) -> list[dict]:
     return items
 
 
-def _read_notifications(actor) -> list[dict]:
+def _read_notifications(actor, *, source_limit=ACTION_CENTER_SOURCE_LIMIT) -> list[dict]:
     if _actor_role(actor) not in {"student", "teacher", "admin"}:
         return []
     items = []
     for notification in list_notifications(
         getattr(actor, "student_id", None),
         unread_only=True,
-        limit=_safe_source_limit(),
+        limit=_safe_source_limit(source_limit),
     ):
         items.append(_item(
-            item_id=f"notification:{notification.get('id')}",
+            item_id=_opaque_id("notification", notification.get("id")),
             kind="notification",
             priority="info",
             title=notification.get("title", "站内通知"),
@@ -300,18 +322,18 @@ def _read_notifications(actor) -> list[dict]:
     return items
 
 
-def _read_teacher_reviews(actor) -> list[dict]:
+def _read_teacher_reviews(actor, *, source_limit=ACTION_CENTER_SOURCE_LIMIT) -> list[dict]:
     if _actor_role(actor) != "teacher":
         return []
     items = []
-    for review in list_review_queue(actor, limit=_safe_source_limit()):
-        status = str(review.get("status") or "requested")
+    for review in list_review_queue(actor, limit=_safe_source_limit(source_limit)):
+        status = _known_status(review.get("status"), _REVIEW_STATUS_LABELS, "in_review")
         if status == "resolved":
             continue
         submission = review.get("submission")
         assignment = review.get("assignment")
         items.append(_item(
-            item_id=f"review:{review.get('review_id') or review.get('submission_id')}",
+            item_id=_opaque_id("review", review.get("review_id") or review.get("submission_id")),
             kind="review",
             priority="urgent" if status == "requested" else "next",
             title=f"待处理复核：{_assignment_title(assignment)}",
@@ -329,13 +351,13 @@ def _read_teacher_reviews(actor) -> list[dict]:
     return items
 
 
-def _read_teacher_ai(actor) -> list[dict]:
+def _read_teacher_ai(actor, *, source_limit=ACTION_CENTER_SOURCE_LIMIT) -> list[dict]:
     if _actor_role(actor) != "teacher":
         return []
     classrooms = (
         Class.query.filter_by(teacher_id=getattr(actor, "student_id", None))
         .order_by(Class.id.asc())
-        .limit(_safe_source_limit())
+        .limit(_safe_source_limit(source_limit))
         .all()
     )
     class_ids = [classroom.id for classroom in classrooms]
@@ -349,14 +371,14 @@ def _read_teacher_ai(actor) -> list[dict]:
             TeacherAISuggestion.status.in_(tuple(_TEACHER_AI_STATUS_LABELS)),
         )
         .order_by(TeacherAISuggestion.last_updated.desc(), TeacherAISuggestion.id.desc())
-        .limit(_safe_source_limit())
+        .limit(_safe_source_limit(source_limit))
         .all()
     )
     items = []
     for suggestion in suggestions:
         status = str(suggestion.status or "pending")
         items.append(_item(
-            item_id=f"teacher-ai:{suggestion.id}",
+            item_id=_opaque_id("teacher-ai", suggestion.id),
             kind="teacher_ai",
             priority="urgent" if status == "failed" else "next",
             title=f"班级建议：{names.get(suggestion.class_id, '当前班级')}",
@@ -374,16 +396,16 @@ def _read_teacher_ai(actor) -> list[dict]:
     return items
 
 
-def _read_admin_feedback(actor) -> list[dict]:
+def _read_admin_feedback(actor, *, source_limit=ACTION_CENTER_SOURCE_LIMIT) -> list[dict]:
     if _actor_role(actor) != "admin":
         return []
     items = []
-    for record in list_feedback(limit=_safe_source_limit()):
+    for record in list_feedback(limit=_safe_source_limit(source_limit)):
         status = str(record.get("status") or "received")
         if status in {"closed", "resolved"}:
             continue
         items.append(_item(
-            item_id=f"feedback:{record.get('feedback_id')}",
+            item_id=_opaque_id("feedback", record.get("feedback_id")),
             kind="feedback",
             priority="urgent" if status == "received" else "next",
             title=f"反馈：{record.get('subject') or '未命名反馈'}",
@@ -397,30 +419,24 @@ def _read_admin_feedback(actor) -> list[dict]:
     return items
 
 
-def _read_admin_ability(actor) -> list[dict]:
+def _read_admin_ability(actor, *, source_limit=ACTION_CENTER_SOURCE_LIMIT) -> list[dict]:
     if _actor_role(actor) != "admin":
         return []
     rows = (
-        db.session.query(AbilityTrend, User)
-        .join(User, User.student_id == AbilityTrend.student_id)
+        db.session.query(AbilityTrend)
         .filter(AbilityTrend.status.in_(tuple(_ABILITY_STATUS_LABELS)))
         .order_by(AbilityTrend.last_updated.desc(), AbilityTrend.id.desc())
-        .limit(_safe_source_limit())
+        .limit(_safe_source_limit(source_limit))
         .all()
     )
     items = []
-    for trend, student in rows:
+    for trend in rows:
         status = str(trend.status or "failed")
-        student_name = _safe_text(
-            getattr(student, "full_name", None) or getattr(student, "username", None),
-            limit=80,
-            fallback="学生",
-        )
         items.append(_item(
-            item_id=f"ability:{trend.id}",
+            item_id=_opaque_id("ability", trend.id),
             kind="ability",
             priority="urgent" if status == "failed" else "next",
-            title=f"能力分析：{student_name}",
+            title="能力分析：系统队列",
             summary="能力分析需要管理员查看或重新安排。",
             status=status,
             status_label=_ABILITY_STATUS_LABELS.get(status, "待处理"),
@@ -454,7 +470,14 @@ def _read_sources(role: str, actor):
     return ()
 
 
-def build_action_center(actor, *, priority="all", limit=20) -> dict:
+def build_action_center(
+    actor,
+    *,
+    priority="all",
+    limit=20,
+    source_limit=ACTION_CENTER_SOURCE_LIMIT,
+    emit_log=True,
+) -> dict:
     """Build one bounded action payload without mutating application state."""
 
     started = time.perf_counter()
@@ -464,14 +487,19 @@ def build_action_center(actor, *, priority="all", limit=20) -> dict:
     if selected_priority not in {"all", *ACTION_CENTER_PRIORITIES}:
         selected_priority = "all"
     safe_limit = _safe_limit(limit)
+    safe_source_limit = _safe_source_limit(source_limit)
     items = []
     degraded_sources = []
 
     for source, reader in _read_sources(role, actor):
         try:
-            items.extend(reader(actor))
+            items.extend(reader(actor, source_limit=safe_source_limit))
         except Exception as error:
             degraded_sources.append(source)
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             _logger().warning(
                 "action_center_source_failed source=%s role=%s request_id=%s error_type=%s",
                 source,
@@ -512,13 +540,28 @@ def build_action_center(actor, *, priority="all", limit=20) -> dict:
         "items": visible_items[:safe_limit],
         "counts": counts,
     }
-    _logger().info(
-        "action_center_built role=%s request_id=%s item_count=%s visible_count=%s degraded_sources=%s duration_ms=%.2f",
-        role,
-        _request_id(),
-        counts["total"],
-        len(payload["items"]),
-        ",".join(payload["degraded_sources"]) or "none",
-        (time.perf_counter() - started) * 1000,
-    )
+    if emit_log:
+        _logger().info(
+            "action_center_built role=%s request_id=%s item_count=%s visible_count=%s degraded_sources=%s duration_ms=%.2f",
+            role,
+            _request_id(),
+            counts["total"],
+            len(payload["items"]),
+            ",".join(payload["degraded_sources"]) or "none",
+            (time.perf_counter() - started) * 1000,
+        )
     return payload
+
+
+def count_action_center_items(actor) -> int:
+    """Return a bounded nav badge count without emitting a second build log."""
+
+    if _actor_role(actor) is None:
+        return 0
+    payload = build_action_center(
+        actor,
+        limit=ACTION_CENTER_MAX_ITEMS,
+        source_limit=ACTION_CENTER_SOURCE_LIMIT,
+        emit_log=False,
+    )
+    return min(int(payload["counts"].get("total", 0)), 99)

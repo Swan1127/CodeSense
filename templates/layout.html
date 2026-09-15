@@ -153,9 +153,12 @@
                     <li>
                         <a href="{{ url_for('main.action_center') }}"
                             class="navbar-link {% if request.path.startswith('/action-center') %}active{% endif %}"
-                            aria-label="行动中心">
+                            aria-label="行动中心{% if action_center_count %}，{{ action_center_count }} 条待处理{% endif %}">
                             <i class="bi bi-list-check" aria-hidden="true"></i>
                             <span>行动中心</span>
+                            {% if action_center_count %}
+                            <span class="action-center-count notification-count" aria-label="{{ action_center_count }} 条待处理">{{ action_center_count if action_center_count < 100 else '99+' }}</span>
+                            {% endif %}
                         </a>
                     </li>
                     <li>
