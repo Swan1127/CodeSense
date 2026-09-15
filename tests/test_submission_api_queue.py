@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from pathlib import Path
+import logging
 
 import pytest
 
@@ -284,7 +285,9 @@ def test_student_cannot_read_another_students_submission_queue_state(queue_conte
     assert response.status_code == 403
 
 
-def test_queue_unavailability_is_a_stable_submission_error(queue_context, monkeypatch):
+def test_queue_unavailability_is_a_stable_submission_error(
+    queue_context, monkeypatch, caplog
+):
     app, client, assignment_id = queue_context
     app.config.update(
         SUBMISSION_EVALUATION_QUEUE_BACKEND="rq",
@@ -299,14 +302,30 @@ def test_queue_unavailability_is_a_stable_submission_error(queue_context, monkey
         raising=False,
     )
 
-    response = client.post(
-        "/api/submit",
-        json={"assignment_id": assignment_id, "code": "int main(){}"},
-    )
+    with caplog.at_level(logging.WARNING, logger="app"):
+        response = client.post(
+            "/api/submit",
+            json={"assignment_id": assignment_id, "code": "int main(){}"},
+        )
 
     assert response.status_code == 503
     assert response.json["message"] == "提交评测队列暂时不可用，请稍后重试"
     assert "isolated.invalid" not in response.get_data(as_text=True)
+    with app.app_context():
+        submission = Submission.query.one()
+        submission_id = submission.id
+        assert submission.status == "failed"
+        assert submission.feedback == "后台评测启动失败，请稍后重试。"
+
+    warning_messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert f"提交 {submission_id} 的评测队列不可用" in warning_messages
+    assert "isolated.invalid" not in warning_messages
+    assert "int main(){}" not in warning_messages
+
+    status_response = client.get(f"/api/submissions/{submission_id}/status")
+    assert status_response.status_code == 200
+    assert status_response.json["status"] == "failed"
+    assert status_response.json["queue_status"] == "unavailable"
 
 
 def test_ajax_submission_client_handles_queued_status():

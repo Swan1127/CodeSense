@@ -34,6 +34,11 @@ from services.ai_evaluator import AIEvaluator
 from services.api_keys import api_keys  # 导入 API 密钥管理器
 from services.demo_database import current_demo_run_id
 from services.action_center import build_action_center
+from services.knowledge_rag import (
+    build_knowledge_prompt_context,
+    render_knowledge_receipt,
+    retrieve_assignment_knowledge,
+)
 from tasks.submission_tasks import evaluate_submission_async
 from tasks.submission_queue import (
     SubmissionQueueUnavailable,
@@ -341,6 +346,26 @@ def _text_chunks(text, size=120):
         yield text[index:index + size]
 
 
+def _retrieve_knowledge_context(assignment_id):
+    """Retrieve assignment evidence and emit bounded operational metrics."""
+    retrieval = retrieve_assignment_knowledge(assignment_id)
+    metrics = retrieval["metrics"]
+    current_app.logger.info(
+        "knowledge_rag status=%s candidates=%s hits=%s latency_ms=%.2f "
+        "citation_completeness=%.3f no_result_fallback=%s "
+        "retrieval_error_fallback=%s fallback_code=%s",
+        retrieval["status"],
+        metrics["candidate_count"],
+        metrics["hit_count"],
+        metrics["retrieval_latency_ms"],
+        metrics["citation_completeness"],
+        metrics["no_result_fallback"],
+        metrics["retrieval_error_fallback"],
+        (retrieval.get("fallback") or {}).get("code"),
+    )
+    return retrieval
+
+
 @api.route('/submit', methods=['POST'])
 @login_required
 @student_required
@@ -406,6 +431,17 @@ def submit_code():
                     demo_run_id=None,
                 )
             except SubmissionQueueUnavailable:
+                # The row was committed before queueing so the worker can
+                # resolve it by id.  If queueing fails, close the same state
+                # transition here; otherwise the student would poll a
+                # permanently pending submission with no job behind it.
+                submission.status = 'failed'
+                submission.feedback = '后台评测启动失败，请稍后重试。'
+                db.session.commit()
+                current_app.logger.warning(
+                    '提交 %s 的评测队列不可用，已标记为 failed',
+                    submission.id,
+                )
                 return error_response(
                     "提交评测队列暂时不可用，请稍后重试",
                     503,
@@ -727,6 +763,12 @@ def ask_question():
         if not can_access_assignment(assignment, current_user):
             return error_response("您无权访问此作业", 403)
 
+        knowledge_retrieval = _retrieve_knowledge_context(assignment_id)
+        knowledge_prompt_context = build_knowledge_prompt_context(
+            knowledge_retrieval
+        )
+        knowledge_receipt = render_knowledge_receipt(knowledge_retrieval)
+
         # 仅对合法且有权限的请求计入冷却时间；同时容忍旧版或损坏的
         # session 值，避免 fromisoformat 异常把一个普通请求变成 500。
         now = datetime.utcnow()
@@ -762,6 +804,7 @@ def ask_question():
                             assignment_title=assignment.title,
                             assignment_description=assignment.description,
                             language=language,
+                            knowledge_context=knowledge_prompt_context,
                         ):
                             if not chunk:
                                 continue
@@ -783,6 +826,7 @@ def ask_question():
                                 formatted_answer = answer
                         else:
                             formatted_answer = '很抱歉，我无法理解您的问题或无法基于当前代码生成回答。请尝试重新表述您的问题或提供更多代码上下文。'
+                        formatted_answer += knowledge_receipt
 
                         if student_id:
                             try:
@@ -805,7 +849,11 @@ def ask_question():
                             'done': True,
                             'content': formatted_answer,
                             'answer': formatted_answer,
-                            'data': {'answer': formatted_answer},
+                            'data': {
+                                'answer': formatted_answer,
+                                'knowledge_retrieval': knowledge_retrieval,
+                            },
+                            'knowledge_retrieval': knowledge_retrieval,
                         })
                     except Exception as stream_error:
                         db.session.rollback()
@@ -824,7 +872,8 @@ def ask_question():
                 question=question,
                 assignment_title=assignment.title,
                 assignment_description=assignment.description,
-                language=language
+                language=language,
+                knowledge_context=knowledge_prompt_context,
             )
             
             # 输出调试信息
@@ -851,6 +900,8 @@ def ask_question():
                     formatted_answer = f"<p>{escaped_answer}</p>"
             else:
                 formatted_answer = "很抱歉，我无法理解您的问题或无法基于当前代码生成回答。请尝试重新表述您的问题或提供更多代码上下文。"
+
+            formatted_answer += knowledge_receipt
             
             # 记录学生提问日志
             if student_id:
@@ -875,7 +926,8 @@ def ask_question():
                 success=True,
                 message="问题回答成功",
                 data={
-                    'answer': formatted_answer
+                    'answer': formatted_answer,
+                    'knowledge_retrieval': knowledge_retrieval,
                 }
             )
             
