@@ -21,12 +21,12 @@
   <a href="https://github.com/XiaoCow666/CodeSense/stargazers"><img src="https://img.shields.io/github/stars/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub stars"></a>
   <a href="https://github.com/XiaoCow666/CodeSense/network/members"><img src="https://img.shields.io/github/forks/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub forks"></a>
   <a href="https://github.com/XiaoCow666/CodeSense/blob/main/LICENSE"><img src="https://img.shields.io/github/license/XiaoCow666/CodeSense?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/version-v1.1.0-2563eb?style=flat-square" alt="v1.1.0">
+  <img src="https://img.shields.io/badge/version-v1.2.0-2563eb?style=flat-square" alt="v1.2.0">
   <img src="https://img.shields.io/badge/Python-3.8--3.13-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.8–3.13">
   <img src="https://img.shields.io/badge/Flask-2.2.3-000000?style=flat-square&logo=flask&logoColor=white" alt="Flask 2.2.3">
 </p>
 
-> 当前版本：<a href="https://github.com/XiaoCow666/CodeSense/releases/tag/v1.1.0"><code>v1.1.0</code></a>。
+> 当前版本：<a href="https://github.com/XiaoCow666/CodeSense/releases/tag/v1.2.0"><code>v1.2.0</code></a>。
 >
 > 这是 CodeSense Standard Edition 的当前正式版本。发布级变更会记录在 [CHANGELOG.md](CHANGELOG.md)、Git tag 和 GitHub Release 中。
 
@@ -68,6 +68,10 @@
     </td>
   </tr>
 </table>
+
+<p align="center">
+  <img src="docs/assets/codesense-v1.2.0-action-center-ghibli.png" alt="CodeSense v1.2.0 角色化行动中心手绘信息图" width="100%">
+</p>
 
 ## 为什么做这个项目
 
@@ -119,6 +123,10 @@ CodeSense 把代码提交、受限执行、AI 辅导、分阶段练习和学情�
 ### 学习会话连续性与状态可视化
 
 CodeSense 会把引导式学习过程投影为可解释的会话状态：学生离开或刷新页面后，可以从“继续学习”入口回到最近会话，并看到当前阶段、下一步动作和可恢复提示；教师可以在授权范围内查看会话概览、阶段进度，并按“进行中、空闲、已完成、已放弃”筛选。状态接口只读已有学习记录，不改写历史数据，也会明确区分服务器观察时间、已存客户端计时和时间戳来源。
+
+### 角色化行动中心
+
+v1.2.0 增加统一的行动中心，把学生的继续学习、评测与复核提示，教师的待复核与学情动作，以及管理员的反馈、能力与系统治理入口汇总为角色化队列。页面与只读 API 共用同一份聚合结果，按当前身份隔离数据源、限制条数并标记降级来源；返回内容不包含学生代码正文、姓名或联系方式等敏感字段。入口位于 `/action-center`，接口位于 `/api/action-center`。
 
 ### 教师端
 
@@ -388,7 +396,7 @@ CodeSense 使用语义化版本号：
 - <code>MINOR</code>：向后兼容的功能增加；
 - <code>PATCH</code>：向后兼容的问题修复和小幅调整。
 
-当前版本是 [v1.1.0](https://github.com/XiaoCow666/CodeSense/releases/tag/v1.1.0)，增加了学习会话连续性与可解释状态。日常更新状态记录在运行记录中并同步到 GitHub Release；README 不作为日常更新日志，仅在新增重要功能或明显改变使用方式时补充说明。
+当前版本是 [v1.2.0](https://github.com/XiaoCow666/CodeSense/releases/tag/v1.2.0)，增加了角色化行动中心与权限隔离的只读聚合 API。日常更新状态记录在运行记录中并同步到 GitHub Release；README 不作为日常更新日志，仅在新增重要功能或明显改变使用方式时补充说明。
 
 ## Star History
 

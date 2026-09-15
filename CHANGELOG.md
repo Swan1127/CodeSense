@@ -10,6 +10,20 @@ This file records release-level information for users and maintainers. Versions 
 
 Future unreleased changes will be listed here.
 
+## [1.2.0] - 2026-09-15
+
+### Added
+
+- 增加角色化行动中心，统一展示学生、教师和管理员的下一步动作。
+- 增加 `/action-center` 页面与 `/api/action-center` 只读接口，按角色隔离数据源、限制返回条数并标记降级来源。
+- 增加行动中心全局入口、未读数量徽标、结构化日志和不暴露业务标识的稳定链接。
+- README 增加行动中心说明与 `v1.2.0` 发布信息图。
+
+### Verification
+
+- 通过 6 项行动中心测试、66 项相关回归测试和 649 项全量已跟踪测试。
+- 完成窄屏、无障碍焦点、API 响应、编译和差异检查；未增加数据库迁移或新的凭据依赖。
+
 ## [1.1.0] - 2026-09-14
 
 ### Added
@@ -30,6 +44,7 @@ CodeSense 标准版首个正式版本。
 
 First formal release of the CodeSense Standard Edition.
 
-[Unreleased]: https://github.com/XiaoCow666/CodeSense/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/XiaoCow666/CodeSense/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/XiaoCow666/CodeSense/releases/tag/v1.2.0
 [1.1.0]: https://github.com/XiaoCow666/CodeSense/releases/tag/v1.1.0
 [1.0.0]: https://github.com/XiaoCow666/CodeSense/releases/tag/v1.0.0
