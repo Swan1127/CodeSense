@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/caifusi-logo-wordmark-v1.png" alt="Caifusi existing brand logo" width="480">
+  <img src="docs/assets/codesense-logo-final.png" alt="CodeSense logo" width="480">
 </p>
 
 <h1 align="center">CodeSense</h1>
@@ -23,14 +23,14 @@
   <a href="https://github.com/XiaoCow666/CodeSense/stargazers"><img src="https://img.shields.io/github/stars/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub stars"></a>
   <a href="https://github.com/XiaoCow666/CodeSense/network/members"><img src="https://img.shields.io/github/forks/XiaoCow666/CodeSense?style=flat-square&logo=github" alt="GitHub forks"></a>
   <a href="https://github.com/XiaoCow666/CodeSense/blob/main/LICENSE"><img src="https://img.shields.io/github/license/XiaoCow666/CodeSense?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/version-v1.0.0-2563eb?style=flat-square" alt="v1.0.0">
-  <img src="https://img.shields.io/badge/Python-3.8%2B-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
-  <img src="https://img.shields.io/badge/Flask-2.2.3-000000?style=flat-square&logo=flask&logoColor=white" alt="Flask 2.2.3">
+  <img src="https://img.shields.io/badge/version-v2.2.0-2563eb?style=flat-square" alt="v2.2.0">
+  <img src="https://img.shields.io/badge/Python-3.8--3.14-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.8–3.14">
+  <img src="https://img.shields.io/badge/Flask-2.3.3-000000?style=flat-square&logo=flask&logoColor=white" alt="Flask 2.3.3">
 </p>
 
-> **Release status: formal release** · **Current version: `v1.0.0`**
+> **Release status: formal release** · **Current version: `v2.2.0`**
 >
-> `v1.0.0` is the first formal release of the CodeSense Standard Edition. Future releases use `vMAJOR.MINOR.PATCH` and are tracked in GitHub Releases/Tags and [CHANGELOG.md](CHANGELOG.md).
+> `v2.2.0` lets students search their own learning memory from Home, the knowledge path, and an assignment, then return to the original submission and teacher feedback. AI guidance links cited feedback to its submission, and outdated or withdrawn sources no longer appear. `v2.1.0` lets teachers publish, revise, and withdraw learning resources for assignment knowledge points. Students can open them from their knowledge path, and AI guidance cites the current source version. Withdrawn resources stop appearing in student views and AI evidence. `v2.0.1` improves mobile reading for assignments, submissions, knowledge profiles, class details, feedback, and import results. The evaluation waiting page follows the actual task state and links back to submission history. Feedback and notification times show Beijing time, and the public code editor demo is available again. The graph, learning-memory, and percentage-score workflows introduced in `v2.0.0` remain available. Releases use `vMAJOR.MINOR.PATCH` and are tracked in GitHub Releases/Tags and [CHANGELOG.md](CHANGELOG.md).
 
 ## Contents
 
@@ -69,6 +69,30 @@ These screenshots are from the runnable pages in the repository, not concept moc
     </td>
   </tr>
 </table>
+
+<p align="center">
+  <img src="docs/assets/codesense-v1.5.0-student-learning-memory.png" alt="CodeSense v1.5.0 student learning memory and knowledge paths" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/assets/codesense-v1.6.0-knowledge-intervention.png" alt="CodeSense v1.6.0 knowledge intervention and learning memory governance" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/assets/codesense-v2.0.0-learning-action-loop.png" alt="CodeSense v2.0.0 student learning suggestions and teacher class actions" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/assets/codesense-v2.2.0-learning-memory-review.png" alt="CodeSense v2.2.0 learning memory, original submissions, and teacher feedback" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/assets/codesense-v2.1.0-learning-resources.png" alt="CodeSense v2.1.0 learning resources for teachers, students, and AI guidance" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/assets/codesense-v2.0.1-page-experience.png" alt="CodeSense v2.0.1 page improvements for students, teachers, and administrators" width="100%">
+</p>
 
 ## Public demo
 
@@ -127,7 +151,28 @@ Prompt constraints and the `sanitize_response` filter are used in guided-learnin
 - Provides knowledge-point scores, individual trends, and class views for follow-up teaching;
 - Keeps course assignment scores and ability-profile scores separate: assignment scores are currently recorded on a 0–5 scale, while ability scores use a 0–100 scale.
 
-### 4. Teacher management
+### 4. Student learning memory and knowledge paths
+
+- Builds a private, versioned learning index from the current student's evaluated feedback and knowledge-point records;
+- Uses assignment-scoped personal retrieval in student questions and Code Studio tutoring, with source, scope, and index-version receipts;
+- Supports explicit rebuilds, durable source revocation, retry after a failed rebuild, and offline retrieval evaluation;
+- Shows students a permission-aware learning path and teachers an aggregate class knowledge-coverage view with traceable edge provenance;
+- Connects graph context and student memory to tutoring while keeping both sources assignment-scoped and private.
+
+### 5. Knowledge-point teaching actions
+
+- Students can inspect source status, revoke one learning-memory source, and follow an update action when an index becomes stale;
+- Teachers can open targeted practice from a class knowledge-point reminder;
+- AI teaching suggestions preserve server-owned assignment links and keep suggested assignments within the current teacher's scope.
+
+#### Role-based action center
+
+- Students can open a recommended assignment for a knowledge point and start or refresh their private learning memory from the action center;
+- Teachers can open class knowledge focus from aggregate mastery signals without seeing private student records;
+- Teacher memory reminders appear once in the action center and clear when a student completes the update;
+- The page and read-only API use the same role-scoped actions, while administrators keep their feedback and system queues.
+
+### 6. Teacher management
 
 - Assignment creation, editing, test-case, and submission management;
 - Class, roster, and teacher invitation workflows;
@@ -135,7 +180,7 @@ Prompt constraints and the `sanitize_response` filter are used in guided-learnin
 - AI-assisted assignment formatting and learning suggestions;
 - Separate permissions for students, teachers, and administrators.
 
-### 5. Interaction and experience
+### 7. Interaction and experience
 
 - Browser-based code editing; pages using Monaco Editor load it on demand;
 - Step selection, code preview, and conversation interactions in guided-learning pages;
@@ -154,7 +199,9 @@ flowchart LR
     F --> G[Correction, explanation, and resubmission]
     G --> C
     E --> H[Ability profile and knowledge records]
-    H --> I[Teacher learning view]
+    H --> I[Private student learning memory]
+    I --> J[Scoped retrieval and AI tutoring]
+    H --> K[Aggregate teacher knowledge view]
 ```
 
 ## Three-stage learning flow
@@ -223,7 +270,7 @@ flowchart LR
 
 ### Requirements
 
-- Python 3.8 or later;
+- Python 3.8–3.14 (Flask/Werkzeug/Flask-Session upgraded to 2.3.x/0.8.0 to support Python 3.14; Python 3.8–3.13 declared support only, not actually verified)
 - An executable `g++` on `PATH` for C++ assessment;
 - SQLite for a simple development setup, or a configured `DATABASE_URL` for production;
 - A Zhipu or OpenAI API key for AI guidance, code advice, and selected learning analytics.
@@ -292,9 +339,21 @@ Open <http://127.0.0.1:5000/login>. Without an AI key, login, basic pages, and f
 
 ### 5. Run tests
 
+Install the test-only dependencies before running the test suite:
+
+```powershell
+python -m pip install -r requirements-test.txt
+```
+
 ```bash
 python -m pytest tests -q
 ```
+
+> Compatibility note: Flask/Werkzeug upgraded from 2.2.3 to 2.3.x, Flask-Session from 0.4.0 to 0.8.0, to support Python 3.12+ (ast.Str deprecated in 3.12, removed in Python 3.14; Flask 2.3 removed the `session_cookie_name` app attribute, which Flask-Session 0.4.0 depended on during initialization). Flask-Session 0.8.0 uses standard session modified detection, no additional hooks required.
+>
+> - **Declared support**: Python 3.8–3.14
+> - **Verified to start**: Python 3.14.7 (`python run.py` starts successfully, `/login` returns 200); Python 3.8–3.13 not actually verified
+> - **Targeted regression passed**: 9 tests in `tests/test_demo_guided_learning.py`, 4 tests in `tests/test_compile_error_scoring.py`, 6 tests in `tests/test_stage3_forum_trace.py`; full test suite pending execution
 
 Tests involving C++ assessment require `g++`. Tests that call a real AI service also require the corresponding environment configuration.
 
@@ -329,6 +388,8 @@ These are common entry points. The implementations under `routes/` are the sourc
 | `/thinking/api/stage2/verify` | `POST` | Verify Stage 2 step assembly. |
 | `/thinking/api/stage3/chat` | `POST` | Continue the Stage 3 conversation. |
 
+See [`STAGE1_VERIFICATION.md`](STAGE1_VERIFICATION.md) for the Stage 1 request example, local test command, and verification boundary.
+
 ## Security boundaries and limitations
 
 - Student code enters a constrained compile-and-run flow, but the current implementation should not be treated as a complete hostile-code isolation system; public deployments must add OS- or container-level isolation.
@@ -345,7 +406,7 @@ CodeSense follows semantic versioning:
 - `MINOR`: backward-compatible feature additions;
 - `PATCH`: backward-compatible fixes and small adjustments.
 
-The current version is **`v1.0.0`**, the first formal release of the CodeSense Standard Edition. Every future release should update [CHANGELOG.md](CHANGELOG.md) and use a matching Git tag and GitHub Release. Published release records should not be silently rewritten.
+The current version is **`v2.2.0`**. Students can find their own learning feedback, return to the original submission, and continue the teacher conversation. AI guidance links cited feedback to its source; edited and withdrawn sources are filtered from current results.  Students can read assignments, submission history, and knowledge profiles on mobile screens and return to submission history while an evaluation is running. Teachers can review class responses more clearly, and administrators can inspect feedback and import results on mobile screens. Every release updates [CHANGELOG.md](CHANGELOG.md) and uses a matching Git tag and GitHub Release.
 
 ## Star History
 

@@ -71,6 +71,53 @@ class Config(object):
     PRESET_SCAN_ENABLED = _env_bool('PRESET_SCAN_ENABLED', True)
     PRESET_SCAN_BATCH_SIZE = _env_int('PRESET_SCAN_BATCH_SIZE', 20, minimum=1, maximum=200)
 
+    # Formal-account ability analysis can be moved to an external RQ worker.
+    # The legacy thread backend remains the default until worker deployment is
+    # reviewed.  Demo sessions intentionally keep their isolated thread path.
+    ABILITY_ANALYSIS_QUEUE_BACKEND = os.environ.get(
+        'ABILITY_ANALYSIS_QUEUE_BACKEND', 'thread'
+    ).strip().lower()
+    ABILITY_ANALYSIS_REDIS_URL = os.environ.get('ABILITY_ANALYSIS_REDIS_URL', '')
+    ABILITY_ANALYSIS_QUEUE_NAME = os.environ.get(
+        'ABILITY_ANALYSIS_QUEUE_NAME', 'ability-analysis'
+    )
+    ABILITY_ANALYSIS_JOB_TIMEOUT = _env_int(
+        'ABILITY_ANALYSIS_JOB_TIMEOUT', 180, minimum=30, maximum=900
+    )
+    ABILITY_ANALYSIS_QUEUE_TTL = _env_int(
+        'ABILITY_ANALYSIS_QUEUE_TTL', 300, minimum=30, maximum=86400
+    )
+    ABILITY_ANALYSIS_RESULT_TTL = _env_int(
+        'ABILITY_ANALYSIS_RESULT_TTL', 3600, minimum=60, maximum=604800
+    )
+    ABILITY_ANALYSIS_FAILURE_TTL = _env_int(
+        'ABILITY_ANALYSIS_FAILURE_TTL', 86400, minimum=300, maximum=2592000
+    )
+
+    # Formal-account submission evaluation can be moved to an external RQ
+    # worker.  The in-process path remains the default until deployment is
+    # reviewed; demo runs always keep their temporary-database thread path.
+    SUBMISSION_EVALUATION_QUEUE_BACKEND = os.environ.get(
+        'SUBMISSION_EVALUATION_QUEUE_BACKEND', 'thread'
+    ).strip().lower()
+    SUBMISSION_EVALUATION_REDIS_URL = os.environ.get(
+        'SUBMISSION_EVALUATION_REDIS_URL', ''
+    )
+    SUBMISSION_EVALUATION_QUEUE_NAME = os.environ.get(
+        'SUBMISSION_EVALUATION_QUEUE_NAME', 'submission-evaluation'
+    )
+    SUBMISSION_EVALUATION_JOB_TIMEOUT = _env_int(
+        'SUBMISSION_EVALUATION_JOB_TIMEOUT', 300, minimum=30, maximum=900
+    )
+    SUBMISSION_EVALUATION_QUEUE_TTL = _env_int(
+        'SUBMISSION_EVALUATION_QUEUE_TTL', 300, minimum=30, maximum=86400
+    )
+    SUBMISSION_EVALUATION_RESULT_TTL = _env_int(
+        'SUBMISSION_EVALUATION_RESULT_TTL', 3600, minimum=60, maximum=604800
+    )
+    SUBMISSION_EVALUATION_FAILURE_TTL = _env_int(
+        'SUBMISSION_EVALUATION_FAILURE_TTL', 86400, minimum=300, maximum=2592000
+    )
     # 请求与静态文件运行参数
     ACCESS_LOG_ENABLED = _env_bool('ACCESS_LOG_ENABLED', True)
     SLOW_REQUEST_MS = _env_int('SLOW_REQUEST_MS', 800, minimum=50, maximum=60000)
@@ -80,6 +127,23 @@ class Config(object):
     # AI API配置 - 从环境变量读取
     ZHIPU_API_KEY = os.environ.get('ZHIPU_API_KEY', '')
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+
+    # 密码找回邮件配置。未配置邮件服务器时，管理员仍可生成一次性重置链接。
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', '')
+    MAIL_PORT = _env_int('MAIL_PORT', 587, minimum=1, maximum=65535)
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', '')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')
+    MAIL_USE_TLS = _env_bool('MAIL_USE_TLS', True)
+    MAIL_USE_SSL = _env_bool('MAIL_USE_SSL', False)
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', '')
+    MAIL_TIMEOUT_SECONDS = _env_int('MAIL_TIMEOUT_SECONDS', 10, minimum=1, maximum=60)
+    APP_BASE_URL = os.environ.get('APP_BASE_URL', '').rstrip('/')
+    PASSWORD_RESET_TOKEN_TTL_MINUTES = _env_int(
+        'PASSWORD_RESET_TOKEN_TTL_MINUTES', 30, minimum=5, maximum=1440
+    )
+    PASSWORD_RESET_REQUEST_INTERVAL_SECONDS = _env_int(
+        'PASSWORD_RESET_REQUEST_INTERVAL_SECONDS', 60, minimum=0, maximum=86400
+    )
     
     # 上传文件配置
     UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -91,7 +155,30 @@ class Config(object):
     @staticmethod
     def init_app(app):
         """初始化应用配置"""
-        pass
+        if app.config.get('ABILITY_ANALYSIS_QUEUE_BACKEND') not in {'thread', 'rq'}:
+            raise RuntimeError(
+                'ABILITY_ANALYSIS_QUEUE_BACKEND must be either thread or rq'
+            )
+
+        if (
+            app.config.get('ABILITY_ANALYSIS_QUEUE_BACKEND') == 'rq'
+            and not app.config.get('ABILITY_ANALYSIS_REDIS_URL')
+        ):
+            raise RuntimeError(
+                'ABILITY_ANALYSIS_REDIS_URL is required when the RQ backend is enabled'
+            )
+        if app.config.get('SUBMISSION_EVALUATION_QUEUE_BACKEND') not in {'thread', 'rq'}:
+            raise RuntimeError(
+                'SUBMISSION_EVALUATION_QUEUE_BACKEND must be either thread or rq'
+            )
+
+        if (
+            app.config.get('SUBMISSION_EVALUATION_QUEUE_BACKEND') == 'rq'
+            and not app.config.get('SUBMISSION_EVALUATION_REDIS_URL')
+        ):
+            raise RuntimeError(
+                'SUBMISSION_EVALUATION_REDIS_URL is required when the RQ backend is enabled'
+            )
 
 
 class DevelopmentConfig(Config):
@@ -122,6 +209,11 @@ class TestingConfig(Config):
     TESTING = True
     DB_AUTO_INIT = True
     DB_ENSURE_INDEXES = True
+
+    # 测试使用临时 SQLite 库；禁止进程内后台线程跨测试持有数据库连接。
+    # 需要验证 worker 的测试应显式覆盖这些开关，并使用隔离的队列/数据库。
+    ASYNC_TASKS_ENABLED = False
+    PRESET_SCAN_ENABLED = False
     
     # 测试环境使用独立的SQLite数据库
     SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL') or \

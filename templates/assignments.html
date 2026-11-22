@@ -10,7 +10,9 @@
             <p class="page-subtitle">管理所有编程作业题目，查看提交情况和评分数据</p>
         </div>
         <div class="d-flex gap-2">
-            <!-- 管理员不再需要快捷添加按钮，统一由教师管理 -->
+            <a href="{{ url_for('assignments.export_question_bank', format='xlsx') }}" class="btn btn-outline-success">
+                <i class="bi bi-file-earmark-excel"></i> 导出题库
+            </a>
         </div>
     </div>
 </div>
@@ -21,16 +23,16 @@
         <div class="d-flex justify-content-between align-items-center flex-wrap">
             <!-- 搜索表单 -->
             <form action="{{ url_for('assignments.manage_assignments') }}" method="get" class="d-flex me-2 flex-grow-1">
-                <input type="text" class="form-control me-2" placeholder="搜索作业标题或描述..." name="search"
+                <input type="text" class="form-control me-2" placeholder="搜索作业标题或描述..." name="search" aria-label="搜索作业"
                     value="{{ search_term if search_term else '' }}">
                 <input type="hidden" name="sort_by" value="{{ sort_by if sort_by else '' }}">
                 <input type="hidden" name="sort_order" value="{{ sort_order if sort_order else '' }}">
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" class="btn btn-primary flex-shrink-0 text-nowrap">
                     <i class="bi bi-search"></i> 搜索
                 </button>
                 {% if search_term %}
                 <a href="{{ url_for('assignments.manage_assignments', sort_by=sort_by, sort_order=sort_order) }}"
-                    class="btn btn-secondary ms-2">
+                    class="btn btn-secondary ms-2 flex-shrink-0 text-nowrap">
                     <i class="bi bi-x-circle"></i> 清除
                 </a>
                 {% endif %}
@@ -134,7 +136,7 @@
                         <th width="100">出题教师</th>
                         <th width="120">发布日期</th>
                         <th width="150">状态/倒计时</th>
-                        <th width="100">提交/平均分</th>
+                        <th width="100">提交/平均分（0–100）</th>
                         <th width="150">操作</th>
                     </tr>
                 </thead>
@@ -185,7 +187,7 @@
         </td>
         <td>
             <small class="text-muted">提交: {{ assignment.count }}</small><br>
-            <small class="text-info">平均: {{ '%.2f' % assignment.average_score if assignment.average_score else '0.00'
+            <small class="text-info">平均: {{ '%.2f' % assignment_average_scores.get(assignment.id, 0) if assignment_average_scores.get(assignment.id) else '0.00'
                 }}</small>
         </td>
         <td>
@@ -200,6 +202,7 @@
                 </a>
                 <form action="{{ url_for('assignments.delete_assignment', assignment_id=assignment.id) }}" method="post"
                     onsubmit="return confirm('确定要删除此作业吗？此操作不可撤销。');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger btn-sm">
                         <i class="bi bi-trash"></i> 删除
                     </button>

@@ -3,12 +3,52 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
+import time
+from contextlib import nullcontext
 
 from models import Assignment, Submission, SystemLog, TestCase as TC, User, db
 from services.demo_database import activate_demo_run, is_active_demo_run
-from utils.code_evaluator import evaluate_cpp_code, llm_evaluator
+from utils import code_evaluator
+from utils.code_evaluator import evaluate_cpp_code
 from utils.sandbox_runner import run_test_cases
+from utils.scoring import (
+    normalize_evaluation_score,
+    normalize_feedback_text,
+    normalize_structured_feedback_scores,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+def _log_submission_evaluation_event(
+    event: str,
+    submission_id: int,
+    started_at: float,
+    *,
+    level: int = logging.INFO,
+    **fields,
+) -> None:
+    """Write a bounded lifecycle signal without logging submission content."""
+
+    try:
+        from flask import current_app, has_app_context
+
+        target_logger = current_app.logger if has_app_context() else logger
+    except RuntimeError:
+        target_logger = logger
+    if not target_logger.isEnabledFor(level):
+        return
+    parts = [
+        "submission_evaluation",
+        f"event={event}",
+        f"submission_id={int(submission_id)}",
+        f"elapsed_ms={int((time.perf_counter() - started_at) * 1000)}",
+    ]
+    parts.extend(f"{key}={value}" for key, value in fields.items())
+    target_logger.log(level, " ".join(parts))
 
 
 def _demo_database_is_available(demo_run_id: str | None) -> bool:
@@ -18,21 +58,9 @@ def _demo_database_is_available(demo_run_id: str | None) -> bool:
 
 
 def _normalise_score(score) -> int:
-    """Keep every persisted submission score inside the product's 0–5 scale."""
+    """Keep every persisted submission score inside the 0–100 scale."""
 
-    try:
-        raw_score = float(score)
-        # The current heuristic evaluator already returns 0–5. The LLM and
-        # legacy evaluator paths return 0–100, while a few older integrations
-        # used 0–10. Normalize those representations before rounding instead
-        # of clipping every value above 5 to a false perfect score.
-        if raw_score > 10:
-            raw_score /= 20.0
-        elif raw_score > 5:
-            raw_score /= 2.0
-        return max(0, min(5, int(round(raw_score))))
-    except (TypeError, ValueError):
-        raise ValueError("评测器未返回有效分数")
+    return normalize_evaluation_score(score, scale=100)
 
 
 def _refresh_assignment_stats(assignment: Assignment) -> None:
@@ -75,7 +103,15 @@ def _refresh_user_stats(student_id: str) -> None:
     user.user_ascore = sum(scores) / len(scores) if scores else 0.0
 
 
-def _mark_submission_failed(submission_id: int, message: str) -> None:
+def refresh_student_learning_index(student_id):
+    """Refresh the persisted learning index after a submission is evaluated."""
+
+    from services.student_vector_store import rebuild_student_vector_index_with_retry
+
+    return rebuild_student_vector_index_with_retry(student_id)
+
+
+def mark_submission_failed(submission_id: int, message: str) -> None:
     """Mark one submission failed in the already-bound database."""
 
     submission = db.session.get(Submission, submission_id)
@@ -86,17 +122,58 @@ def _mark_submission_failed(submission_id: int, message: str) -> None:
     db.session.commit()
 
 
-def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=None):
+def evaluate_submission_async(
+    app, submission_id, assignment_title, demo_run_id=None, *, run_inline=False
+):
     """异步评测学生提交的代码。
 
     ``demo_run_id`` 为空时使用正式数据库；公开体验传入该值后，线程会
     先切换到对应的临时数据库，并在会话失效时直接停止。
     """
 
+    if (
+        not run_inline
+        and not demo_run_id
+        and app.config.get("SUBMISSION_EVALUATION_QUEUE_BACKEND", "thread")
+        == "rq"
+    ):
+        from tasks.submission_queue import (
+            SubmissionQueueUnavailable,
+            enqueue_submission_evaluation,
+        )
+
+        try:
+            return enqueue_submission_evaluation(app, submission_id)
+        except SubmissionQueueUnavailable:
+            with app.app_context():
+                try:
+                    mark_submission_failed(
+                        submission_id,
+                        "提交评测队列暂时不可用，请稍后重试",
+                    )
+                except Exception:
+                    db.session.rollback()
+            raise
+
     def _evaluate():
-        with app.app_context():
+        started_at = time.perf_counter()
+        from flask import current_app, has_app_context
+
+        evaluation_context = (
+            nullcontext()
+            if has_app_context() and current_app._get_current_object() is app
+            else app.app_context()
+        )
+        with evaluation_context:
+            _log_submission_evaluation_event("started", submission_id, started_at)
             if demo_run_id and not activate_demo_run(demo_run_id):
                 print("公开体验会话已失效，跳过提交评测")
+                _log_submission_evaluation_event(
+                    "skipped",
+                    submission_id,
+                    started_at,
+                    reason="demo_run_unavailable",
+                )
                 return
 
             try:
@@ -124,13 +201,19 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                         code, assignment_title=assignment_title
                     )
                     score = _normalise_score(score)
+                    feedback = normalize_feedback_text(feedback)
 
-                    if hasattr(llm_evaluator, "_last_structured_data"):
-                        structured_data = llm_evaluator._last_structured_data
-                        if structured_data:
-                            submission.ai_feedback = json.dumps(
-                                structured_data, ensure_ascii=False
-                            )
+                    structured_data = code_evaluator.get_last_structured_data()
+                    if structured_data:
+                        structured_data = normalize_structured_feedback_scores(
+                            structured_data
+                        )
+                        for field, value in structured_data.items():
+                            if isinstance(value, str):
+                                structured_data[field] = normalize_feedback_text(value)
+                        submission.ai_feedback = json.dumps(
+                            structured_data, ensure_ascii=False
+                        )
                     elif isinstance(feedback, str) and (
                         "【" in feedback or "改进建议" in feedback
                     ):
@@ -140,12 +223,7 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                     submission.feedback = feedback
                 except Exception as ai_error:
                     print(f"AI 评估过程出错: {type(ai_error).__name__}")
-                    if demo_run_id:
-                        raise RuntimeError("AI 评测失败，请稍后重试") from ai_error
-                    # 正式账户保留历史兼容行为；公开体验永远不会走到这条
-                    # 默认分支，避免把失败伪装成成功分数。
-                    submission.score = 1
-                    submission.feedback = "AI 评估过程中出错，请稍后重试。"
+                    raise RuntimeError("AI 评测失败，请稍后重试") from ai_error
 
                 # 2. 沙箱测试用例评判。
                 try:
@@ -169,11 +247,13 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                             sandbox_score = (
                                 sandbox_result["passed"]
                                 / sandbox_result["total"]
-                                * 5
+                                * 100
                             )
                             final_score = sandbox_score
-                            if sandbox_result["status"] == "error":
-                                final_score = min(final_score, 1)
+                            if sandbox_result["status"] == "compile_error":
+                                final_score = min(final_score, 20)
+                            elif sandbox_result["status"] == "error":
+                                final_score = min(final_score, 20)
                             submission.score = _normalise_score(final_score)
                             print(
                                 "沙箱评判完成: "
@@ -209,7 +289,7 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                             KnowledgePointScore.update_score(
                                 student_id=student_id,
                                 knowledge_point=knowledge_point.knowledge_point,
-                                assignment_score=submission.score * 20,
+                                assignment_score=submission.score,
                                 difficulty=knowledge_point.difficulty,
                                 weight=knowledge_point.weight,
                             )
@@ -231,7 +311,7 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                                 KnowledgePointScore.update_score(
                                     student_id=student_id,
                                     knowledge_point=kp_data["knowledge_point"],
-                                    assignment_score=submission.score * 20,
+                                    assignment_score=submission.score,
                                     difficulty=kp_data.get("difficulty", 1.0),
                                     weight=kp_data.get("weight", 1.0),
                                 )
@@ -261,6 +341,22 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                     return
                 db.session.commit()
 
+                from services.student_vector_store import StudentVectorRebuildError
+
+                try:
+                    vector_snapshot = refresh_student_learning_index(student_id)
+                    print(
+                        f"学生 {student_id} 学习索引已更新 revision="
+                        f"{vector_snapshot['revision']}"
+                    )
+                except StudentVectorRebuildError as vector_error:
+                    print(
+                        f"学生 {student_id} 学习索引更新失败: "
+                        f"{type(vector_error).__name__}"
+                    )
+                    if demo_run_id:
+                        raise RuntimeError("学习记录索引更新失败") from vector_error
+
                 # 公开体验不写正式系统日志，也不把临时访客动作混入
                 # 管理端审计数据。
                 if not demo_run_id:
@@ -268,28 +364,83 @@ def evaluate_submission_async(app, submission_id, assignment_title, demo_run_id=
                         log_type="评测完成",
                         content=(
                             f"提交 {submission_id} 评测已完成，"
-                            f"得分：{submission.score}/5"
+                            f"得分：{submission.score}/100"
                         ),
                         user_id=student_id,
                         icon="bi bi-check-circle-fill",
                     )
+                _log_submission_evaluation_event(
+                    "finished",
+                    submission_id,
+                    started_at,
+                    state=submission.status,
+                    sandbox_status=submission.sandbox_status or "none",
+                )
                 print(f"提交 {submission_id} 评测全部完成")
+                return "evaluated"
 
             except Exception as error:
                 print(f"评测线程崩溃: {type(error).__name__}")
+                _log_submission_evaluation_event(
+                    "failed",
+                    submission_id,
+                    started_at,
+                    level=logging.WARNING,
+                    error_type=type(error).__name__,
+                )
                 if not _demo_database_is_available(demo_run_id):
                     return
                 try:
                     db.session.rollback()
-                    _mark_submission_failed(
+                    mark_submission_failed(
                         submission_id,
                         "AI 评测失败，请稍后重试。" if demo_run_id else "后台评测发生严重错误，请稍后重试。",
                     )
                 except Exception:
                     db.session.rollback()
 
+            return "failed"
+
+    if run_inline:
+        return _evaluate()
+
     thread = threading.Thread(target=_evaluate)
     thread.daemon = True
     thread.start()
     print(f"已启动后台评测线程 - 提交 ID: {submission_id}")
     return thread
+
+
+def run_submission_evaluation(app, submission_id, assignment_title=None, demo_run_id=None):
+    """Run one submission evaluation inline inside a worker or app context."""
+
+    result = evaluate_submission_async(
+        app,
+        submission_id,
+        assignment_title,
+        demo_run_id=demo_run_id,
+        run_inline=True,
+    )
+    if result == "failed":
+        raise RuntimeError("submission evaluation failed")
+    return result or "evaluated"
+
+
+def run_formal_submission_evaluation(submission_id):
+    """RQ entry point; resolve all business data inside the worker context."""
+
+    from flask import current_app
+
+    submission_id = int(submission_id)
+    submission = db.session.get(Submission, submission_id)
+    if submission is None:
+        raise RuntimeError("提交记录不存在")
+    assignment = db.session.get(Assignment, submission.assignment_id)
+    if assignment is None:
+        raise RuntimeError("提交对应的作业不存在")
+    return run_submission_evaluation(
+        current_app._get_current_object(),
+        submission_id,
+        assignment.title,
+        None,
+    )

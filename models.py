@@ -10,8 +10,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_sqlalchemy.session import Session as FlaskSQLAlchemySession
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin  # 添加UserMixin导入
-from sqlalchemy import Index, inspect
+from sqlalchemy import Index, UniqueConstraint, and_, inspect, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
+from utils.scoring import normalize_mixed_score, normalize_submission_score, normalized_submission_score_sql
 
 # 班级默认配置
 DEFAULT_GRADE = '2024'
@@ -28,6 +29,20 @@ class CodeSenseSession(FlaskSQLAlchemySession):
 
 
 db = SQLAlchemy(session_options={'class_': CodeSenseSession})
+
+
+def student_average_score_sql():
+    """读取百分制综合分，并兼容有时间记录的历史提交。"""
+    submission_average = select(db.func.avg(normalized_submission_score_sql(
+        Submission.score, Submission.submitted_at,
+    ))).where(
+        Submission.student_id == User.student_id,
+        Submission.score.isnot(None),
+    ).correlate(User).scalar_subquery()
+    return db.case(
+        (and_(User.user_ascore > 5, User.user_ascore <= 100), User.user_ascore),
+        else_=submission_average,
+    )
 
 
 def _database_cache_scope():
@@ -56,6 +71,9 @@ class Class(db.Model):
     teacher_id = db.Column(db.String(20), db.ForeignKey('users.student_id', ondelete='SET NULL'), nullable=True)
     teacher_bind_code = db.Column(db.String(20), unique=True, nullable=True)
     teacher_bind_code_updated_at = db.Column(db.DateTime, nullable=True)
+    # 学生加入码与教师绑定码分开，避免把“教师管理权限”和“学生入班权限”混在一起。
+    student_join_code = db.Column(db.String(20), unique=True, nullable=True)
+    student_join_code_updated_at = db.Column(db.DateTime, nullable=True)
     student_count = db.Column(db.Integer, default=0)  # 学生数量
     avg_score = db.Column(db.Float, default=0.0)  # 班级平均分
     total_submissions = db.Column(db.Integer, default=0)  # 班级总提交数
@@ -93,6 +111,31 @@ class Class(db.Model):
         self.teacher_bind_code = self._unique_bind_code()
         self.teacher_bind_code_updated_at = dt.utcnow()
         return self.teacher_bind_code
+
+    @staticmethod
+    def _generate_student_join_code():
+        """生成便于学生输入的班级加入码。"""
+        return 'J' + secrets.token_urlsafe(6).replace('-', '').replace('_', '')[:7].upper()
+
+    @classmethod
+    def _unique_student_join_code(cls):
+        while True:
+            code = cls._generate_student_join_code()
+            if not cls.query.filter_by(student_join_code=code).first():
+                return code
+
+    def ensure_student_join_code(self):
+        """确保班级存在学生加入码。"""
+        if not self.student_join_code:
+            self.student_join_code = self._unique_student_join_code()
+            self.student_join_code_updated_at = dt.utcnow()
+        return self.student_join_code
+
+    def reset_student_join_code(self):
+        """重置学生加入码，使旧加入码立即失效。"""
+        self.student_join_code = self._unique_student_join_code()
+        self.student_join_code_updated_at = dt.utcnow()
+        return self.student_join_code
     
     def get_statistics(self):
         """获取班级统计信息"""
@@ -101,13 +144,16 @@ class Class(db.Model):
         student_stats = db.session.query(
             db.func.count(User.student_id),
             db.func.coalesce(db.func.sum(User.submit_count), 0),
-            db.func.coalesce(db.func.avg(User.user_ascore), 0),
+            db.func.coalesce(db.func.avg(db.func.coalesce(student_average_score_sql(), 0)), 0),
             db.func.coalesce(
                 db.func.sum(db.case((User.submit_count > 0, 1), else_=0)),
                 0,
             ),
         ).filter(
-            User.class_name == self.name,
+            or_(
+                User.class_id == self.id,
+                and_(User.class_id.is_(None), User.class_name == self.name),
+            ),
             User.usertype == '学生',
         ).one()
 
@@ -123,7 +169,13 @@ class Class(db.Model):
         
         # 计算完成作业数 - 使用当前模块避免循环导入
         assignments_completed = db.session.query(Submission.assignment_id).join(User)\
-                                .filter(User.class_name == self.name)\
+                                .filter(
+                                    or_(
+                                        User.class_id == self.id,
+                                        and_(User.class_id.is_(None), User.class_name == self.name),
+                                    ),
+                                    User.usertype == '学生',
+                                )\
                                 .distinct().count()
         
         return {
@@ -136,15 +188,28 @@ class Class(db.Model):
     
     def get_top_students(self, limit=5):
         """获取班级前N名学生"""
-        return self.students.filter_by(usertype='学生')\
-                           .order_by(User.user_ascore.desc())\
-                           .limit(limit).all()
+        return User.query.filter(
+            or_(
+                User.class_id == self.id,
+                and_(User.class_id.is_(None), User.class_name == self.name),
+            ),
+            User.usertype == '学生',
+        ).order_by(student_average_score_sql().desc()).limit(limit).all()
     
     def get_assignment_progress(self, page=1, per_page=10):
         """获取班级作业完成进度 (分页形式)"""
         # 仅获取指派给当前班级的作业
         # 注意: target_classes格式类似 '软件工程24-1班,测试班级'
-        assignments_query = Assignment.query.filter(Assignment.target_classes.contains(self.name))
+        # target_classes is a legacy comma-separated field.  ``contains``
+        # would make class "软工24-1" match "软工24-10"; match a complete
+        # comma-delimited token instead.
+        class_name = self.name.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        assignments_query = Assignment.query.filter(or_(
+            Assignment.target_classes == self.name,
+            Assignment.target_classes.like(f'{class_name},%', escape='\\'),
+            Assignment.target_classes.like(f'%,{class_name},%', escape='\\'),
+            Assignment.target_classes.like(f'%,{class_name}', escape='\\'),
+        ))
         
         # 分页
         pagination = assignments_query.paginate(page=page, per_page=per_page, error_out=False)
@@ -152,18 +217,25 @@ class Class(db.Model):
         assignment_ids = [assignment.id for assignment in pagination.items]
         completed_by_assignment = {}
         if assignment_ids:
+            student_scope = or_(
+                User.class_id == self.id,
+                and_(User.class_id.is_(None), User.class_name == self.name),
+            )
             rows = db.session.query(
                 Submission.assignment_id,
-                db.func.count(Submission.id),
+                db.func.count(db.func.distinct(Submission.student_id)),
             ).join(User).filter(
-                User.class_name == self.name,
+                student_scope,
                 User.usertype == '学生',
                 Submission.assignment_id.in_(assignment_ids),
             ).group_by(Submission.assignment_id).all()
             completed_by_assignment = {assignment_id: int(count) for assignment_id, count in rows}
 
         total = db.session.query(User.student_id).filter(
-            User.class_name == self.name,
+            or_(
+                User.class_id == self.id,
+                and_(User.class_id.is_(None), User.class_name == self.name),
+            ),
             User.usertype == '学生',
         ).count()
         progress = []
@@ -184,11 +256,20 @@ class Class(db.Model):
     @staticmethod
     def sync_from_users():
         """从用户数据同步班级信息"""
-        # 获取所有不同的班级名称（仅限学生）
-        class_names = db.session.query(User.class_name)\
-                     .filter(User.class_name.isnot(None))\
-                     .filter(User.usertype == '学生')\
-                     .distinct().all()
+        # class_id 是新数据的权威归属；class_name 只为旧账号保留兼容回退。
+        # 同步任务是管理员可触发的全局操作，不能因为历史字段为空而漏掉
+        # 仍被外键引用的班级。
+        effective_class_name = db.case(
+            (User.class_id.isnot(None), Class.name),
+            else_=User.class_name,
+        )
+        class_names = db.session.query(effective_class_name).outerjoin(
+            Class, User.class_id == Class.id
+        ).filter(
+            User.usertype == '学生',
+            effective_class_name.isnot(None),
+            effective_class_name != '',
+        ).distinct().all()
         
         existing_classes = {cls.name: cls for cls in Class.query.all()}
         for (class_name,) in class_names:
@@ -204,18 +285,24 @@ class Class(db.Model):
                     grade=DEFAULT_GRADE,
                     major=DEFAULT_MAJOR
                 )
+                new_class.ensure_teacher_bind_code()
+                new_class.ensure_student_join_code()
                 db.session.add(new_class)
                 existing_classes[class_name] = new_class
         
         db.session.flush()
         
-        # 清理旧的无用伪造班级数据（比如“教师”、“管理员”这些由于以前错误逻辑被同步进来的空班级）
+        # 统计也使用同一套归属规则，避免 class_id 用户被算到“未分配”。
         student_rows = db.session.query(
-            User.class_name,
+            effective_class_name,
             db.func.count(User.student_id),
             db.func.coalesce(db.func.sum(User.submit_count), 0),
-            db.func.coalesce(db.func.avg(User.user_ascore), 0),
-        ).filter(User.usertype == '学生').group_by(User.class_name).all()
+            db.func.coalesce(db.func.avg(db.func.coalesce(student_average_score_sql(), 0)), 0),
+        ).outerjoin(Class, User.class_id == Class.id).filter(
+            User.usertype == '学生',
+            effective_class_name.isnot(None),
+            effective_class_name != '',
+        ).group_by(effective_class_name).all()
         student_stats = {
             class_name: {
                 'student_count': int(student_count),
@@ -228,8 +315,12 @@ class Class(db.Model):
 
         for cls in list(existing_classes.values()):
             stats = student_stats.get(cls.name)
-            if not stats or cls.name in ['教师', '管理员', '管理部门']:
+            # 以前的实现会删除任何暂时没有学生的班级，这会误删已建好但
+            # 尚未招生活跃学生的真实班级。只清理已知的历史伪造空班级。
+            if cls.name in ['教师', '管理员', '管理部门'] and not stats:
                 db.session.delete(cls)
+                continue
+            if not stats:
                 continue
             cls.student_count = stats['student_count']
             cls.avg_score = stats['avg_score']
@@ -243,6 +334,15 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
     """用户模型"""
     __tablename__ = 'users'
     student_id = db.Column(db.String(20), unique=True, nullable=False, primary_key=True)
+    # student_id 仍是历史系统内部主键；student_number 才表示可选的真实学号。
+    student_number = db.Column(db.String(20), nullable=True)
+    account_kind = db.Column(
+        db.String(20),
+        nullable=False,
+        default='academic',
+        server_default='academic',
+        index=True,
+    )
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     usertype = db.Column(db.Enum('学生', '教师', '管理员'), nullable=False)
@@ -250,6 +350,20 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)  # 新增班级外键
     full_name = db.Column(db.String(50))
     email = db.Column(db.String(120), unique=True, nullable=True, index=True)
+    # 兼容历史账号：只有邮箱注册账号会要求完成邮箱验证。
+    email_verified_at = db.Column(db.DateTime, nullable=True)
+    email_verification_required = db.Column(
+        db.Boolean,
+        default=False,
+        server_default=text('0'),
+        nullable=False,
+    )
+    registration_method = db.Column(
+        db.String(32),
+        default='legacy',
+        server_default=text("'legacy'"),
+        nullable=False,
+    )
     avatar_path = db.Column(db.String(255), nullable=True)
     submit_count = db.Column(db.Integer, default=0)
     user_ascore = db.Column(db.Float, default=0.0)
@@ -291,6 +405,11 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
     
     def verify_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    @property
+    def is_free_account(self):
+        """是否为不依赖教学班花名册的自由账号。"""
+        return self.account_kind == 'free'
     
     @property 
     def is_admin(self):
@@ -323,8 +442,16 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
                 }
             
             # 基于现有提交数据进行简单计算
-            avg_score = sum(s.score for s in submissions if s.score) / len([s for s in submissions if s.score]) if any(s.score for s in submissions) else 0
-            base_score = min(100, max(0, avg_score * 20))  # 转换为100分制
+            normalized_scores = [
+                normalize_submission_score(s.score, s.submitted_at)
+                for s in submissions
+                if s.score is not None
+            ]
+            normalized_scores = [score for score in normalized_scores if score is not None]
+            base_score = (
+                sum(normalized_scores) / len(normalized_scores)
+                if normalized_scores else 0
+            )
             
             return {
                 'algorithm': base_score,     # 算法能力
@@ -358,38 +485,47 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
             dimension_names = (
                 'algorithm', 'style', 'functionality', 'efficiency', 'readability'
             )
+            effective_class_name = db.case(
+                (User.class_id.isnot(None), Class.name),
+                else_=User.class_name,
+            )
             rows = db.session.query(
                 User.student_id,
-                User.class_name,
+                effective_class_name,
                 Submission.ai_feedback,
-                Submission.score,
             ).join(
                 Submission, Submission.student_id == User.student_id
+            ).outerjoin(
+                Class, User.class_id == Class.id
             ).filter(
                 User.usertype == '学生',
-                User.class_name.isnot(None),
+                effective_class_name.isnot(None),
+                effective_class_name != '',
             ).all()
 
             per_student = {}
-            for student_id, class_name, ai_feedback, score in rows:
+            for student_id, class_name, ai_feedback in rows:
                 item = per_student.setdefault(
                     student_id,
-                    {'class_name': class_name, 'scores': {name: [] for name in dimension_names},
-                     'fallback_scores': []},
+                    {'class_name': class_name, 'scores': {name: [] for name in dimension_names}},
                 )
-                if score is not None:
-                    item['fallback_scores'].append(float(score) * 20)
                 if not ai_feedback:
                     continue
                 try:
                     feedback = json.loads(ai_feedback)
                 except (json.JSONDecodeError, TypeError, ValueError):
                     continue
+                if not isinstance(feedback, dict) or not isinstance(
+                    feedback.get('dimension_feedback'), str
+                ) or not feedback['dimension_feedback'].strip():
+                    continue
                 for name in dimension_names:
                     value = feedback.get(f'{name}_score')
                     try:
                         if value is not None:
-                            item['scores'][name].append(float(value) * 20)
+                            normalized_value = normalize_mixed_score(value)
+                            if normalized_value is not None:
+                                item['scores'][name].append(normalized_value)
                     except (TypeError, ValueError):
                         continue
 
@@ -402,10 +538,7 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
                         sum(item['scores'][name]) / len(item['scores'][name])
                         if item['scores'][name] else 0.0
                     )
-                if not any(values.values()) and item['fallback_scores']:
-                    fallback = sum(item['fallback_scores']) / len(item['fallback_scores'])
-                    values = {name: fallback for name in dimension_names}
-                if not any(values.values()):
+                if not any(item['scores'][name] for name in dimension_names):
                     continue
                 bucket = class_totals.setdefault(
                     class_name,
@@ -489,29 +622,60 @@ class Assignment(db.Model):
         else:
             self.target_classes = str(class_list)
     
-    def get_class_progress(self):
-        """获取各班级的完成进度"""
+    def get_class_progress(self, allowed_class_names=None):
+        """获取各班级的完成进度。
+
+        ``allowed_class_names`` 用于教师查看被其他教师布置的作业时收窄
+        数据范围。完成人数按学生去重，而不是按提交记录计数，避免一个
+        学生多次提交后完成率超过 100%。
+        """
         target_classes = self.get_target_class_list()
+        if allowed_class_names is not None:
+            allowed_class_names = {
+                str(class_name).strip()
+                for class_name in allowed_class_names
+                if str(class_name).strip()
+            }
+            target_classes = [
+                class_name
+                for class_name in target_classes
+                if class_name in allowed_class_names
+            ]
         if not target_classes:
             return []
 
+        class_id_by_name = {
+            classroom.name: classroom.id
+            for classroom in Class.query.filter(Class.name.in_(target_classes)).all()
+        }
+
+        effective_class_name = db.case(
+            (User.class_id.isnot(None), Class.name),
+            else_=User.class_name,
+        )
+        student_scope = or_(
+            and_(User.class_id.isnot(None), Class.name.in_(target_classes)),
+            and_(User.class_id.is_(None), User.class_name.in_(target_classes)),
+        )
         totals = db.session.query(
-            User.class_name,
+            effective_class_name,
             db.func.count(User.student_id),
-        ).filter(
-            User.class_name.in_(target_classes),
+        ).select_from(User).outerjoin(Class, User.class_id == Class.id).filter(
+            student_scope,
             User.usertype == '学生',
-        ).group_by(User.class_name).all()
+        ).group_by(effective_class_name).all()
         total_by_class = {class_name: int(count) for class_name, count in totals}
 
         completed = db.session.query(
-            User.class_name,
-            db.func.count(Submission.id),
-        ).join(Submission, Submission.student_id == User.student_id).filter(
-            User.class_name.in_(target_classes),
+            effective_class_name,
+            db.func.count(db.func.distinct(Submission.student_id)),
+        ).select_from(User).join(Submission, Submission.student_id == User.student_id).outerjoin(
+            Class, User.class_id == Class.id
+        ).filter(
+            student_scope,
             User.usertype == '学生',
             Submission.assignment_id == self.id,
-        ).group_by(User.class_name).all()
+        ).group_by(effective_class_name).all()
         completed_by_class = {class_name: int(count) for class_name, count in completed}
 
         progress = []
@@ -521,6 +685,7 @@ class Assignment(db.Model):
             
             progress.append({
                 'class_name': class_name,
+                'class_id': class_id_by_name.get(class_name),
                 'total': total_students,
                 'completed': completed_students,
                 'progress_rate': round(completed_students / total_students * 100, 1) if total_students > 0 else 0
@@ -858,12 +1023,19 @@ def init_db(app):
             'users': {
                 'current_session_id': 'ALTER TABLE users ADD COLUMN current_session_id VARCHAR(100) NULL',
                 'email': 'ALTER TABLE users ADD COLUMN email VARCHAR(120) NULL',
+                'email_verified_at': 'ALTER TABLE users ADD COLUMN email_verified_at DATETIME NULL',
+                'email_verification_required': 'ALTER TABLE users ADD COLUMN email_verification_required BOOLEAN NOT NULL DEFAULT 0',
+                'registration_method': "ALTER TABLE users ADD COLUMN registration_method VARCHAR(32) NOT NULL DEFAULT 'legacy'",
                 'avatar_path': 'ALTER TABLE users ADD COLUMN avatar_path VARCHAR(255) NULL',
                 'password_changed_at': 'ALTER TABLE users ADD COLUMN password_changed_at DATETIME NULL',
+                'student_number': 'ALTER TABLE users ADD COLUMN student_number VARCHAR(20) NULL',
+                'account_kind': "ALTER TABLE users ADD COLUMN account_kind VARCHAR(20) NOT NULL DEFAULT 'academic'",
             },
             'classes': {
                 'teacher_bind_code': 'ALTER TABLE classes ADD COLUMN teacher_bind_code VARCHAR(20) NULL',
                 'teacher_bind_code_updated_at': 'ALTER TABLE classes ADD COLUMN teacher_bind_code_updated_at DATETIME NULL',
+                'student_join_code': 'ALTER TABLE classes ADD COLUMN student_join_code VARCHAR(20) NULL',
+                'student_join_code_updated_at': 'ALTER TABLE classes ADD COLUMN student_join_code_updated_at DATETIME NULL',
                 'school': "ALTER TABLE classes ADD COLUMN school VARCHAR(100) DEFAULT '酷森思大学'",
                 'college': "ALTER TABLE classes ADD COLUMN college VARCHAR(100) DEFAULT '计算机学院'",
             },
@@ -884,6 +1056,18 @@ def init_db(app):
             # 生产部署使用显式 maintenance 命令；开发环境仍保留兼容性降级。
             print(f'自动迁移跳过: {type(e).__name__}: {e}')
 
+        # 历史学生账号的 student_id 就是当时的学号，因此回填到新字段；
+        # 教师和管理员不填，避免把内部工号误称为学生学号。
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(db.text(
+                    "UPDATE users SET student_number = student_id "
+                    "WHERE usertype = '学生' "
+                    "AND (student_number IS NULL OR student_number = '')"
+                ))
+        except Exception as e:
+            print(f'历史学号回填跳过: {type(e).__name__}: {e}')
+
         if app.config.get('DB_ENSURE_INDEXES', True):
             ensure_performance_indexes(app)
 
@@ -891,7 +1075,10 @@ def init_db(app):
             missing_bind_codes = Class.query.filter(Class.teacher_bind_code.is_(None)).all()
             for cls in missing_bind_codes:
                 cls.ensure_teacher_bind_code()
-            if missing_bind_codes:
+            missing_student_join_codes = Class.query.filter(Class.student_join_code.is_(None)).all()
+            for cls in missing_student_join_codes:
+                cls.ensure_student_join_code()
+            if missing_bind_codes or missing_student_join_codes:
                 db.session.commit()
         except Exception as e:
             db.session.rollback()
@@ -1148,6 +1335,145 @@ class AssignmentKnowledgePoint(db.Model):
         ).delete()
         db.session.commit() 
 
+
+class AssignmentLearningResource(db.Model):
+    __tablename__ = 'assignment_learning_resources'
+
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(
+        db.Integer, db.ForeignKey('assignments.id', ondelete='CASCADE'),
+        nullable=False, index=True,
+    )
+    knowledge_point = db.Column(db.String(50), nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    creator_id = db.Column(db.String(20), db.ForeignKey('users.student_id'), nullable=False)
+    revision = db.Column(db.Integer, nullable=False, default=1)
+    source_version = db.Column(db.String(64), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='active')
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow)
+    withdrawn_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        Index('ix_assignment_learning_resource_scope', 'assignment_id', 'status'),
+    )
+
+
+class AssignmentLearningResourceRevision(db.Model):
+    __tablename__ = 'assignment_learning_resource_revisions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    resource_id = db.Column(
+        db.Integer,
+        db.ForeignKey('assignment_learning_resources.id', ondelete='CASCADE'),
+        nullable=False, index=True,
+    )
+    revision = db.Column(db.Integer, nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    knowledge_point = db.Column(db.String(50), nullable=False)
+    source_version = db.Column(db.String(64), nullable=False)
+    action = db.Column(db.String(20), nullable=False)
+    editor_id = db.Column(db.String(20), db.ForeignKey('users.student_id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('resource_id', 'revision', name='uq_assignment_resource_revision'),
+    )
+
+
+class StudentLearningVector(db.Model):
+    """学生私有学习来源及其版本化稀疏向量。"""
+    __tablename__ = 'student_learning_vectors'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    scope_type = db.Column(db.String(32), nullable=False, default='student_private')
+    source_type = db.Column(db.String(50), nullable=False)
+    source_id = db.Column(db.String(128), nullable=False)
+    source_version = db.Column(db.String(64), nullable=False)
+    assignment_id = db.Column(
+        db.Integer,
+        db.ForeignKey('assignments.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    source_title = db.Column(db.String(255), nullable=False, default='')
+    content = db.Column(db.Text, nullable=False)
+    embedding = db.Column(db.Text, nullable=False)
+    index_revision = db.Column(db.Integer, nullable=False, default=0)
+    status = db.Column(db.String(20), nullable=False, default='active', index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow, onupdate=dt.utcnow)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    revoke_reason = db.Column(db.String(64), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'student_id',
+            'source_type',
+            'source_id',
+            'source_version',
+            name='uq_student_learning_vector_source_version',
+        ),
+        Index(
+            'ix_student_learning_vector_scope_status',
+            'student_id',
+            'scope_type',
+            'status',
+        ),
+    )
+
+
+class StudentVectorIndexState(db.Model):
+    """记录每名学生当前向量索引的版本与构建状态。"""
+    __tablename__ = 'student_vector_index_states'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='CASCADE'),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    revision = db.Column(db.Integer, nullable=False, default=0)
+    status = db.Column(db.String(20), nullable=False, default='not_built')
+    source_count = db.Column(db.Integer, nullable=False, default=0)
+    last_built_at = db.Column(db.DateTime, nullable=True)
+    failure_code = db.Column(db.String(64), nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow, onupdate=dt.utcnow)
+
+
+class StudentVectorRetrievalLog(db.Model):
+    """保存不含原文的学生向量检索审计信息。"""
+    __tablename__ = 'student_vector_retrieval_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    assignment_id = db.Column(
+        db.Integer,
+        db.ForeignKey('assignments.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    query_hash = db.Column(db.String(64), nullable=False)
+    result_count = db.Column(db.Integer, nullable=False, default=0)
+    index_revision = db.Column(db.Integer, nullable=False, default=0)
+    retrieval_mode = db.Column(db.String(32), nullable=False, default='no_result')
+    status = db.Column(db.String(20), nullable=False, default='no_result')
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow, index=True)
+
 class InviteToken(db.Model):
     """教师邀请Token，支持24小时过期和单次使用"""
     __tablename__ = 'invite_tokens'
@@ -1183,6 +1509,26 @@ class InviteToken(db.Model):
         return True, ''
 
     @staticmethod
+    def claim(token_str):
+        """在当前事务中原子占用一个邀请令牌。
+
+        注册流程必须把令牌占用和教师账号创建放在同一个事务里，避免
+        两个并发请求都先通过 ``validate`` 后重复使用同一条邀请链接。
+        支持行锁的数据库会锁定该记录；SQLite 仍由事务写锁保证最终只
+        有一个提交可以成功。
+        """
+        record = InviteToken.query.filter_by(token=token_str).with_for_update().first()
+        if not record:
+            return False, '无效的邀请链接'
+        if record.is_used:
+            return False, '该邀请链接已被使用'
+        if not record.expires_at or dt.utcnow() > record.expires_at:
+            return False, '邀请链接已过期，请联系管理员获取新链接'
+        record.is_used = True
+        record.used_at = dt.utcnow()
+        return True, ''
+
+    @staticmethod
     def mark_as_used(token_str):
         """将token标记为已使用"""
         record = InviteToken.query.filter_by(token=token_str).first()
@@ -1213,6 +1559,90 @@ class InviteToken(db.Model):
         if ok:
             InviteToken.mark_as_used(token_str)
         return ok, err_msg
+
+
+class PasswordResetToken(db.Model):
+    """一次性密码重置令牌，只保存令牌摘要，不保存原始令牌。"""
+    __tablename__ = 'password_reset_tokens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=dt.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    used_at = db.Column(db.DateTime, nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    requested_ip = db.Column(db.String(45), nullable=True)
+    created_by = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='SET NULL'),
+        nullable=True,
+    )
+
+
+class EmailVerificationToken(db.Model):
+    """邮箱注册验证令牌，只保存令牌摘要，不保存原始令牌。"""
+    __tablename__ = 'email_verification_tokens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=dt.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    used_at = db.Column(db.DateTime, nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    requested_ip = db.Column(db.String(45), nullable=True)
+
+    user = db.relationship(
+        'User',
+        backref=db.backref('email_verification_tokens', lazy='dynamic'),
+    )
+
+
+class AuthIdentity(db.Model):
+    """可扩展的登录身份绑定表，为后续接入社交账号预留。"""
+    __tablename__ = 'auth_identities'
+    __table_args__ = (
+        UniqueConstraint(
+            'provider',
+            'provider_subject_hash',
+            name='uq_auth_identities_provider_subject',
+        ),
+        UniqueConstraint(
+            'user_id',
+            'provider',
+            name='uq_auth_identities_user_provider',
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    provider = db.Column(db.String(32), nullable=False)
+    # 不保存第三方原始 subject；统一保存带 provider 作用域的 SHA-256 摘要。
+    provider_subject_hash = db.Column(db.String(64), nullable=False)
+    provider_email = db.Column(db.String(120), nullable=True)
+    created_at = db.Column(db.DateTime, default=dt.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=dt.utcnow, onupdate=dt.utcnow, nullable=False)
+
+    user = db.relationship(
+        'User',
+        backref=db.backref('auth_identities', lazy='dynamic'),
+    )
 
 
 # ============================================================
@@ -1423,6 +1853,7 @@ class TeacherAISuggestion(db.Model):
 # 高频列表、统计和阶段三恢复查询使用的组合索引。它们集中声明在模型末尾，
 # 既会进入新库 metadata，也可以由 ensure_performance_indexes 补到历史库。
 PERFORMANCE_INDEXES = (
+    Index('ix_users_student_number', User.student_number),
     Index('ix_users_class_name_usertype', User.class_name, User.usertype),
     Index('ix_users_class_id_usertype', User.class_id, User.usertype),
     Index('ix_assignments_creator_created', Assignment.creator_id, Assignment.created_time),
@@ -1436,6 +1867,11 @@ PERFORMANCE_INDEXES = (
     Index('ix_code_advice_student_time', CodeAdviceRequest.student_id, CodeAdviceRequest.requested_at),
     Index('ix_assignment_kp_assignment_name', AssignmentKnowledgePoint.assignment_id, AssignmentKnowledgePoint.knowledge_point),
     Index('ix_invite_tokens_used_expiry', InviteToken.is_used, InviteToken.expires_at),
+    Index(
+        'ix_email_verification_tokens_user_expiry',
+        EmailVerificationToken.user_id,
+        EmailVerificationToken.expires_at,
+    ),
     Index('ix_thinking_sessions_student_assignment', ThinkingSession.student_id, ThinkingSession.assignment_id),
     Index('ix_thinking_sessions_assignment_status', ThinkingSession.assignment_id, ThinkingSession.status),
     Index('ix_thinking_logs_session_stage_time', ThinkingStageLog.session_id, ThinkingStageLog.stage, ThinkingStageLog.created_at),

@@ -2,7 +2,14 @@
 基于班级整体数据的学生能力评分系统
 """
 import numpy as np
-from models import db, User, Submission
+from models import db, Class, User, Submission
+from sqlalchemy import and_, or_
+from utils.access import authoritative_class_name
+from utils.scoring import (
+    PERCENT_SCORE_DEPLOYED_AT,
+    normalize_mixed_score,
+    normalize_submission_score,
+)
 from typing import Dict, List
 import logging
 
@@ -27,7 +34,7 @@ class AbilityScorer:
             student_id: 学生ID
             
         返回:
-            float: 综合能力评分 (0-5分)
+            float: 综合能力评分 (0-100分)
         """
         try:
             user = User.query.get(student_id)
@@ -44,7 +51,7 @@ class AbilityScorer:
                 return 0.0
             
             # 获取班级数据用于相对评分
-            class_data = self._get_class_comparison_data(user.class_name)
+            class_data = self._get_class_comparison_data(authoritative_class_name(user))
             
             # 计算各项指标
             submission_score = self._calculate_submission_frequency_score(submissions, class_data)
@@ -60,8 +67,8 @@ class AbilityScorer:
                 improvement_score * self.weights['improvement']
             )
             
-            # 确保分数在0-5范围内
-            final_score = max(0.0, min(5.0, final_score))
+            # 内部指标仍沿用原来的 0–5 权重模型，统一输出百分制。
+            final_score = max(0.0, min(5.0, final_score)) * 20
             
             logger.info(f"学生 {student_id} 能力评分: {final_score:.2f} (提交频率:{submission_score:.2f}, 平均分:{average_score:.2f}, 稳定性:{consistency_score:.2f}, 进步:{improvement_score:.2f})")
             
@@ -78,9 +85,12 @@ class AbilityScorer:
         
         try:
             # 只取统计所需的标量列，避免加载用户对象和密码哈希。
-            class_students = User.query.filter_by(
-                class_name=class_name,
-                usertype='学生',
+            classroom = Class.query.filter_by(name=class_name).first()
+            legacy_scope = and_(User.class_id.is_(None), User.class_name == class_name)
+            class_scope = or_(User.class_id == classroom.id, legacy_scope) if classroom else legacy_scope
+            class_students = User.query.filter(
+                class_scope,
+                User.usertype == '学生',
             ).with_entities(User.student_id, User.submit_count).all()
             if not class_students:
                 return {'avg_submissions': 1, 'avg_score': 2.5, 'total_students': 1}
@@ -90,15 +100,27 @@ class AbilityScorer:
             avg_submissions = total_submissions / len(class_students) if class_students else 1
             
             # 计算班级平均分
+            percent_score = db.case(
+                (
+                    and_(
+                        Submission.submitted_at < PERCENT_SCORE_DEPLOYED_AT,
+                        Submission.score <= 5,
+                    ),
+                    Submission.score * 20,
+                ),
+                else_=Submission.score,
+            )
             all_scores = [row.average_score for row in db.session.query(
                 Submission.student_id,
-                db.func.avg(Submission.score).label('average_score'),
+                db.func.avg(percent_score).label('average_score'),
             ).filter(
                 Submission.student_id.in_([student_id for student_id, _ in class_students]),
                 Submission.score.isnot(None),
             ).group_by(Submission.student_id).all()]
-            
-            avg_score = sum(all_scores) / len(all_scores) if all_scores else 2.5
+            normalized_scores = [
+                score / 20 for score in all_scores
+            ]
+            avg_score = sum(normalized_scores) / len(normalized_scores) if normalized_scores else 2.5
             
             return {
                 'avg_submissions': max(1, avg_submissions),
@@ -133,12 +155,16 @@ class AbilityScorer:
             return ratio * 3.0                 # 0.0-1.5
     
     def _calculate_average_score(self, submissions: List[Submission], class_data: Dict) -> float:
-        """计算平均分得分 (0-5分)"""
+        """计算平均分得分（内部 0-5 指标）。"""
         if not submissions:
             return 0.0
         
         # 计算学生平均分
-        scores = [s.score for s in submissions if s.score is not None]
+        scores = [
+            (normalize_submission_score(s.score, s.submitted_at) or 0) / 20
+            for s in submissions
+            if s.score is not None
+        ]
         if not scores:
             return 0.0
         
@@ -164,7 +190,11 @@ class AbilityScorer:
             return 3.0  # 默认中等分数
         
         # 计算分数的标准差
-        scores = [s.score for s in submissions if s.score is not None]
+        scores = [
+            (normalize_submission_score(s.score, s.submitted_at) or 0) / 20
+            for s in submissions
+            if s.score is not None
+        ]
         if len(scores) < 2:
             return 3.0
         
@@ -197,8 +227,12 @@ class AbilityScorer:
         first_third = scored_submissions[:n//3] if n >= 3 else scored_submissions[:1]
         last_third = scored_submissions[-n//3:] if n >= 3 else scored_submissions[-1:]
         
-        first_avg = sum(s.score for s in first_third) / len(first_third)
-        last_avg = sum(s.score for s in last_third) / len(last_third)
+        first_avg = sum(
+            (normalize_submission_score(s.score, s.submitted_at) or 0) / 20 for s in first_third
+        ) / len(first_third)
+        last_avg = sum(
+            (normalize_submission_score(s.score, s.submitted_at) or 0) / 20 for s in last_third
+        ) / len(last_third)
         
         improvement = last_avg - first_avg
         
@@ -234,6 +268,7 @@ class AbilityScorer:
             all_submissions = list(user.submissions.with_entities(
                 Submission.ai_feedback,
                 Submission.score,
+                Submission.submitted_at,
             ).all())
             if not all_submissions:
                 return {k: 0.0 for k in ['algorithm', 'style', 'functionality', 'efficiency', 'readability']}
@@ -247,11 +282,17 @@ class AbilityScorer:
                 if sub.ai_feedback:
                     try:
                         data = json.loads(sub.ai_feedback)
+                        if not isinstance(data, dict) or not isinstance(
+                            data.get("dimension_feedback"), str
+                        ) or not data["dimension_feedback"].strip():
+                            continue
                         for key in totals:
                             score_key = f"{key}_score"
                             if score_key in data:
-                                totals[key] += float(data[score_key]) * 20
-                                valid_counts[key] += 1
+                                normalized_value = normalize_mixed_score(data[score_key])
+                                if normalized_value is not None:
+                                    totals[key] += normalized_value
+                                    valid_counts[key] += 1
                     except (json.JSONDecodeError, TypeError, ValueError):
                         continue
             
@@ -260,12 +301,6 @@ class AbilityScorer:
             for key in totals:
                 avg_scores[key] = totals[key] / valid_counts[key] if valid_counts[key] > 0 else 0.0
             
-            # 极速回归补偿：如果所有维度都是 0（可能由于解析失败或旧数据），则采用系统总分
-            if sum(avg_scores.values()) == 0:
-                avg_val = sum(s.score for s in all_submissions if s.score) / len(all_submissions) if all_submissions else 0
-                base = min(100, avg_val * 20)
-                avg_scores = {k: base for k in avg_scores}
-                
             return avg_scores
             
         except Exception as e:
