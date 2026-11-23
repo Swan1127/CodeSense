@@ -11,11 +11,32 @@ answer route.
 from __future__ import annotations
 
 import logging
+import os
 import time
 
-from models import AssignmentKnowledgePoint, KnowledgePointScore, db
+from models import (
+    AssignmentKnowledgePoint,
+    AssignmentLearningResource,
+    KnowledgePointScore,
+    db,
+)
+from services.knowledge_optimization import (
+    BudgetedEmbedder,
+    EmbeddingBudgetExceeded,
+    build_default_embedding_registry,
+    default_embedding_max_cost,
+)
 from services.knowledge_pipeline import KnowledgeDocument, build_offline_pipeline
-from services.knowledge_vector_store import HybridKnowledgeIndex, NgramCountEmbedder
+from services.knowledge_reliability import (
+    KnowledgePrivacyFilter,
+    KnowledgeQualityMonitor,
+    SlidingWindowRateLimiter,
+    VersionedKnowledgeIndex,
+    build_default_rate_limiter,
+    default_retrieval_timeout_ms,
+)
+from services.knowledge_vector_store import KnowledgeRetrievalTimeout, NgramCountEmbedder
+from services.assignment_learning_resources import list_assignment_learning_resources
 
 
 MAX_EVIDENCE = 8
@@ -23,6 +44,7 @@ MAX_INDEX_DOCUMENTS = 64
 logger = logging.getLogger(__name__)
 knowledge_pipeline = build_offline_pipeline()
 knowledge_vector_embedder = NgramCountEmbedder()
+knowledge_embedding_registry = build_default_embedding_registry()
 NO_KNOWLEDGE_EVIDENCE = {
     "code": "NO_KNOWLEDGE_EVIDENCE",
     "message": "当前作业没有已标注知识点，回答仅基于题目和代码。",
@@ -31,6 +53,45 @@ RETRIEVAL_UNAVAILABLE = {
     "code": "KNOWLEDGE_RETRIEVAL_UNAVAILABLE",
     "message": "知识证据暂时不可用，回答仅基于题目和代码。",
 }
+RETRIEVAL_TIMEOUT = {
+    "code": "KNOWLEDGE_RETRIEVAL_TIMEOUT",
+    "message": "知识证据检索超时，回答仅基于题目和代码。",
+}
+RETRIEVAL_RATE_LIMITED = {
+    "code": "KNOWLEDGE_RETRIEVAL_RATE_LIMITED",
+    "message": "知识证据请求过于频繁，回答仅基于题目和代码。",
+}
+knowledge_rate_limiter: SlidingWindowRateLimiter = build_default_rate_limiter()
+knowledge_quality_monitor = KnowledgeQualityMonitor()
+
+
+def _request_embedder():
+    """Create a request-scoped, budgeted embedder while preserving the default."""
+
+    configured_name = os.environ.get("KNOWLEDGE_RAG_EMBEDDER", "").strip()
+    max_calls = MAX_INDEX_DOCUMENTS + 1  # at most 64 chunks plus one query
+    max_cost = default_embedding_max_cost()
+    if configured_name:
+        return knowledge_embedding_registry.build(
+            configured_name,
+            max_calls=max_calls,
+            max_estimated_cost=max_cost,
+        )
+    provider_name = (
+        "cjk_ngram"
+        if isinstance(knowledge_vector_embedder, NgramCountEmbedder)
+        else "custom"
+    )
+    return BudgetedEmbedder(
+        knowledge_vector_embedder,
+        provider_name=provider_name,
+        max_calls=max_calls,
+        max_estimated_cost=max_cost,
+    )
+
+
+def _embedding_usage(embedder):
+    return embedder.snapshot() if embedder is not None else None
 
 
 def _created_at_value(record):
@@ -47,6 +108,10 @@ def _result(
     *,
     retrieval_mode=None,
     indexed_chunk_count=0,
+    index_revision=None,
+    privacy_filtered_count=0,
+    quality_monitor=None,
+    embedding_usage=None,
 ):
     hit_count = len(evidence)
     latency_ms = max(0.0, (time.perf_counter() - started_at) * 1000.0)
@@ -68,9 +133,35 @@ def _result(
         "retrieval_error_fallback": bool(
             fallback and fallback.get("code") == RETRIEVAL_UNAVAILABLE["code"]
         ),
+        "retrieval_timeout_fallback": bool(
+            fallback and fallback.get("code") == RETRIEVAL_TIMEOUT["code"]
+        ),
+        "rate_limit_fallback": bool(
+            fallback and fallback.get("code") == RETRIEVAL_RATE_LIMITED["code"]
+        ),
         "retrieval_mode": retrieval_mode or ("unavailable" if fallback else "unknown"),
         "indexed_chunk_count": int(indexed_chunk_count),
+        "index_revision": int(index_revision) if index_revision is not None else None,
+        "privacy_filtered_count": int(privacy_filtered_count),
+        "embedding_provider": (
+            embedding_usage.get("provider") if embedding_usage else None
+        ),
+        "embedding_calls": int(embedding_usage.get("calls", 0))
+        if embedding_usage
+        else 0,
+        "embedding_estimated_cost": float(
+            embedding_usage.get("estimated_cost", 0.0)
+        ) if embedding_usage else 0.0,
+        "embedding_budget_exceeded": bool(
+            embedding_usage and embedding_usage.get("budget_exceeded")
+        ),
     }
+    (quality_monitor or knowledge_quality_monitor).record(
+        status=status,
+        mode=metrics["retrieval_mode"],
+        latency_ms=latency_ms,
+        fallback_code=(fallback or {}).get("code"),
+    )
     return {
         "status": status,
         "evidence": evidence,
@@ -84,6 +175,10 @@ def retrieve_assignment_knowledge(
     *,
     limit=MAX_EVIDENCE,
     query="",
+    timeout_ms=None,
+    request_key=None,
+    rate_limiter=None,
+    quality_monitor=None,
 ):
     """Retrieve bounded, explicit knowledge evidence for one assignment.
 
@@ -106,7 +201,33 @@ def retrieve_assignment_knowledge(
             started_at,
             NO_KNOWLEDGE_EVIDENCE.copy(),
             retrieval_mode="no_result",
+            quality_monitor=quality_monitor,
         )
+
+    limiter = rate_limiter or knowledge_rate_limiter
+    if not limiter.allow(request_key or f"assignment:{assignment_id}"):
+        return _result(
+            "rate_limited",
+            [],
+            0,
+            started_at,
+            RETRIEVAL_RATE_LIMITED.copy(),
+            retrieval_mode="rate_limited",
+            quality_monitor=quality_monitor,
+        )
+
+    try:
+        configured_timeout = (
+            default_retrieval_timeout_ms()
+            if timeout_ms is None
+            else int(timeout_ms)
+        )
+    except (TypeError, ValueError):
+        configured_timeout = default_retrieval_timeout_ms()
+    configured_timeout = max(1, min(configured_timeout, 5000))
+    deadline = time.monotonic() + configured_timeout / 1000.0
+    records = []
+    privacy_filtered_count = 0
 
     try:
         bounded_limit = max(1, min(int(limit), MAX_EVIDENCE))
@@ -120,6 +241,24 @@ def retrieve_assignment_knowledge(
             .limit(MAX_INDEX_DOCUMENTS)
             .all()
         )
+        records.extend(
+            list_assignment_learning_resources(assignment_id)[
+                :MAX_INDEX_DOCUMENTS - len(records)
+            ]
+        )
+        if time.monotonic() > deadline:
+            raise KnowledgeRetrievalTimeout("knowledge record lookup exceeded deadline")
+    except KnowledgeRetrievalTimeout:
+        db.session.rollback()
+        return _result(
+            "timeout",
+            [],
+            len(records),
+            started_at,
+            RETRIEVAL_TIMEOUT.copy(),
+            retrieval_mode="timeout",
+            quality_monitor=quality_monitor,
+        )
     except Exception:
         db.session.rollback()
         logger.exception(
@@ -132,43 +271,95 @@ def retrieve_assignment_knowledge(
             started_at,
             RETRIEVAL_UNAVAILABLE.copy(),
             retrieval_mode="unavailable",
+            quality_monitor=quality_monitor,
         )
 
     documents = []
     for record in records:
+        if isinstance(record, AssignmentLearningResource):
+            raw_document = KnowledgeDocument(
+                document_id=f"assignment-resource:{record.id}",
+                title=record.title,
+                content=record.content,
+                source_type="assignment_learning_resource",
+                priority=1.0,
+                metadata={
+                    "created_at": _created_at_value(record),
+                    "evidence_id": f"assignment-resource:{record.id}",
+                    "record_id": record.id,
+                    "source_version": record.source_version,
+                },
+            )
+            document = KnowledgePrivacyFilter.sanitize_document(raw_document)
+            if document != raw_document:
+                privacy_filtered_count += 1
+            documents.append(document)
+            continue
         code = str(record.knowledge_point or "").strip()
         if not code:
             continue
         name = KnowledgePointScore.KNOWLEDGE_POINTS.get(code, code)
-        documents.append(
-            KnowledgeDocument(
-                document_id=f"assignment-kp:{record.id}",
-                title=name,
-                content=f"当前作业显式绑定知识点：{name}（{code}）。",
-                source_type="assignment_knowledge_point",
-                priority=float(record.weight or 0.0),
-                metadata={
-                    "created_at": _created_at_value(record),
-                    "evidence_id": f"assignment-kp:{record.id}",
-                    "record_id": record.id,
-                },
-            )
+        raw_document = KnowledgeDocument(
+            document_id=f"assignment-kp:{record.id}",
+            title=name,
+            content=f"当前作业显式绑定知识点：{name}（{code}）。",
+            source_type="assignment_knowledge_point",
+            priority=float(record.weight or 0.0),
+            metadata={
+                "created_at": _created_at_value(record),
+                "evidence_id": f"assignment-kp:{record.id}",
+                "record_id": record.id,
+            },
         )
+        document = KnowledgePrivacyFilter.sanitize_document(raw_document)
+        if document != raw_document:
+            privacy_filtered_count += 1
+        documents.append(document)
 
+    active_embedder = None
     try:
         chunks = tuple(
             chunk
             for document in documents
             for chunk in knowledge_pipeline.chunker.split(document)
         )
-        index = HybridKnowledgeIndex(
+        active_embedder = _request_embedder()
+        index = VersionedKnowledgeIndex(
             chunks,
-            embedder=knowledge_vector_embedder,
+            embedder=active_embedder,
+            deadline=deadline,
         )
         search_result = index.search(query, top_k=bounded_limit)
         citations = tuple(
             knowledge_pipeline.citation_builder.build(candidate, rank)
             for rank, candidate in enumerate(search_result.candidates, start=1)
+        )
+    except KnowledgeRetrievalTimeout:
+        db.session.rollback()
+        return _result(
+            "timeout",
+            [],
+            len(records),
+            started_at,
+            RETRIEVAL_TIMEOUT.copy(),
+            retrieval_mode="timeout",
+            privacy_filtered_count=privacy_filtered_count,
+            quality_monitor=quality_monitor,
+            embedding_usage=_embedding_usage(active_embedder),
+        )
+    except EmbeddingBudgetExceeded:
+        logger.warning("knowledge embedding budget exceeded; using safe fallback")
+        db.session.rollback()
+        return _result(
+            "unavailable",
+            [],
+            len(records),
+            started_at,
+            RETRIEVAL_UNAVAILABLE.copy(),
+            retrieval_mode="unavailable",
+            privacy_filtered_count=privacy_filtered_count,
+            quality_monitor=quality_monitor,
+            embedding_usage=_embedding_usage(active_embedder),
         )
     except Exception:
         db.session.rollback()
@@ -182,6 +373,9 @@ def retrieve_assignment_knowledge(
             started_at,
             RETRIEVAL_UNAVAILABLE.copy(),
             retrieval_mode="unavailable",
+            privacy_filtered_count=privacy_filtered_count,
+            quality_monitor=quality_monitor,
+            embedding_usage=_embedding_usage(active_embedder),
         )
     evidence = [
         {
@@ -191,6 +385,7 @@ def retrieve_assignment_knowledge(
             "title": citation.title,
             "content": citation.content,
             "created_at": citation.metadata.get("created_at"),
+            "source_version": citation.metadata.get("source_version"),
         }
         for citation in citations
     ]
@@ -204,6 +399,10 @@ def retrieve_assignment_knowledge(
             NO_KNOWLEDGE_EVIDENCE.copy(),
             retrieval_mode=search_result.mode,
             indexed_chunk_count=search_result.indexed_chunk_count,
+            index_revision=index.revision.number,
+            privacy_filtered_count=privacy_filtered_count,
+            quality_monitor=quality_monitor,
+            embedding_usage=_embedding_usage(active_embedder),
         )
     return _result(
         "grounded",
@@ -212,7 +411,17 @@ def retrieve_assignment_knowledge(
         started_at,
         retrieval_mode=search_result.mode,
         indexed_chunk_count=search_result.indexed_chunk_count,
+        index_revision=index.revision.number,
+        privacy_filtered_count=privacy_filtered_count,
+        quality_monitor=quality_monitor,
+        embedding_usage=_embedding_usage(active_embedder),
     )
+
+
+def get_knowledge_quality_snapshot():
+    """Return bounded process metrics without exposing query or student data."""
+
+    return knowledge_quality_monitor.snapshot()
 
 
 def build_knowledge_prompt_context(retrieval):

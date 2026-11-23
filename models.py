@@ -10,8 +10,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_sqlalchemy.session import Session as FlaskSQLAlchemySession
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin  # 添加UserMixin导入
-from sqlalchemy import Index, UniqueConstraint, and_, inspect, or_, text
+from sqlalchemy import Index, UniqueConstraint, and_, inspect, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
+from utils.scoring import normalize_mixed_score, normalize_submission_score, normalized_submission_score_sql
 
 # 班级默认配置
 DEFAULT_GRADE = '2024'
@@ -28,6 +29,20 @@ class CodeSenseSession(FlaskSQLAlchemySession):
 
 
 db = SQLAlchemy(session_options={'class_': CodeSenseSession})
+
+
+def student_average_score_sql():
+    """读取百分制综合分，并兼容有时间记录的历史提交。"""
+    submission_average = select(db.func.avg(normalized_submission_score_sql(
+        Submission.score, Submission.submitted_at,
+    ))).where(
+        Submission.student_id == User.student_id,
+        Submission.score.isnot(None),
+    ).correlate(User).scalar_subquery()
+    return db.case(
+        (and_(User.user_ascore > 5, User.user_ascore <= 100), User.user_ascore),
+        else_=submission_average,
+    )
 
 
 def _database_cache_scope():
@@ -129,7 +144,7 @@ class Class(db.Model):
         student_stats = db.session.query(
             db.func.count(User.student_id),
             db.func.coalesce(db.func.sum(User.submit_count), 0),
-            db.func.coalesce(db.func.avg(User.user_ascore), 0),
+            db.func.coalesce(db.func.avg(db.func.coalesce(student_average_score_sql(), 0)), 0),
             db.func.coalesce(
                 db.func.sum(db.case((User.submit_count > 0, 1), else_=0)),
                 0,
@@ -179,7 +194,7 @@ class Class(db.Model):
                 and_(User.class_id.is_(None), User.class_name == self.name),
             ),
             User.usertype == '学生',
-        ).order_by(User.user_ascore.desc()).limit(limit).all()
+        ).order_by(student_average_score_sql().desc()).limit(limit).all()
     
     def get_assignment_progress(self, page=1, per_page=10):
         """获取班级作业完成进度 (分页形式)"""
@@ -208,7 +223,7 @@ class Class(db.Model):
             )
             rows = db.session.query(
                 Submission.assignment_id,
-                db.func.count(Submission.id),
+                db.func.count(db.func.distinct(Submission.student_id)),
             ).join(User).filter(
                 student_scope,
                 User.usertype == '学生',
@@ -282,7 +297,7 @@ class Class(db.Model):
             effective_class_name,
             db.func.count(User.student_id),
             db.func.coalesce(db.func.sum(User.submit_count), 0),
-            db.func.coalesce(db.func.avg(User.user_ascore), 0),
+            db.func.coalesce(db.func.avg(db.func.coalesce(student_average_score_sql(), 0)), 0),
         ).outerjoin(Class, User.class_id == Class.id).filter(
             User.usertype == '学生',
             effective_class_name.isnot(None),
@@ -427,8 +442,16 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
                 }
             
             # 基于现有提交数据进行简单计算
-            avg_score = sum(s.score for s in submissions if s.score) / len([s for s in submissions if s.score]) if any(s.score for s in submissions) else 0
-            base_score = min(100, max(0, avg_score * 20))  # 转换为100分制
+            normalized_scores = [
+                normalize_submission_score(s.score, s.submitted_at)
+                for s in submissions
+                if s.score is not None
+            ]
+            normalized_scores = [score for score in normalized_scores if score is not None]
+            base_score = (
+                sum(normalized_scores) / len(normalized_scores)
+                if normalized_scores else 0
+            )
             
             return {
                 'algorithm': base_score,     # 算法能力
@@ -470,7 +493,6 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
                 User.student_id,
                 effective_class_name,
                 Submission.ai_feedback,
-                Submission.score,
             ).join(
                 Submission, Submission.student_id == User.student_id
             ).outerjoin(
@@ -482,25 +504,28 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
             ).all()
 
             per_student = {}
-            for student_id, class_name, ai_feedback, score in rows:
+            for student_id, class_name, ai_feedback in rows:
                 item = per_student.setdefault(
                     student_id,
-                    {'class_name': class_name, 'scores': {name: [] for name in dimension_names},
-                     'fallback_scores': []},
+                    {'class_name': class_name, 'scores': {name: [] for name in dimension_names}},
                 )
-                if score is not None:
-                    item['fallback_scores'].append(float(score) * 20)
                 if not ai_feedback:
                     continue
                 try:
                     feedback = json.loads(ai_feedback)
                 except (json.JSONDecodeError, TypeError, ValueError):
                     continue
+                if not isinstance(feedback, dict) or not isinstance(
+                    feedback.get('dimension_feedback'), str
+                ) or not feedback['dimension_feedback'].strip():
+                    continue
                 for name in dimension_names:
                     value = feedback.get(f'{name}_score')
                     try:
                         if value is not None:
-                            item['scores'][name].append(float(value) * 20)
+                            normalized_value = normalize_mixed_score(value)
+                            if normalized_value is not None:
+                                item['scores'][name].append(normalized_value)
                     except (TypeError, ValueError):
                         continue
 
@@ -513,10 +538,7 @@ class User(db.Model, UserMixin):  # 添加UserMixin继承
                         sum(item['scores'][name]) / len(item['scores'][name])
                         if item['scores'][name] else 0.0
                     )
-                if not any(values.values()) and item['fallback_scores']:
-                    fallback = sum(item['fallback_scores']) / len(item['fallback_scores'])
-                    values = {name: fallback for name in dimension_names}
-                if not any(values.values()):
+                if not any(item['scores'][name] for name in dimension_names):
                     continue
                 bucket = class_totals.setdefault(
                     class_name,
@@ -600,11 +622,32 @@ class Assignment(db.Model):
         else:
             self.target_classes = str(class_list)
     
-    def get_class_progress(self):
-        """获取各班级的完成进度"""
+    def get_class_progress(self, allowed_class_names=None):
+        """获取各班级的完成进度。
+
+        ``allowed_class_names`` 用于教师查看被其他教师布置的作业时收窄
+        数据范围。完成人数按学生去重，而不是按提交记录计数，避免一个
+        学生多次提交后完成率超过 100%。
+        """
         target_classes = self.get_target_class_list()
+        if allowed_class_names is not None:
+            allowed_class_names = {
+                str(class_name).strip()
+                for class_name in allowed_class_names
+                if str(class_name).strip()
+            }
+            target_classes = [
+                class_name
+                for class_name in target_classes
+                if class_name in allowed_class_names
+            ]
         if not target_classes:
             return []
+
+        class_id_by_name = {
+            classroom.name: classroom.id
+            for classroom in Class.query.filter(Class.name.in_(target_classes)).all()
+        }
 
         effective_class_name = db.case(
             (User.class_id.isnot(None), Class.name),
@@ -617,7 +660,7 @@ class Assignment(db.Model):
         totals = db.session.query(
             effective_class_name,
             db.func.count(User.student_id),
-        ).outerjoin(Class, User.class_id == Class.id).filter(
+        ).select_from(User).outerjoin(Class, User.class_id == Class.id).filter(
             student_scope,
             User.usertype == '学生',
         ).group_by(effective_class_name).all()
@@ -625,8 +668,8 @@ class Assignment(db.Model):
 
         completed = db.session.query(
             effective_class_name,
-            db.func.count(Submission.id),
-        ).join(Submission, Submission.student_id == User.student_id).outerjoin(
+            db.func.count(db.func.distinct(Submission.student_id)),
+        ).select_from(User).join(Submission, Submission.student_id == User.student_id).outerjoin(
             Class, User.class_id == Class.id
         ).filter(
             student_scope,
@@ -642,6 +685,7 @@ class Assignment(db.Model):
             
             progress.append({
                 'class_name': class_name,
+                'class_id': class_id_by_name.get(class_name),
                 'total': total_students,
                 'completed': completed_students,
                 'progress_rate': round(completed_students / total_students * 100, 1) if total_students > 0 else 0
@@ -1290,6 +1334,145 @@ class AssignmentKnowledgePoint(db.Model):
             knowledge_point=knowledge_point
         ).delete()
         db.session.commit() 
+
+
+class AssignmentLearningResource(db.Model):
+    __tablename__ = 'assignment_learning_resources'
+
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(
+        db.Integer, db.ForeignKey('assignments.id', ondelete='CASCADE'),
+        nullable=False, index=True,
+    )
+    knowledge_point = db.Column(db.String(50), nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    creator_id = db.Column(db.String(20), db.ForeignKey('users.student_id'), nullable=False)
+    revision = db.Column(db.Integer, nullable=False, default=1)
+    source_version = db.Column(db.String(64), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='active')
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow)
+    withdrawn_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        Index('ix_assignment_learning_resource_scope', 'assignment_id', 'status'),
+    )
+
+
+class AssignmentLearningResourceRevision(db.Model):
+    __tablename__ = 'assignment_learning_resource_revisions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    resource_id = db.Column(
+        db.Integer,
+        db.ForeignKey('assignment_learning_resources.id', ondelete='CASCADE'),
+        nullable=False, index=True,
+    )
+    revision = db.Column(db.Integer, nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    knowledge_point = db.Column(db.String(50), nullable=False)
+    source_version = db.Column(db.String(64), nullable=False)
+    action = db.Column(db.String(20), nullable=False)
+    editor_id = db.Column(db.String(20), db.ForeignKey('users.student_id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('resource_id', 'revision', name='uq_assignment_resource_revision'),
+    )
+
+
+class StudentLearningVector(db.Model):
+    """学生私有学习来源及其版本化稀疏向量。"""
+    __tablename__ = 'student_learning_vectors'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    scope_type = db.Column(db.String(32), nullable=False, default='student_private')
+    source_type = db.Column(db.String(50), nullable=False)
+    source_id = db.Column(db.String(128), nullable=False)
+    source_version = db.Column(db.String(64), nullable=False)
+    assignment_id = db.Column(
+        db.Integer,
+        db.ForeignKey('assignments.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    source_title = db.Column(db.String(255), nullable=False, default='')
+    content = db.Column(db.Text, nullable=False)
+    embedding = db.Column(db.Text, nullable=False)
+    index_revision = db.Column(db.Integer, nullable=False, default=0)
+    status = db.Column(db.String(20), nullable=False, default='active', index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow, onupdate=dt.utcnow)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    revoke_reason = db.Column(db.String(64), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'student_id',
+            'source_type',
+            'source_id',
+            'source_version',
+            name='uq_student_learning_vector_source_version',
+        ),
+        Index(
+            'ix_student_learning_vector_scope_status',
+            'student_id',
+            'scope_type',
+            'status',
+        ),
+    )
+
+
+class StudentVectorIndexState(db.Model):
+    """记录每名学生当前向量索引的版本与构建状态。"""
+    __tablename__ = 'student_vector_index_states'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='CASCADE'),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    revision = db.Column(db.Integer, nullable=False, default=0)
+    status = db.Column(db.String(20), nullable=False, default='not_built')
+    source_count = db.Column(db.Integer, nullable=False, default=0)
+    last_built_at = db.Column(db.DateTime, nullable=True)
+    failure_code = db.Column(db.String(64), nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow, onupdate=dt.utcnow)
+
+
+class StudentVectorRetrievalLog(db.Model):
+    """保存不含原文的学生向量检索审计信息。"""
+    __tablename__ = 'student_vector_retrieval_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(
+        db.String(20),
+        db.ForeignKey('users.student_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    assignment_id = db.Column(
+        db.Integer,
+        db.ForeignKey('assignments.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    query_hash = db.Column(db.String(64), nullable=False)
+    result_count = db.Column(db.Integer, nullable=False, default=0)
+    index_revision = db.Column(db.Integer, nullable=False, default=0)
+    retrieval_mode = db.Column(db.String(32), nullable=False, default='no_result')
+    status = db.Column(db.String(20), nullable=False, default='no_result')
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.utcnow, index=True)
 
 class InviteToken(db.Model):
     """教师邀请Token，支持24小时过期和单次使用"""

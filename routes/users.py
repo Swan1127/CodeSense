@@ -10,6 +10,7 @@ from tasks.ability_analysis import trigger_analysis_if_needed
 from services.demo_database import current_demo_run_id
 from services.profile import get_profile_settings, save_profile_settings
 from services.submission_reviews import get_review_summaries
+from utils.maturity_calculator import calculate_maturity_components
 from utils.access import (
     authoritative_class_name,
     can_access_student,
@@ -17,6 +18,7 @@ from utils.access import (
     managed_classes,
 )
 from utils.export_safety import safe_export_cell
+from utils.scoring import normalize_submission_score, normalized_submission_score_sql
 from sqlalchemy import desc, func, or_
 from forms import AdminPasswordResetForm, ChangePasswordForm, EditProfileForm
 from services.password_reset import (
@@ -35,6 +37,15 @@ import uuid
 users = Blueprint('users', __name__)
 
 _AVATAR_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _score_distribution(scores):
+    """Return submission-score buckets for the canonical 0–100 scale."""
+    return [
+        sum(1 for score in scores if float(score) >= 80),
+        sum(1 for score in scores if 60 <= float(score) < 80),
+        sum(1 for score in scores if float(score) < 60),
+    ]
 
 
 def _normalize_email(value):
@@ -113,6 +124,21 @@ def manage_users():
     # 分页
     pagination = query.paginate(page=page, per_page=10, error_out=False)
     users = pagination.items
+    visible_student_ids = [user.student_id for user in users if user.usertype == '学生']
+    user_scores = {}
+    if visible_student_ids:
+        normalized_score = normalized_submission_score_sql(
+            Submission.score, Submission.submitted_at,
+        )
+        user_scores = {
+            student_id: average
+            for student_id, average in db.session.query(
+                Submission.student_id, func.avg(normalized_score),
+            ).filter(
+                Submission.student_id.in_(visible_student_ids),
+                Submission.score.isnot(None),
+            ).group_by(Submission.student_id).all()
+        }
     
     # 计算统计数据
     total_users = User.query.count()
@@ -162,6 +188,7 @@ def manage_users():
     
     return render_template('users.html',
                          users=users,
+                         user_scores=user_scores,
                          pagination=pagination,
                          admin_reset_form=AdminPasswordResetForm(),
                          search_term=search,
@@ -212,7 +239,10 @@ def view_submissions():
         page = request.args.get('page', 1, type=int)  # 获取当前页码，默认为1
         # 查询学生的所有提交记录（用于统计）
         all_submissions = Submission.query.filter_by(student_id=student_id).all()
-        scores = [sub.score for sub in all_submissions if sub.score is not None]
+        scores = [
+            normalize_submission_score(sub.score, sub.submitted_at)
+            for sub in all_submissions if sub.score is not None
+        ]
         
         # 分页获取提交记录
         submissions = (Submission.query
@@ -223,14 +253,8 @@ def view_submissions():
         # 3. 准备图表数据
         chart_data = {
             'x': [sub.assignment_id for sub in submissions.items],
-            'y': [sub.score if sub.score is not None else 0 for sub in submissions.items],
-            'pie_data': [
-                scores.count(5) if 5 in scores else 0,
-                scores.count(4) if 4 in scores else 0,
-                scores.count(3) if 3 in scores else 0,
-                scores.count(2) if 2 in scores else 0,
-                scores.count(1) if 1 in scores else 0
-            ]
+            'y': [normalize_submission_score(sub.score, sub.submitted_at) if sub.score is not None else 0 for sub in submissions.items],
+            'pie_data': _score_distribution(scores),
         }
         
         # 4. 获取真实的能力分析数据
@@ -238,7 +262,12 @@ def view_submissions():
         class_avg_scores = User.get_class_average_scores()
         profile_class_name = authoritative_class_name(user)
         
-        comprehensive_score = sum(ability_scores.values()) / 5 if ability_scores else 0
+        comprehensive_score = calculate_maturity_components(
+            sorted(all_submissions, key=lambda item: item.submitted_at),
+            ability_scores=ability_scores,
+            class_averages=class_avg_scores,
+            class_name=profile_class_name,
+        )['maturity_score']
         dim_map = {
             'algorithm': '算法能力',
             'style': '代码风格',
@@ -250,9 +279,7 @@ def view_submissions():
         
         ability_data = {
             'student': ability_scores,
-            'class_avg': class_avg_scores.get(profile_class_name, {
-                'algorithm': 70, 'style': 70, 'functionality': 70, 'efficiency': 70, 'readability': 70
-            })
+            'class_avg': class_avg_scores.get(profile_class_name)
         }
 
         knowledge_profile = KnowledgePointScore.get_student_profile(student_id)
@@ -594,7 +621,10 @@ def view_student_details(student_id):
         
         # 查询学生的所有提交记录
         all_submissions = Submission.query.filter_by(student_id=student_id).all()
-        scores = [sub.score for sub in all_submissions if sub.score is not None]
+        scores = [
+            normalize_submission_score(sub.score, sub.submitted_at)
+            for sub in all_submissions if sub.score is not None
+        ]
         
         # 分页获取提交记录
         per_page = 10
@@ -607,14 +637,8 @@ def view_student_details(student_id):
         # 准备图表数据
         chart_data = {
             'x': [sub.assignment_id for sub in submissions.items],
-            'y': [sub.score if sub.score is not None else 0 for sub in submissions.items],
-            'pie_data': [
-                scores.count(5) if 5 in scores else 0,
-                scores.count(4) if 4 in scores else 0,
-                scores.count(3) if 3 in scores else 0,
-                scores.count(2) if 2 in scores else 0,
-                scores.count(1) if 1 in scores else 0
-            ]
+            'y': [normalize_submission_score(sub.score, sub.submitted_at) if sub.score is not None else 0 for sub in submissions.items],
+            'pie_data': _score_distribution(scores),
         }
         
         # 计算学生的提交统计
@@ -624,11 +648,9 @@ def view_student_details(student_id):
             'max_score': max(scores) if scores else 0,
             'min_score': min(scores) if scores else 0,
             'score_distribution': {
-                '5分': scores.count(5) if 5 in scores else 0,
-                '4分': scores.count(4) if 4 in scores else 0,
-                '3分': scores.count(3) if 3 in scores else 0,
-                '2分': scores.count(2) if 2 in scores else 0,
-                '1分': scores.count(1) if 1 in scores else 0
+                '80–100分': _score_distribution(scores)[0],
+                '60–79分': _score_distribution(scores)[1],
+                '0–59分': _score_distribution(scores)[2],
             }
         }
         

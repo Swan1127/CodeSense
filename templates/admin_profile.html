@@ -50,6 +50,7 @@
         font-size: 2rem;
         font-weight: 700;
         margin-bottom: 0.5rem;
+        overflow-wrap: anywhere;
     }
     
     .profile-subtitle {
@@ -208,6 +209,22 @@
         font-size: 2rem;
         opacity: 0.2;
     }
+
+    @media (max-width: 640px) {
+        .profile-header {
+            padding: 1.5rem;
+            padding-top: 5rem;
+        }
+
+        .profile-name {
+            font-size: clamp(1.35rem, 6vw, 2rem);
+        }
+
+        .profile-stats {
+            gap: 1rem;
+            justify-content: space-between;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -341,7 +358,7 @@
                     <div class="col-md-4">
                         <div class="stats-small-card position-relative">
                             <div class="stats-value">{{ average_score|round(1) }}</div>
-                            <div class="stats-label">平均分数</div>
+                            <div class="stats-label">平均分数（0–100）</div>
                             <i class="bi bi-star stats-icon"></i>
                         </div>
                     </div>

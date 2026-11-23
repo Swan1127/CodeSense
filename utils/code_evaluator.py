@@ -2,6 +2,7 @@
 代码评估模块 - 使用启发式评分和大模型评估
 """
 import re
+from contextvars import ContextVar
 
 # 评分权重常量
 SCORE_WEIGHTS_WITH_REQUIREMENT = {
@@ -29,11 +30,17 @@ from utils.llm_evaluator import LLMEvaluator
 
 # 导入统一的 API 密钥管理器
 from services.api_keys import api_keys
+from utils.scoring import normalize_evaluation_score
 
 cfg = None
 llm_evaluator = None
 use_llm = False
 ai_initialized = False
+_last_structured_data = ContextVar("submission_structured_data", default=None)
+
+
+def get_last_structured_data():
+    return _last_structured_data.get()
 
 
 def initialize_ai_evaluator():
@@ -788,6 +795,7 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
 
     if not ai_initialized:
         initialize_ai_evaluator()
+    _last_structured_data.set(None)
     
     # 如果是指导模式，必定使用大模型
     if guidance_mode:
@@ -806,17 +814,15 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
                 # 指导模式：使用更鼓励和指导性的语言
                 score, feedback = llm_evaluator.provide_guidance(code_str, assignment_title)
                 # 指导模式下不强调分数
-                return max(3, score), feedback  # 基础分至少为3分，以示鼓励
+                return normalize_evaluation_score(max(3, score), scale=5), feedback  # 基础分至少为60分，以示鼓励
             else:
                 # 评分模式：正常评估
                 score, feedback = llm_evaluator.evaluate_code(code_str, assignment_title)
-                # 修改：不允许大模型给出0分，最低给1分
+                # LLMEvaluator.evaluate_code 返回五分制，出口转换为百分制。
                 if score <= 0:
-                    score = 20
+                    score = 1
                     feedback = "【基础级】" + feedback
-                elif score <= 5: # 兼容 5 分制输入
-                    score = score * 20
-                return score, feedback
+                return normalize_evaluation_score(score, scale=5), feedback
         except Exception as e:
             print(
                 f"大模型{'指导' if guidance_mode else '预览'}评估失败: "
@@ -824,9 +830,9 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
             )
             if guidance_mode:
                 # 指导模式下失败时提供通用的指导
-                return 3, "很遗憾，AI助手无法分析您的代码。建议您检查代码格式是否正确，确保语法没有明显错误，并尝试添加更多注释说明您的思路。如果您遇到特定问题，可以直接在问答区提问。"
+                return 60, "很遗憾，AI助手无法分析您的代码。建议您检查代码格式是否正确，确保语法没有明显错误，并尝试添加更多注释说明您的思路。如果您遇到特定问题，可以直接在问答区提问。"
             else:
-                return 3, "大模型评估失败，请稍后重试"
+                return 20, "大模型评估失败，请稍后重试"
     
     # 大模型结果优先，启发式结果作为兜底
     llm_weight = 0.9 if use_llm_local and cfg else 0
@@ -836,7 +842,7 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
     if len(code_str.strip()) < 10:
         print("代码太短，无法进行有效评估")
         if guidance_mode:
-            return 3, "您的代码太少，无法提供具体的编程指导。建议您先尝试编写更多代码，或者在问答区详细描述您的思路和遇到的问题。"
+            return 60, "您的代码太少，无法提供具体的编程指导。建议您先尝试编写更多代码，或者在问答区详细描述您的思路和遇到的问题。"
         else:
             return 20, "代码太短，无法进行有效评估。请提供更完整的代码。"  # 修改：将最低分改为20分而非0分，更友好
     
@@ -854,17 +860,13 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
                 llm_score, llm_feedback, structured_data = llm_evaluator.evaluate_code_with_structured_data(code_str, assignment_title)
                 
                 # 将结构化数据附加到返回值中，以便调用者可以保存到数据库
-                if hasattr(llm_evaluator, '_last_structured_data'):
-                    llm_evaluator._last_structured_data = structured_data
-                else:
-                    setattr(llm_evaluator, '_last_structured_data', structured_data)
+                _last_structured_data.set(structured_data)
                 
-            if llm_score <= 5: # 兼容 5 分制
-                llm_score = llm_score * 20
-
             if llm_score <= 0:
-                llm_score = 20
+                llm_score = 1
                 llm_feedback = "【基础级】" + llm_feedback
+
+            llm_score = normalize_evaluation_score(llm_score, scale=5)
             
             print(f"✓ 大模型{'指导' if guidance_mode else '评分'}结果: {llm_score}/100")
             
@@ -875,18 +877,10 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
             # 否则继续进行启发式评估，最终结果将综合两种评估
         except Exception as e:
             print(
-                f"大模型{'指导' if guidance_mode else '评估'}失败，将仅使用启发式评分: "
+                f"大模型{'指导' if guidance_mode else '评估'}失败: "
                 f"{type(e).__name__}"
             )
-            llm_score = None
-            llm_feedback = None
-            # 如果大模型评估失败，使用启发式评分
-            llm_weight = 0
-            heuristic_weight = 1.0
-            
-            # 指导模式下，如果大模型失败，提供通用指导
-            if guidance_mode:
-                return 3, "很遗憾，AI助手无法分析您的代码。建议您检查代码格式是否正确，确保语法没有明显错误，并尝试添加更多注释说明您的思路。如果您遇到特定问题，可以直接在问答区提问。"
+            raise RuntimeError("大模型评估失败，请稍后重试") from e
     else:
         llm_score = None
         llm_feedback = None
@@ -909,7 +903,7 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
 
 记住，编程是一个不断尝试和改进的过程。每次修改都是进步！
 """
-            return max(3, score), basic_feedback + "\n\n" + encouragement
+            return normalize_evaluation_score(max(3, score), scale=5), basic_feedback + "\n\n" + encouragement
     
     # 使用启发式规则评估代码
     print("使用启发式规则评估代码...")
@@ -923,7 +917,7 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
         feedback = feedback.replace("需要全面改进", "可以进一步完善")
         feedback += "\n\n别灰心！每个程序员都是从基础开始的。继续练习，您会越来越好！"
 
-    heuristic_score = score if 'score' in locals() else None
+    heuristic_score = normalize_evaluation_score(score, scale=5)
     
     # 加权计算最终分数
     final_score = 0
@@ -979,14 +973,14 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
                         code_matches_requirement = True
                 
                 # 如果代码特别符合题目要求，给予额外加分
-                if code_matches_requirement and final_score < 5:
+                if code_matches_requirement and final_score < 100:
                     old_score = final_score
-                    if final_score >= 3.5:
+                    if final_score >= 70:
                         # 高分段：提高到接近满分
-                        final_score = min(5, final_score + 0.5)
+                        final_score = min(100, final_score + 10)
                     else:
-                        # 低分段：提升20%但不超过4分
-                        final_score = min(4, final_score * 1.2)
+                        # 低分段：提升20%但不超过80分
+                        final_score = min(80, final_score * 1.2)
                     print(
                         f"题目匹配度加分: {old_score} → {final_score}"
                     )
@@ -1001,18 +995,18 @@ def evaluate_cpp_code(code_str, model=None, assignment_title=None, preview_only=
             print(f"使用启发式评分作为最终分数: {final_score}")
         else:
             # 没有任何有效评分，给出警告默认分数
-            final_score = 1
+            final_score = 20
             feedback = "无法使用任何评估模型，请尝试重新提交或联系管理员。"
             print("警告: 所有评估模型都失败，使用默认分数")
     
-    # 确保最终分数在0-5之间
-    final_score = max(0, min(5, final_score))
+    # 确保最终分数在 0–100 之间
+    final_score = max(0, min(100, final_score))
     
     # 生成反馈
     if 'feedback' not in locals() or feedback is None:
         feedback = generate_feedback(code_str, final_score, assignment_title)
         
-    print(f"最终评分: {final_score}/5")
+    print(f"最终评分: {final_score}/100")
     return final_score, feedback
 
 
